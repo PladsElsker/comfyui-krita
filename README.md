@@ -1,7 +1,6 @@
 # ComfyUI integration in Krita
 
 ## Why another krita plugin? 
-Mainly 1 reason:  
 All the existing plugins that attempt to integrate ComfyUI in Krita do both too much and too little.  
 
 An idiomatic plugin does not require dependencies that can be made optional. For users that are familiar with either ComfyUI or Krita, it shouldn't feel like you have to give up on anything to use the plugin. 
