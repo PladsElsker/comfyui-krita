@@ -6,10 +6,11 @@ This extension is in active development.
 
 ## 🔨 Scope of the project
 ### Krita
+- [x] Requires only a running and accessible ComfyUI server
 - [ ] Integrate ComfyUI's UI in a Krita docker
-- [x] Implement as little patching and highjacking as realistically possible on top of ComfyUI
-- [ ] Allow ComfyUI live previews to work when running a workflow from Krita
-- [ ] Implement dynamic workflow inputs that are parsed from the currently selected ComfyUI workflow
+- [x] Minimize patching and highjacking of ComfyUI internals
+- [ ] Enable live ComfyUI previews when running a workflow from Krita
+- [ ] Parse dynamic workflow inputs from the selected ComfyUI workflow
 - [ ] Implement a custom "layer-set selector" component to select the set of layers to composite before sending to ComfyUI
 
 ### ComfyUI
