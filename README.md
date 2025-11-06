@@ -1,16 +1,16 @@
 # ComfyUI integration in Krita
+Minimal Krita extension and ComfyUI custom nodes for integrating both together. 
 
 ## ⚠️ WIP
 This extension is in active development. 
 
 ## 🔨 Scope of the project
 ### Krita
-- [x] The only required dependency for the user is to have a ComfyUI server open and accessible
-- [ ] ComfyUI's UI must be integrated in a docker
-- [x] As little patching and highjacking as realistically possible on top of ComfyUI
-- [ ] ComfyUI live previews work when running a workflow from Krita
-- [ ] Dynamic workflow inputs that are parsed from the selected ComfyUI workflow
-- [ ] Custom "layer-set selector" component to select the set of layers to composite before sending to ComfyUI
+- [ ] Integrate ComfyUI's UI in a Krita docker
+- [x] Implement as little patching and highjacking as realistically possible on top of ComfyUI
+- [ ] Allow ComfyUI live previews to work when running a workflow from Krita
+- [ ] Implement dynamic workflow inputs that are parsed from the currently selected ComfyUI workflow
+- [ ] Implement a custom "layer-set selector" component to select the set of layers to composite before sending to ComfyUI
 
 ### ComfyUI
 Custom nodes are used for interacting with Krita:
