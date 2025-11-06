@@ -1,6 +1,6 @@
 # ComfyUI integration in Krita
 
-⚠️WIP⚠️
+## ⚠️WIP⚠️
 
 ## 🔨 Scope of the project
 ### Krita
