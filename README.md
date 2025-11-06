@@ -1,6 +1,6 @@
 # ComfyUI integration in Krita
 
-## WIP: Scope of the project
+## 🔨 WIP: Scope of the project
 ### Krita
 - [x] The only required dependency for the user is to have a ComfyUI server open and accessible
 - [ ] ComfyUI's UI must be integrated in a docker
@@ -15,7 +15,7 @@ Custom nodes are used for interacting with Krita:
 - [ ] `KritaActiveSelection` node: get the active selection mask
 - [ ] `KritaCreateLayer` node: send the image back to Krita to a given location in the layer tree
 
-## Why another krita plugin? 
+## 🎲 Why another krita plugin? 
 All the existing plugins that attempt to integrate ComfyUI in Krita do both too much and too little.  
 
 An idiomatic plugin:
