@@ -14,14 +14,15 @@ This extension is in active development.
 - [ ] Add a custom **Layer Set Selector** component to choose which layers to composite before sending to ComfyUI
 
 ### ComfyUI
-Custom nodes are used for interacting with Krita:
-- [ ] `KritaLayerSet` node: select which layers to composite in Krita before sending as an image to ComfyUI
-- [ ] `KritaActiveSelection` node: get the active selection mask
-- [ ] `KritaCreateLayer` node: send the image back to Krita to a given location in the layer tree
+Custom nodes for Krita interaction:
+- [ ] `KritaLayerSet`: composites selected layers in Krita before sending them as an image to ComfyUI
+- [ ] `KritaActiveSelection`: retrieves the active selection mask
+- [ ] `KritaCreateLayer`: sends the generated image back to a specified location in Krita’s layer tree
 
 ## 🎲 Why another krita plugin? 
-All the existing plugins that attempt to integrate ComfyUI in Krita do both **too much** and **too little**.  
+Existing Krita–ComfyUI plugins tend to do both **too much** and **too little**.
 
 An idiomatic plugin:
-- Does not require dependencies that can be made optional
-- Does not take away features that were granted in either Krita or ComfyUI
+- Avoids unnecessary dependencies  
+- Preserves native features of both Krita and ComfyUI  
+- Respects user workflows without intrusive overrides 
