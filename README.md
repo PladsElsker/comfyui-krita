@@ -2,7 +2,7 @@
 
 ## WIP: Scope of the project
 ### Krita
-- [ ] The only required dependency for the user is to have a ComfyUI server open and accessible
+- [x] The only required dependency for the user is to have a ComfyUI server open and accessible
 - [ ] ComfyUI's UI must be integrated in a docker
 - [ ] As little patching and highjacking as realistically possible on top of ComfyUI
 - [ ] ComfyUI live previews work when running a workow from Krita
