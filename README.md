@@ -7,7 +7,7 @@ This extension is in active development.
 ## 🔨 Scope of the project
 ### Krita
 - [x] Requires only a running and accessible ComfyUI server
-- [x] Minimize patching and hijacking of ComfyUI internals to avoid development hell
+- [x] Minimize patching and hijacking of ComfyUI internals to avoid maintenance hell
 - [ ] Expose the necessary Krita operations through a websocket client
 
 ### ComfyUI
