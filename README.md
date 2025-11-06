@@ -1,7 +1,7 @@
 # ComfyUI integration in Krita
 
 ## ⚠️ WIP
-This extension is in active developpement. 
+This extension is in active development. 
 
 ## 🔨 Scope of the project
 ### Krita
