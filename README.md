@@ -7,14 +7,11 @@ This extension is in active development.
 ## 🔨 Scope of the project
 ### Krita
 - [x] Requires only a running and accessible ComfyUI server
-- [ ] Embed ComfyUI’s UI in a Krita docker
 - [x] Minimize patching and hijacking of ComfyUI internals
-- [ ] Enable live ComfyUI previews when running a workflow from Krita
-- [ ] Parse dynamic workflow inputs from the selected ComfyUI workflow
-- [ ] Add a custom **Layer Set Selector** component to choose which layers to composite before sending to ComfyUI
+- [ ] Expose the necessary Krita operations through a websocket client
 
 ### ComfyUI
-Custom nodes for Krita interaction:
+- [ ] `KritaInstance`: selects which Krita instance to interact with
 - [ ] `KritaLayerSet`: composites selected Krita layers and sends them as a single image to ComfyUI
 - [ ] `KritaActiveSelection`: retrieves the active selection mask
 - [ ] `KritaCreateLayer`: sends the generated image back to a specified location in Krita’s layer tree
