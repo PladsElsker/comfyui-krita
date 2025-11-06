@@ -7,7 +7,7 @@ This project is in active development.
 ## 🔨 Scope of the project
 ### Krita
 - [x] Requires only a running and accessible ComfyUI server
-- [x] Minimize patching and hijacking of ComfyUI internals to avoid maintenance hell
+- [x] Minimizes patching and hijacking of ComfyUI internals to avoid maintenance hell
 - [ ] Exposes the necessary Krita operations through a websocket client
 - [ ] Selects which ComfyUI client to interact with
 - [ ] Dynamically updates the workflow inputs in Krita based on the opened workflow in ComfyUI
