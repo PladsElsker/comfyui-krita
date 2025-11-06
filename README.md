@@ -2,7 +2,7 @@
 Minimal Krita extension and ComfyUI custom nodes for integrating both together. 
 
 ## ⚠️ WIP
-This extension is in active development. 
+This project is in active development. 
 
 ## 🔨 Scope of the project
 ### Krita
