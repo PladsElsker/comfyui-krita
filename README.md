@@ -7,7 +7,7 @@ This extension is in active development.
 ## 🔨 Scope of the project
 ### Krita
 - [x] Requires only a running and accessible ComfyUI server
-- [ ] Integrate ComfyUI's UI in a Krita docker
+- [ ] Embed ComfyUI’s UI in a Krita docker
 - [x] Minimize patching and highjacking of ComfyUI internals
 - [ ] Enable live ComfyUI previews when running a workflow from Krita
 - [ ] Parse dynamic workflow inputs from the selected ComfyUI workflow
