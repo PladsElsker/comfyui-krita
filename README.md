@@ -1,6 +1,8 @@
 # ComfyUI integration in Krita
 
-## 🔨 WIP: Scope of the project
+⚠️WIP⚠️
+
+## 🔨 Scope of the project
 ### Krita
 - [x] The only required dependency for the user is to have a ComfyUI server open and accessible
 - [ ] ComfyUI's UI must be integrated in a docker
