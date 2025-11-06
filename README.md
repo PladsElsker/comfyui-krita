@@ -9,6 +9,7 @@ This extension is in active development.
 - [x] Requires only a running and accessible ComfyUI server
 - [x] Minimize patching and hijacking of ComfyUI internals to avoid maintenance hell
 - [ ] Expose the necessary Krita operations through a websocket client
+- [ ] Dynamically update the workflow inputs in Krita based on the opened workflow in ComfyUI
 
 ### ComfyUI
 - [ ] `KritaInstance`: selects which Krita instance to interact with
