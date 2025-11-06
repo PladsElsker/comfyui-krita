@@ -19,7 +19,7 @@ Custom nodes are used for interacting with Krita:
 - [ ] `KritaCreateLayer` node: send the image back to Krita to a given location in the layer tree
 
 ## 🎲 Why another krita plugin? 
-All the existing plugins that attempt to integrate ComfyUI in Krita do both too much and too little.  
+All the existing plugins that attempt to integrate ComfyUI in Krita do both **too much** and **too little**.  
 
 An idiomatic plugin:
 - Does not require dependencies that can be made optional
