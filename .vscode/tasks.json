@@ -2,6 +2,26 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "export-code",
+            "type": "shell",
+            "command": "venv/Scripts/python.exe",
+            "args": [
+                "-m",
+                "launch_scripts.export_code"
+            ],
+            "problemMatcher": [],
+            "isBackground": false,
+            "presentation": {
+                "reveal": "never",
+                "panel": "dedicated",
+                "showReuseMessage": false,
+                "close": true
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
             "label": "launch-krita",
             "type": "shell",
             "command": "venv/Scripts/python.exe",
@@ -9,6 +29,7 @@
                 "${workspaceFolder}/launch_scripts/start_krita_debug.py"
             ],
             "problemMatcher": [],
+            "dependsOn": "export-code",
             "isBackground": true,
             "presentation": {
                 "reveal": "never",
