@@ -17,7 +17,7 @@ This project is in active development.
 - [x] Exposes the currently opened workflow in the UI to Krita
 - [ ] Test brittle code with CI
 - [ ] `Krita Layer Set`: composites selected Krita layers and sends them as a single image to ComfyUI
-- [ ] `Krita Active Selection`: retrieves the active selection mask
+- [ ] `Krita Active Selection`: retrieves the active selection image and mask
 - [ ] `Save Image (as krita layer)`: sends the generated image back to a specified location in Krita’s layer tree
 
 ## 🎲 Why another krita plugin? 
