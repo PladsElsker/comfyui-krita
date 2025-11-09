@@ -3,8 +3,10 @@ import threading
 import requests
 import websocket
 from urllib.parse import urlparse, urlunparse
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtBoundSignal, QMetaObject, Qt, pyqtSlot, Q_ARG, qCritical
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtBoundSignal, QMetaObject, Qt, pyqtSlot, Q_ARG, qCritical, QCoreApplication
 from typing import cast
+import atexit
+import signal
 
 
 class ComfyWebsocket(QObject):
@@ -21,6 +23,7 @@ class ComfyWebsocket(QObject):
         self.is_connected = False
         self._handlers = {}
         self.sid: str | None = None
+        self._setup_graceful_termination()
 
     def connect(self, http_url: str) -> None:
         if self.ws is not None:
@@ -124,6 +127,19 @@ class ComfyWebsocket(QObject):
     def _emit_close(self, message: str):
         self.is_connected = False
         self.on_closed.emit(message)
+
+    def _setup_graceful_termination(self):
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self.close)
+
+        atexit.register(self.close)
+
+        def handle(signum, frame):
+            self.close()
+
+        signal.signal(signal.SIGINT, handle)
+        signal.signal(signal.SIGTERM, handle)
 
 
 def _http_to_ws_base(http_url: str) -> str:
