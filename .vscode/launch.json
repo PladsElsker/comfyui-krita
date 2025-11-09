@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Remote Attach",
+            "name": "Debug Extension: Krita",
             "type": "debugpy",
             "request": "attach",
             "connect": {
@@ -19,7 +19,7 @@
             "preLaunchTask": "wait-for-debugger",
         },
         {
-            "name": "Export Project",
+            "name": "Export Extension: Zip",
             "type": "debugpy",
             "python": "${cwd}/venv/Scripts/python",
             "request": "launch",

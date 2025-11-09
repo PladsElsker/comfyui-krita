@@ -76,22 +76,22 @@ class ComfyUIWebsocketConnectionDialog(QDialog):
             qCritical(str(e))
 
     def _on_ws_connected(self):
-        self.is_connected = True
         self.connect_button.setText("Disconnect")
         self.connect_button.setEnabled(True)
         self.status_label.setText("Connected")
         self.status_label.setStyleSheet(SUCCESS_COLOR_STYLE)
+        self.url_edit.setDisabled(True)
 
     def _on_ws_disconnected(self):
-        self.is_connected = False
         self.connect_button.setText("Connect")
         self.connect_button.setEnabled(True)
         self.status_label.setText("Disconnected")
         self.status_label.setStyleSheet(ERROR_COLOR_STYLE)
+        self.url_edit.setEnabled(True)
 
     def _on_ws_reconnect(self):
-        self.is_connected = False
         self.connect_button.setText("Cancel")
         self.connect_button.setEnabled(True)
         self.status_label.setText("Connecting...")
         self.status_label.setStyleSheet(DEFAULT_COLOR_STYLE)
+        self.url_edit.setEnabled(True)
