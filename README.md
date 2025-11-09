@@ -22,7 +22,7 @@ This project is in active development.
 - [ ] `Save Image (as krita layer)`: sends the generated image back to a specified location in Krita’s layer tree
 
 ## 🎲 Why another krita plugin? 
-Existing Krita–ComfyUI plugins tend to do both **too much** and **too little**.
+Existing Krita-ComfyUI plugins tend to do both **too much** and **too little**.
 
 An idiomatic plugin:
 - Avoids unnecessary dependencies  
