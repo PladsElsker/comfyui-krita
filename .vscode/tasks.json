@@ -4,8 +4,33 @@
         {
             "label": "launch-krita",
             "type": "shell",
-            "command": "Start-Process 'C:\\Program Files\\Krita (x64)\\bin\\krita.exe'",
-            "problemMatcher": []
+            "command": "venv/Scripts/python.exe",
+            "args": [
+                "${workspaceFolder}/launch_scripts/start_krita_debug.py"
+            ],
+            "problemMatcher": [],
+            "isBackground": true,
+            "presentation": {
+                "reveal": "never",
+                "panel": "dedicated",
+                "showReuseMessage": false,
+                "close": true
+            }
+        },
+        {
+            "label": "wait-for-debugger",
+            "type": "shell",
+            "command": "venv/Scripts/python.exe",
+            "args": ["${workspaceFolder}/launch_scripts/wait_for_debugger.py"],
+            "problemMatcher": [],
+            "dependsOn": "launch-krita",
+            "isBackground": false,
+            "presentation": {
+                "reveal": "never",
+                "panel": "dedicated",
+                "showReuseMessage": false,
+                "close": true
+            }
         }
     ]
 }

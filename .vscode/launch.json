@@ -12,9 +12,11 @@
             "pathMappings": [
                 {
                     "localRoot": "${workspaceFolder}/pykrita/comfyui",
-                    "remoteRoot": "C:\\Users\\Plads\\AppData\\Roaming\\krita\\pykrita\\comfyui"
+                    "remoteRoot": "${env:APPDATA}/krita/pykrita/comfyui"
                 }
-            ]
+            ],
+            "justMyCode": false,
+            "preLaunchTask": "wait-for-debugger",
         },
         {
             "name": "Export Project",
