@@ -1,4 +1,3 @@
-import asyncio
 import re
 import inspect
 from typing import Dict
@@ -31,7 +30,7 @@ class KritaApi:
     def __init__(self) -> None:
         self.registered_documents: dict[str, set[str]] = {}
 
-    def create_layer(self, image):
+    def create_layer(self, document_id, layer_path, image):
         pass
 
     @prune_sids
@@ -54,13 +53,14 @@ class KritaApi:
     @prune_sids
     async def update_workflow(self, document_id, pruned_workflow):
         update_workflow_request = UpdateKritaWorkflowRequest(id=document_id, workflow=pruned_workflow)
-        sids = set(
+        sid = next(
             sid
             for sid, document_set in self.registered_documents.items()
-            for i in document_set
-            if i == document_id
+            for d in document_set
+            if d == document_id
         )
-        for sid in sids:
+
+        if sid:
             await PromptServer.instance.send("krita::workflow::update", update_workflow_request.model_dump(), sid)
 
     def get_registered_documents(self) -> KritaDocuments:
@@ -110,3 +110,6 @@ def _ensure_unique_id(document_id, registered_documents) -> str:
         converted_id = f"{document_id} ({next_deduplicate_id})"
 
     return converted_id
+
+
+api = KritaApi()

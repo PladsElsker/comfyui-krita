@@ -2,9 +2,9 @@ import { app } from "../../../scripts/app.js";
 
 
 (() => {
-    const KRITA_DOCUMENT_NODE_TYPE = "KritaDocument";
-    const KRITA_SAVE_IMAGE_NODE_TYPE = "KritaSaveImage";
-    const DOCUMENT_NODE_DROPDOWN_LABEL = "document";
+    const KRITA_SAVE_IMAGE_NODE_TYPE = "KritaSaveImage-15347";
+    const DOCUMENT_WIDGET_LABEL = "document";
+    const META_WIDGET_LABEL = "_meta-15347";
     const KRITA_DOCUMENT_GRAPH_USAGE_REFRESH_RATE = 300;
     const COMFY_TABS_CONTAINER_SELECTOR = ".workflow-tabs-container";
     const COMFY_ACTIVE_TAB_SELECTOR = ".p-togglebutton.p-component.p-togglebutton-checked .workflow-label";
@@ -13,11 +13,10 @@ import { app } from "../../../scripts/app.js";
     ];
 
 
-    const kritaDocumentNodes = [];
+    const kritaNodes = [];
     let baseUrl = null;
     let previousTabName = null;
-    let previousUsedDocumentIdsInGraph = null;
-    let previousSerializedNodes = null;
+    let previousUsedDocumentIdsInGraph = {};
 
 
     const api = (() => {
@@ -58,11 +57,39 @@ import { app } from "../../../scripts/app.js";
     const extension = { 
         name: "Krita.WorkflowSync",
         async afterConfigureGraph() {
-            await updateDocumentNodes();
+            await updateKritaNodeDocuments();
             await setupAdditionalWebsocketRoutes();
             await setupWorkflowSynchronization();
-        }
+
+            for(const node of app.graph._nodes) {
+                fixKritaNodeUi(node);
+            }
+        },
+        async nodeCreated(node) {
+            console.log(node);
+            fixKritaNodeUi(node);
+        },
     };
+
+
+    function fixKritaNodeUi(node) {
+        if(node.type && !KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)) return;
+
+        const metaWidget = node.widgets.find(w => w.label === META_WIDGET_LABEL);
+        const metaSlot = node.inputs.find(i => i.name === META_WIDGET_LABEL);
+        const documentSlot = node.inputs.find(i => i.name === DOCUMENT_WIDGET_LABEL);
+        if(documentSlot) {
+            const slotIndex = node.inputs.indexOf(documentSlot);
+            node.inputs.splice(slotIndex, 1);
+        }
+        if(metaSlot) {
+            const slotIndex = node.inputs.indexOf(metaSlot);
+            node.inputs.splice(slotIndex, 1);
+        }
+        if(metaWidget) {
+            metaWidget.hidden = true;
+        }
+    }
 
 
     function setupAdditionalWebsocketRoutes() {
@@ -70,29 +97,21 @@ import { app } from "../../../scripts/app.js";
             const data = JSON.parse(event.data);
             switch(data.type) {
                 case "krita::documents::update":
-                    updateDocumentNodes(data.data.documents);
+                    updateKritaNodeDocuments(data.data.documents);
             }
         });
     }
 
 
-    async function updateDocumentNodes(documentNames=null) {
-        kritaDocumentNodes.slice(0, kritaDocumentNodes.length);
-        const serializedNodes = app.graph.serialize().nodes;
-        for(let i = 0; i < serializedNodes.length; i++) {
-            const serializedNode = serializedNodes[i];
-            if(serializedNode.type === KRITA_DOCUMENT_NODE_TYPE) {
-                const node = app.graph._nodes[i];
-                kritaDocumentNodes.push(node);
-            }
-        }
+    async function updateKritaNodeDocuments(documentNames=null) {
+        updateKritaNodes()
 
         if(documentNames === null) documentNames = (await api.get('/krita/documents')).documents;
 
-        for(const documentNode of kritaDocumentNodes) {
-            const dropdownWidget = documentNode.widgets.find(w => w.label === DOCUMENT_NODE_DROPDOWN_LABEL);
+        for(const node of kritaNodes) {
+            const dropdownWidget = node.widgets.find(w => w.label === DOCUMENT_WIDGET_LABEL);
             if(!dropdownWidget) {
-                console.warn("Could not find dropdown widget in krita document node.");
+                console.warn(`Could not find dropdown widget in krita node: ${node}.`);
                 continue;
             }
 
@@ -126,54 +145,45 @@ import { app } from "../../../scripts/app.js";
         const tabName = tabElements?.innerHTML ?? previousTabName;
         if(!tabName) return;
 
-        let documentIdObject = {};
+        const documentIdLists = {};
 
-        const serializedGraph = app.graph.serialize();
-        const nodes = serializedGraph.nodes;
+        updateKritaNodes();
 
-        for(const node of nodes) {
-            if(node.type !== KRITA_DOCUMENT_NODE_TYPE) continue;
+        for(const node of kritaNodes) {
+            const documentWidget = node.widgets.find(w => w.label === DOCUMENT_WIDGET_LABEL);
 
-            const inputObject = node.inputs.find(i => i.name === DOCUMENT_NODE_DROPDOWN_LABEL);
-
-            if(!inputObject) {
+            if(!documentWidget) {
                 console.warn("Could not find dropdown widget in krita document node.");
                 continue;
             }
             
-            const inputIndex = node.inputs.indexOf(inputObject);
-            const value = node.widgets_values[inputIndex];
-            documentIdObject[value] = null;
-        }
-
-        const serializedNodes = [];
-        for(const node of nodes) {
-            if(!KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)) continue;
-            serializedNodes.push(JSON.stringify({
+            const widgetIndex = node.widgets.indexOf(documentWidget);
+            const value = node.widgets_values[widgetIndex];
+            if(!(value in documentIdLists)) documentIdLists[value] = []
+            documentIdLists[value].push(JSON.stringify({
                 id: node.id,
                 type: node.type,
-                inputs: node.inputs,
-                outputs: node.outputs,
-                widgets_values: node.widgets_values,
             }));
         }
-        const documentIds = Object.keys(documentIdObject);
 
         if(
             !skipCondition &&
-            haveSameElements(previousUsedDocumentIdsInGraph, documentIds) && 
-            haveSameElements(previousSerializedNodes, serializedNodes) &&
+            Object.entries(documentIdLists).every(([documentId, nodes]) => haveSameElements(previousUsedDocumentIdsInGraph[documentId], nodes)) && 
+            Object.entries(previousUsedDocumentIdsInGraph).every(([documentId, nodes]) => haveSameElements(documentIdLists[documentId], nodes)) && 
             (previousTabName === tabName)
         ) return;
 
-        const requestData = {
-            workflow: serializedGraph,
-            name: tabName,
-        };
-        documentIds.forEach(id => api.put(`/krita/documents/${id}/workflow`, requestData));
+        Object.entries(documentIdLists).forEach(([documentId, nodes]) => {
+            const workflowResponse = {
+                name: tabName, 
+                workflow: {
+                    nodes: nodes.map(JSON.parse),
+                },
+            };
+            return api.put(`/krita/documents/${documentId}/workflow`, workflowResponse)
+        });
 
-        previousUsedDocumentIdsInGraph = documentIds;
-        previousSerializedNodes = serializedNodes;
+        previousUsedDocumentIdsInGraph = documentIdLists;
         previousTabName = tabName;
     }
 
@@ -198,6 +208,18 @@ import { app } from "../../../scripts/app.js";
         }
 
         return url.origin + url.pathname;
+    }
+
+
+    function updateKritaNodes() {
+        kritaNodes.splice(0, kritaNodes.length);
+        const nodes = app.graph._nodes;
+
+        for(const node of nodes) {
+            if(KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)) {
+                kritaNodes.push(node);
+            }
+        }
     }
 
 

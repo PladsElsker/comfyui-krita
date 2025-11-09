@@ -2,29 +2,15 @@ from typing_extensions import override
 
 from comfy_api.latest import ComfyExtension, io
 
-from .constants import KRITA_DOCUMENT_IO_TYPE, KRITA_SAVE_IMAGE_NODE_TYPE, KRITA_DOCUMENT_NODE_TYPE
-from .krita_api import KritaApi
+from .constants import KRITA_SAVE_IMAGE_NODE_TYPE, META_WIDGET_LABEL, KRITA_DOCUMENT_DROPDOWN_LABEL
+from .krita_api import api
 from .routes import define_routes
 
 
 WEB_DIRECTORY = "."
 
 
-api = KritaApi()
 define_routes()
-
-
-@io.comfytype(io_type=KRITA_DOCUMENT_IO_TYPE)
-class KritaDocumentId:
-    Type = str
-
-    class Input(io.Input):
-        def __init__(self, id: str, **kwargs):
-            super().__init__(id, **kwargs)
-
-    class Output(io.Output):
-        def __init__(self, **kwargs):
-            super().__init__(**kwargs)
 
 
 class KritaSaveImage(io.ComfyNode):
@@ -36,50 +22,36 @@ class KritaSaveImage(io.ComfyNode):
             category="krita",
             is_output_node=True,
             inputs=[
-                KritaDocumentId.Input(
-                    id="krita document"
-                ),
                 io.Image.Input(
                     id="image", 
                     display_name="image"
                 ),
-            ],
-        )
-
-    @classmethod
-    def execute(cls, image, position) -> io.NodeOutput: # type: ignore
-        match position:
-            case "Top":
-                api.create_layer(image)
-
-        return io.NodeOutput()
-
-
-class KritaDocument(io.ComfyNode):
-    @classmethod
-    def define_schema(cls) -> io.Schema:
-        return io.Schema(
-            node_id=KRITA_DOCUMENT_NODE_TYPE,
-            display_name="Krita Document",
-            category="krita",
-            inputs=[
                 io.Combo.Input(
-                    id="document",
+                    id=KRITA_DOCUMENT_DROPDOWN_LABEL,
                     options=[],
-                    display_name="document",
-                    optional=False,
+                    display_name=KRITA_DOCUMENT_DROPDOWN_LABEL,
+                    optional=True,
                     tooltip="Select a Krita document.",
                     lazy=True,
                 ),
+                io.Combo.Input(
+                    id=META_WIDGET_LABEL,
+                    options=[],
+                    display_name=META_WIDGET_LABEL,
+                    optional=True,
+                    lazy=True,
+                )
             ],
-            outputs=[
-                KritaDocumentId.Output()
-            ]
         )
 
     @classmethod
-    def execute(cls, document: str) -> io.NodeOutput: # type: ignore
-        return io.NodeOutput(document)
+    def execute(cls, image, **kwargs) -> io.NodeOutput: # type: ignore
+        document = kwargs[KRITA_DOCUMENT_DROPDOWN_LABEL]
+        meta = kwargs[META_WIDGET_LABEL]
+        
+        api.create_layer(document, meta, image)
+
+        return io.NodeOutput()
 
 
 class KritaExtension(ComfyExtension):
@@ -87,7 +59,6 @@ class KritaExtension(ComfyExtension):
     async def get_node_list(self) -> list[type[io.ComfyNode]]:
         return [
             KritaSaveImage,
-            KritaDocument,
         ]
 
 
