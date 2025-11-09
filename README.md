@@ -16,7 +16,6 @@ This project is in active development.
 ### ComfyUI
 - [x] Exposes the currently opened workflow in the UI to Krita
 - [ ] Test brittle code with CI
-- [x] `Krita Document`: selects which Krita document to interact with
 - [ ] `Krita Layer Set`: composites selected Krita layers and sends them as a single image to ComfyUI
 - [ ] `Krita Active Selection`: retrieves the active selection mask
 - [ ] `Save Image (as krita layer)`: sends the generated image back to a specified location in Krita’s layer tree
