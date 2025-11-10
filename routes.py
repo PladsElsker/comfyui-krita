@@ -28,9 +28,7 @@ def _define_krita_routes():
 
     @PromptServer.instance.routes.get("/krita/{sid}/workflows")
     async def get_comfy_workflows(request):
-        # TODO:
-        # Return a list of workflows, one per document associated with the sid
-        # It's one workflow per document
+        sid = request.match_info["sid"]
         return web.json_response(status=500, reason="Not implemented")
 
 

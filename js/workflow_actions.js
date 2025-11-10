@@ -159,10 +159,14 @@ import { app } from "../../../scripts/app.js";
             
             const widgetIndex = node.widgets.indexOf(documentWidget);
             const value = node.widgets_values[widgetIndex];
+
+            if(value === null) continue;
+
             if(!(value in documentIdLists)) documentIdLists[value] = []
             documentIdLists[value].push(JSON.stringify({
                 id: node.id,
                 type: node.type,
+                name: node.type, // TODO: find what the human readable name is in the node attributes
             }));
         }
 

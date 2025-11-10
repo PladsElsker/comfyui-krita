@@ -52,7 +52,6 @@ class KritaApi:
 
     @prune_sids
     async def update_workflow(self, document_id, pruned_workflow):
-        update_workflow_request = UpdateKritaWorkflowRequest(id=document_id, workflow=pruned_workflow)
         sid = next(
             sid
             for sid, document_set in self.registered_documents.items()
@@ -61,6 +60,7 @@ class KritaApi:
         )
 
         if sid:
+            update_workflow_request = UpdateKritaWorkflowRequest(id=document_id, workflow=pruned_workflow)
             await PromptServer.instance.send("krita::workflow::update", update_workflow_request.model_dump(), sid)
 
     def get_registered_documents(self) -> KritaDocuments:
