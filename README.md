@@ -20,7 +20,7 @@ This project is in active development.
 - [ ] `Load Mask (from Krita selection)`: retrieves the active mask selection 
 - [ ] `Load Image (from krita document)`: retrieves all the active layers of a document composited together
 
-## 🎲 Why another krita plugin? 
+## 🎲 Why another ComfyUI-Krita plugin? 
 Existing Krita-ComfyUI plugins tend to do both **too much** and **too little**.
 
 An idiomatic plugin:
