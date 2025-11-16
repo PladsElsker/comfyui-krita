@@ -13,7 +13,6 @@ import { app } from "../../../scripts/app.js";
     ];
 
 
-    const kritaNodes = [];
     let baseUrl = null;
     let previousTabName = null;
     let previousUsedDocumentIdsInGraph = {};
@@ -57,16 +56,16 @@ import { app } from "../../../scripts/app.js";
     const extension = { 
         name: "Krita.WorkflowSync",
         async afterConfigureGraph() {
-            await updateKritaNodeDocuments();
+            await updateDocumentWidgetValues();
             await setupAdditionalWebsocketRoutes();
-            await setupWorkflowSynchronization();
+            await sendWorkflow(true);
+            await sendWorkflowOnChanges();
 
             for(const node of app.graph._nodes) {
                 fixKritaNodeUi(node);
             }
         },
         async nodeCreated(node) {
-            console.log(node);
             fixKritaNodeUi(node);
         },
     };
@@ -93,25 +92,26 @@ import { app } from "../../../scripts/app.js";
 
 
     function setupAdditionalWebsocketRoutes() {
-        app.api.socket.addEventListener('message', event => {
+        app.api.socket.addEventListener('message', async event => {
             const data = JSON.parse(event.data);
             switch(data.type) {
                 case "krita::documents::update":
-                    updateKritaNodeDocuments(data.data.documents);
+                    updateDocumentWidgetValues(data.data.documents);
+                    await sendWorkflow();
             }
         });
     }
 
 
-    async function updateKritaNodeDocuments(documentNames=null) {
-        updateKritaNodes()
+    async function updateDocumentWidgetValues(documentNames=null) {
+        const internalKritaNodes = getInternalKritaNodes();
 
         if(documentNames === null) documentNames = (await api.get('/krita/documents')).documents;
 
-        for(const node of kritaNodes) {
+        for(const node of internalKritaNodes) {
             const dropdownWidget = node.widgets.find(w => w.label === DOCUMENT_WIDGET_LABEL);
             if(!dropdownWidget) {
-                console.warn(`Could not find dropdown widget in krita node: ${node}.`);
+                console.warn(`Could not find document widget in krita node: ${node}.`);
                 continue;
             }
 
@@ -127,13 +127,12 @@ import { app } from "../../../scripts/app.js";
         }
     }
 
-    async function setupWorkflowSynchronization() {
-        await sendWorkflow();
 
-        window.addEventListener("focus", () => sendWorkflow(true));
+    async function sendWorkflowOnChanges() {
+        window.addEventListener("focus", async () => await sendWorkflow(true));
 
-        (function asyncRecurse() {
-            sendWorkflow();
+        (async function asyncRecurse() {
+            await sendWorkflow();
             setTimeout(asyncRecurse, KRITA_DOCUMENT_GRAPH_USAGE_REFRESH_RATE);
         })();
     }
@@ -147,27 +146,17 @@ import { app } from "../../../scripts/app.js";
 
         const documentIdLists = {};
 
-        updateKritaNodes();
+        const kritaNodes = generateCustomKritaNodes();
 
         for(const node of kritaNodes) {
-            const documentWidget = node.widgets.find(w => w.label === DOCUMENT_WIDGET_LABEL);
-
-            if(!documentWidget) {
-                console.warn("Could not find dropdown widget in krita document node.");
-                continue;
+            for(const documentId of node.documentIds) {
+                if(!(documentId in documentIdLists)) documentIdLists[documentId] = [];
+                documentIdLists[documentId].push(JSON.stringify({
+                    id: node.id,
+                    type: node.type,
+                    name: node.name,
+                }));
             }
-            
-            const widgetIndex = node.widgets.indexOf(documentWidget);
-            const value = node.widgets_values[widgetIndex];
-
-            if(value === null) continue;
-
-            if(!(value in documentIdLists)) documentIdLists[value] = []
-            documentIdLists[value].push(JSON.stringify({
-                id: node.id,
-                type: node.type,
-                name: node.type, // TODO: find what the human readable name is in the node attributes
-            }));
         }
 
         if(
@@ -176,6 +165,8 @@ import { app } from "../../../scripts/app.js";
             Object.entries(previousUsedDocumentIdsInGraph).every(([documentId, nodes]) => haveSameElements(documentIdLists[documentId], nodes)) && 
             (previousTabName === tabName)
         ) return;
+
+        console.log(documentIdLists);
 
         Object.entries(documentIdLists).forEach(([documentId, nodes]) => {
             const workflowResponse = {
@@ -215,14 +206,94 @@ import { app } from "../../../scripts/app.js";
     }
 
 
-    function updateKritaNodes() {
-        kritaNodes.splice(0, kritaNodes.length);
+    function getInternalKritaNodes() {
+        const internalKritaNodes = [];
         const nodes = app.graph._nodes;
 
         for(const node of nodes) {
             if(KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)) {
-                kritaNodes.push(node);
+                internalKritaNodes.push(node);
             }
+        }
+
+        return internalKritaNodes;
+    }
+
+
+    function generateCustomKritaNodes() {
+        const kritaNodes = [];
+        const customKritaNodeFactory = new CustomKritaNodeFactory();
+
+        const nodePairs = getNodePairs();
+
+        for(const [internalNode, serializedNode] of nodePairs) {
+            if(!KRITA_CUSTOM_IO_NODE_TYPES.includes(internalNode.type)) continue;
+
+            const customKritaNode = customKritaNodeFactory.create(internalNode, serializedNode);
+            kritaNodes.push(customKritaNode.dump());
+        }
+
+        return kritaNodes;
+    }
+
+
+    function getNodePairs() {
+        const internalNodes = app.graph._nodes;
+        const serializedNodes = app.graph.serialize().nodes;
+        return internalNodes
+            .map(internalNode => {
+                const serializedNode = serializedNodes.find(n => n.id === internalNode.id);
+
+                if(!serializedNode) {
+                    console.warn(`Unable to correlate internal node with serialized node #${internalNode.id}`);
+                    return null;
+                }
+
+                return [internalNode, serializedNode];
+            })
+            .filter(p => p !== null);
+    }
+
+
+    class CustomKritaNode {
+        constructor(id, type, name, documentIds) {
+            this.id = id
+            this.type = type;
+            this.name = name;
+            this.documentIds = documentIds;
+        }
+
+        dump() {
+            return {
+                id: this.id,
+                type: this.type,
+                name: this.name,
+                documentIds: this.documentIds,
+            }
+        }
+    }
+
+
+    class CustomKritaNodeFactory {
+        create(internalNode, serializedNode) {
+            const documentIds = internalNode.widgets
+                .map((w, i) => [w, i])
+                .filter(([w, _]) => w.label === DOCUMENT_WIDGET_LABEL)
+                .map(([_, i]) => {
+                    if(i >= serializedNode.widgets_values.length) {
+                        console.warn(`Encountered unmatchable krita document widget value for node #${internalNode.id}`);
+                        console.warn(`Serialized node: ${serializedNode}`);
+                        console.warn(`Internal node: ${internalNode}`);
+                    }
+                    return serializedNode.widgets_values[i];
+                });
+
+            return new CustomKritaNode(
+                internalNode.id,
+                internalNode.type,
+                internalNode.title,
+                documentIds,
+            );
         }
     }
 

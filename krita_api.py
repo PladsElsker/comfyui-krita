@@ -71,21 +71,21 @@ class KritaApi:
         ]))
 
     async def prune_stale_sids_async(self):
+        has_changed = False
+
         for sid in list(self.registered_documents.keys()):
             if sid not in PromptServer.instance.sockets.keys():
                 del self.registered_documents[sid]
+                has_changed = True
+
+        if not has_changed:
+            return
 
         krita_documents = self.get_registered_documents().model_dump()
         await PromptServer.instance.send("krita::documents::update", krita_documents)
 
     def _prune_stale_sids(self):
-        for sid in list(self.registered_documents.keys()):
-            if sid not in PromptServer.instance.sockets:
-                del self.registered_documents[sid]
-
-        krita_documents = self.get_registered_documents().model_dump()
-        task = PromptServer.instance.send("krita::documents::update", krita_documents)
-        PromptServer.instance.loop.create_task(task)
+        PromptServer.instance.loop.create_task(self.prune_stale_sids_async())
 
     async def _unregister_documents_by_sid_async(self, sid) -> None:
         if sid in self.registered_documents.keys():
