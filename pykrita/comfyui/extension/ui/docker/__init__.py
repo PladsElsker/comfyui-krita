@@ -7,6 +7,9 @@ from .workflow_header import WorkflowHeader
 from .node_list_widget import NodeListWidget
 
 
+COMFYUI_DOCKER_OBJECT_NAME = "comfyui_docker"
+
+
 class ComfyUIDocker(DockWidget):
     def __init__(self):
         super().__init__()

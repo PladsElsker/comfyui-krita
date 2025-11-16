@@ -3,7 +3,7 @@ import threading
 import requests
 import websocket
 from urllib.parse import urlparse, urlunparse
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtBoundSignal, QMetaObject, Qt, pyqtSlot, Q_ARG, qCritical, QCoreApplication
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtBoundSignal, QMetaObject, Qt, QTimer, QCoreApplication, pyqtSlot, Q_ARG
 from typing import cast
 import atexit
 import signal
@@ -19,17 +19,32 @@ class ComfyWebsocket(QObject):
     def __init__(self) -> None:
         super().__init__()
         self.ws = None
+        self.ws_url = None
+        self.http_base = None
         self._listener_thread = None
         self.is_connected = False
         self._handlers = {}
         self.sid: str | None = None
         self._setup_graceful_termination()
 
+        self._reconnect_timer = None
+
+    def enable_automatic_reconnection(self, attempt_every: int = 3000):
+        if self._reconnect_timer is not None:
+            self._reconnect_timer.stop()
+
+        self._reconnect_timer = QTimer(self)
+        self._reconnect_timer.setInterval(attempt_every)
+        self._reconnect_timer.timeout.connect(self._attempt_reconnect)
+        self._reconnect_timer.start()
+
     def connect(self, http_url: str) -> None:
         if self.ws is not None:
             self.ws.close()
 
         self._set_url(http_url)
+
+        assert self.ws_url is not None
 
         self.ws = websocket.WebSocketApp(
             self.ws_url,
@@ -64,6 +79,10 @@ class ComfyWebsocket(QObject):
 
     def delete(self, route, **kw):
         return self._request("DELETE", route, **kw)
+    
+    def _attempt_reconnect(self):
+        if not self.is_connected and self.http_base is not None:
+            self.connect(self.http_base)
 
     def _set_url(self, http_url: str) -> None:
         if not http_url.startswith(("http://", "https://")):
@@ -73,6 +92,8 @@ class ComfyWebsocket(QObject):
         self.ws_url = _http_to_ws_base(http_url)
 
     def _request(self, method: str, route: str, data=None, timeout=5):
+        assert self.http_base is not None
+
         url = f"{self.http_base.rstrip('/')}/{route.lstrip('/')}"
         headers = {"Content-Type": "application/json"}
         payload = json.dumps(data) if data is not None else None
@@ -96,10 +117,7 @@ class ComfyWebsocket(QObject):
         data = json.loads(message)
         command = data.get("type", None)
         if command in self._handlers.keys():
-            try:
-                self._handlers[command](data.get("data", {}))
-            except Exception as exception:
-                qCritical(str(exception))
+            self._handlers[command](data.get("data", {}))
 
         self.on_message.emit(message)
 

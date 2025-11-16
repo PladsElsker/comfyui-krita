@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton
 )
-from PyQt5.QtCore import Qt, qCritical
+from PyQt5.QtCore import Qt
 
 from ..config import Config
 from ..comfy_websocket import ComfyWebsocket
@@ -63,17 +63,14 @@ class ComfyUIWebsocketConnectionDialog(QDialog):
             self._on_ws_disconnected()
 
     def connect(self):
-        try:
-            if self.comfy_ws.is_connected:
-                self.comfy_ws.close()
-            else:
-                self.connect_button.setText("Connecting...")
-                self.connect_button.setDisabled(True)
-                url = self.url_edit.text().strip()
-                self.config[COMFYUI_SERVER_URL_CONFIG] = url
-                self.comfy_ws.connect(url)
-        except Exception as e:
-            qCritical(str(e))
+        if self.comfy_ws.is_connected:
+            self.comfy_ws.close()
+        else:
+            self.connect_button.setText("Connecting...")
+            self.connect_button.setDisabled(True)
+            url = self.url_edit.text().strip()
+            self.config[COMFYUI_SERVER_URL_CONFIG] = url
+            self.comfy_ws.connect(url)
 
     def _on_ws_connected(self):
         self.connect_button.setText("Disconnect")

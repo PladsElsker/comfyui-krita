@@ -4,8 +4,8 @@ import os
 from krita import Krita
 import debugpy
 
+from comfyui.extension.exception_hook import setup_exception_hook
 from comfyui.extension import ComfyUIExtension
-
 
 
 def main():
@@ -13,6 +13,8 @@ def main():
 
     if os.environ.get("KRITA_DEBUG", None):
         debugpy.wait_for_client()
+
+        setup_exception_hook()
 
     krita = Krita.instance()
     krita.addExtension(ComfyUIExtension(krita))
