@@ -15,7 +15,6 @@ from .routes import define_routes
 
 WEB_DIRECTORY = "."
 
-
 define_routes()
 
 
