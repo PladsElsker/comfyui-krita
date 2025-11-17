@@ -1,10 +1,10 @@
 from krita import DockWidget, Document
-from PyQt5.QtWidgets import QVBoxLayout,  QWidget
+from PyQt5.QtWidgets import QVBoxLayout,  QWidget, QFrame, QHBoxLayout
 
 from ...models import Node
 
 from .workflow_header import WorkflowHeader
-from .node_list_widget import NodeListWidget
+from .node_list import NodeListWidget
 
 
 COMFYUI_DOCKER_OBJECT_NAME = "comfyui_docker"
@@ -24,11 +24,24 @@ class ComfyUIDocker(DockWidget):
         self.main_layout = QVBoxLayout(self.container)
         self.setWidget(self.container)
 
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+
         self.workflow_header = WorkflowHeader()
         self.main_layout.addWidget(self.workflow_header)
 
+        self.separator = QFrame()
+        self.separator.setFrameShape(QFrame.Shape.HLine)
+        self.separator.setFrameShadow(QFrame.Shadow.Sunken)
+        self.separator_container = QWidget()
+        self.separator_layout = QHBoxLayout(self.separator_container)
+        self.separator_layout.setContentsMargins(4, 0, 4, 0)
+        self.separator_layout.addWidget(self.separator)
+        self.main_layout.addWidget(self.separator_container)
+
         self.node_list = NodeListWidget()
         self.main_layout.addWidget(self.node_list)
+
+        self.main_layout.addStretch()
 
     def update_title(self, name: str):
         self.workflow_header.set_workflow_name(name)

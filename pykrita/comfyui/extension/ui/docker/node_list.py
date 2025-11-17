@@ -9,8 +9,6 @@ class NodeListWidget(QWidget):
         super().__init__(parent)
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(4, 4, 4, 4)
-        self.main_layout.setSpacing(4)
-        self.main_layout.addStretch(1)
         self.labels = []
 
     def rebuild(self, nodes: List[Node]):
