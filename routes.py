@@ -26,11 +26,6 @@ def _define_krita_routes():
         except:
             return web.json_response(status=400)
 
-    @PromptServer.instance.routes.get("/krita/{sid}/workflows")
-    async def get_comfy_workflows(request):
-        sid = request.match_info["sid"]
-        return web.json_response(status=500, reason="Not implemented")
-
 
 def _define_comfy_routes():
     @PromptServer.instance.routes.put("/krita/documents/workflows")
