@@ -39,3 +39,22 @@ def test_active_workflow_tab_exists() -> None:
         assert active.count() > 0, "active workflow tab not found"
 
         browser.close()
+
+
+def test_get_active_workflow_tab_name() -> None:
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto(COMFY_URL, wait_until="networkidle")
+
+        tab_name = page.evaluate(
+            """
+            async () => {
+                const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+                return workflow_actions_module.getActiveTabName();
+            }
+            """
+        )
+        assert tab_name == "Unsaved Workflow", "active workflow tab not found"
+
+        browser.close()
