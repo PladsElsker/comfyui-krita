@@ -1,6 +1,8 @@
 name: ComfyUI Frontend Tests
 
 on:
+    pull_request:
+        branches: ["**"]
     schedule:
         - cron: "0 3 * * *"
 
