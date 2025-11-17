@@ -12,7 +12,7 @@ class NodeListWidget(QWidget):
         self.labels = []
 
     def rebuild(self, nodes: List[Node]):
-        while self.main_layout.count() > 1:
+        while self.main_layout.count() > 0:
             item = self.main_layout.takeAt(0)
             if item is not None:
                 widget = item.widget()
