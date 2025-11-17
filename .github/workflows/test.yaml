@@ -44,7 +44,7 @@ jobs:
                   pip install -r ComfyUI/requirements.txt
                   deactivate
 
-            - name: Start ComfyUI server
+            - name: Start ComfyUI server and execute frontend tests
               shell: bash
               run: |
                   set -eux
@@ -53,20 +53,9 @@ jobs:
                   cd "${{ github.workspace }}/ComfyUI"
                   nohup python main.py --front-end-version "Comfy-Org/ComfyUI_frontend@latest" > "${{ github.workspace }}/comfyui.log" 2>&1 &
 
-            - name: Wait for ComfyUI server
-              shell: bash
-              run: |
-                  set -eux
-
                   . "${{ github.workspace }}/custom-node/venv/bin/activate"
                   cd "${{ github.workspace }}/custom-node/tests"
                   python wait_for_comfyui.py --timeout 20
-
-            - name: Run frontend tests
-              shell: bash
-              working-directory: "${{ github.workspace }}/custom-node/tests"
-              run: |
-                  set -eux
 
                   . "${{ github.workspace }}/custom-node/venv/bin/activate"
                   pytest -q
