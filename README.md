@@ -1,5 +1,5 @@
 # Krita integration in ComfyUI
-Minimal Krita extension and ComfyUI custom nodes for integrating both UIs together. 
+Minimal Krita extension and ComfyUI custom nodes for integrating both UIs together.  
 
 ## ⚠️ WIP
 This project is in active development. 
@@ -21,7 +21,14 @@ This project is in active development.
 - [ ] `Load Image (from krita document)`: retrieves all the active layers of a document composited together
 
 ## 🎲 Why another ComfyUI-Krita extension? 
-Existing ComfyUI-Krita extensions tend to do both **too much** and **too little**.
+### ComfyUI is already a UI
+
+If you try to port the UI of ComfyUI in Krita through a Krita extension, a few things can happen:
+- `Feature drift` → New UI features in ComfyUI take longer to be ported to the Krita extension
+- `Feature masking` → Some very useful UI features like live previews and workflow progress become inaccessible
+- `Dependency hell` → Forcing users to install unrelated tools, even when they don't intend to use them
+
+### Existing ComfyUI-Krita extensions tend to do both **too much** and **too little**
 
 An idiomatic extension:
 - Avoids unnecessary dependencies  
