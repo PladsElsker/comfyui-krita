@@ -38,6 +38,11 @@ class ComfyWebsocket(QObject):
         self._reconnect_timer.timeout.connect(self._attempt_reconnect)
         self._reconnect_timer.start()
 
+    def disable_automatic_reconnection(self):
+        if self._reconnect_timer is not None:
+            self._reconnect_timer.stop()
+            self._reconnect_timer = None
+
     def connect(self, http_url: str) -> None:
         if self.ws is not None:
             self.ws.close()

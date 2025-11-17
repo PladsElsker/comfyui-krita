@@ -65,12 +65,14 @@ class ComfyUIWebsocketConnectionDialog(QDialog):
     def connect(self):
         if self.comfy_ws.is_connected:
             self.comfy_ws.close()
+            self.comfy_ws.disable_automatic_reconnection()
         else:
             self.connect_button.setText("Connecting...")
             self.connect_button.setDisabled(True)
             url = self.url_edit.text().strip()
             self.config[COMFYUI_SERVER_URL_CONFIG] = url
             self.comfy_ws.connect(url)
+            self.comfy_ws.enable_automatic_reconnection()
 
     def _on_ws_connected(self):
         self.connect_button.setText("Disconnect")
