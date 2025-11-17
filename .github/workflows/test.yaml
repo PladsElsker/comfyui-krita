@@ -16,15 +16,14 @@ jobs:
               with:
                   path: custom-node
 
+            - name: Install node
+              uses: actions/setup-node@v5
+              with:
+                  node-version: lts/*
+
             - name: Clone ComfyUI backend
               run: |
                   git clone https://github.com/comfyanonymous/ComfyUI.git ComfyUI
-
-            - name: Install Playwright system dependencies & browsers
-              uses: microsoft/playwright-action@v1
-              with:
-                  install-deps: true
-                  install: true
 
             - name: Set up Python
               uses: actions/setup-python@v4
@@ -36,11 +35,11 @@ jobs:
                   set -eux
 
                   python -m pip install --upgrade pip
-                  python -m venv "${{ github.workspace }}/custom-node/venv-tests"
-                  . "${{ github.workspace }}/custom-node/venv-tests/bin/activate"
-                  pip install -r "${{ github.workspace }}/custom-node/tests/requirements.txt"
 
-                  python -m playwright install
+                  python -m venv "${{ github.workspace }}/custom-node/venv"
+                  . "${{ github.workspace }}/custom-node/venv/bin/activate"
+                  pip install -r "${{ github.workspace }}/custom-node/tests/requirements.txt"
+                  python -m playwright install --with-deps
                   deactivate
 
                   python -m venv "${{ github.workspace }}/ComfyUI/venv"
@@ -64,7 +63,7 @@ jobs:
               run: |
                   set -eux
 
-                  . "${{ github.workspace }}/custom-node/venv-tests/bin/activate"
+                  . "${{ github.workspace }}/custom-node/venv/bin/activate"
                   cd "${{ github.workspace }}/custom-node/tests"
                   python wait_for_comfyui.py --timeout 20
 
@@ -74,5 +73,5 @@ jobs:
               run: |
                   set -eux
 
-                  . "${{ github.workspace }}/custom-node/venv-tests/bin/activate"
+                  . "${{ github.workspace }}/custom-node/venv/bin/activate"
                   pytest -q
