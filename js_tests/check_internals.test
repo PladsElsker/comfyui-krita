@@ -1,8 +1,10 @@
 import { app } from "../../../scripts/app.js";
 
+
 // TODO:
 // - Execute the tests after the UI is actually loaded
 // - Use a set of predefined workflows for the tests
+
 
 (() => {
     function testGraphInternals() {
