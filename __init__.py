@@ -1,11 +1,16 @@
-from typing_extensions import override
+# noqa: N999
+from typing import Any, override
 
 from comfy_api.latest import ComfyExtension, io
+from torch import Tensor
 
-from .constants import KRITA_SAVE_IMAGE_NODE_TYPE, META_WIDGET_LABEL, KRITA_DOCUMENT_DROPDOWN_LABEL
+from .constants import (
+    KRITA_DOCUMENT_DROPDOWN_LABEL,
+    KRITA_SAVE_IMAGE_NODE_TYPE,
+    META_WIDGET_LABEL,
+)
 from .krita_api import api
 from .routes import define_routes
-
 
 WEB_DIRECTORY = "."
 
@@ -22,10 +27,7 @@ class KritaSaveImage(io.ComfyNode):
             category="krita",
             is_output_node=True,
             inputs=[
-                io.Image.Input(
-                    id="image", 
-                    display_name="image"
-                ),
+                io.Image.Input(id="image", display_name="image"),
                 io.Combo.Input(
                     id=KRITA_DOCUMENT_DROPDOWN_LABEL,
                     options=[],
@@ -40,15 +42,15 @@ class KritaSaveImage(io.ComfyNode):
                     display_name=META_WIDGET_LABEL,
                     optional=True,
                     lazy=True,
-                )
+                ),
             ],
         )
 
     @classmethod
-    def execute(cls, image, **kwargs) -> io.NodeOutput: # type: ignore
+    def execute(cls, image: Tensor, **kwargs: dict[str, Any]) -> io.NodeOutput:  # type: ignore
         document = kwargs[KRITA_DOCUMENT_DROPDOWN_LABEL]
         meta = kwargs[META_WIDGET_LABEL]
-        
+
         api.create_layer(document, meta, image)
 
         return io.NodeOutput()
