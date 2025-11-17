@@ -1,10 +1,15 @@
 # ruff: noqa: S101
+import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 
-COMFY_URL = "http://127.0.0.1:7960"
+env_file = ".test.gh.env" if os.getenv("GITHUB_ACTIONS") else ".test.env"
+load_dotenv(Path("tests") / env_file)
 
 
+COMFY_URL = os.getenv("COMFY_URL", "http://127.0.0.1:7960")
 COMFY_TABS_CONTAINER_SELECTOR = ".workflow-tabs-container"
 COMFY_ACTIVE_TAB_SELECTOR = ".p-togglebutton.p-component.p-togglebutton-checked .workflow-label"
 
