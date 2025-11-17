@@ -1,5 +1,4 @@
 import argparse
-import socket
 import sys
 import time
 from http import HTTPStatus
@@ -11,9 +10,6 @@ def wait_for_server(url: str, timeout: int) -> int:
     """Poll the server until it responds with status 200 or timeout expires."""
     start = time.time()
     while True:
-        local_ports = open_tcp_ports()
-        print(f"Open local TCP ports: {local_ports}", flush=True)  # noqa: T201
-
         try:
             r = requests.get(f"{url}/system_stats", timeout=1)
             if r.status_code == HTTPStatus.OK:
@@ -25,18 +21,6 @@ def wait_for_server(url: str, timeout: int) -> int:
             return 1
 
         time.sleep(0.5)
-
-
-def open_tcp_ports(host: str = "127.0.0.1", start: int = 1, end: int = 65535) -> list[int]:
-    ports = []
-
-    for port in range(start, end + 1):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.05)
-            if s.connect_ex((host, port)) == 0:
-                ports.append(port)
-
-    return ports
 
 
 def main() -> None:

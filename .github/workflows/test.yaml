@@ -47,7 +47,6 @@ jobs:
                   set -eux
 
                   nohup "${{ github.workspace }}/ComfyUI/venv/bin/python" "${{ github.workspace }}/ComfyUI/main.py" --cpu --front-end-version "Comfy-Org/ComfyUI_frontend@latest" > "${{ github.workspace }}/comfyui.log" 2>&1 &
-                  tail -f "${{ github.workspace }}/comfyui.log" &
                   cd "${{ github.workspace }}/custom-node/tests"
                   "${{ github.workspace }}/custom-node/venv/bin/python" wait_for_comfyui.py --timeout 20
 
