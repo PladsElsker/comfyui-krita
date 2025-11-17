@@ -5,8 +5,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 
+parent_path = Path(__file__).resolve().parent
 env_file = ".test.gh.env" if os.getenv("GITHUB_ACTIONS") else ".test.env"
-load_dotenv(Path("tests") / env_file)
+
+
+load_dotenv(parent_path / env_file)
 
 
 COMFY_URL = os.getenv("COMFY_URL", "http://127.0.0.1:8188")
