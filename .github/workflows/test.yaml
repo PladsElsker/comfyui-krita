@@ -25,20 +25,9 @@ jobs:
             - name: Install system deps for Playwright (Ubuntu)
               run: |
                   sudo apt-get update
-                      sudo apt-get install -y \
-                      libglib2.0-0 libnss3 libxss1 libavif16 \
-                      fonts-liberation libatk-bridge2.0-0 libgtk-3-0 \
-                      libgtk-4.so.1 libgraphene-1.0-0 libwoff2dec1 \
-                      libvpx9 libevent-2.1-7 libopus0 \
-                      gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-                      gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
-                      gstreamer1.0-libav gstreamer1.0-tools gstreamer1.0-x \
-                      libflite1 libflite-usenglish1 libflite-cmu-grapheme-lang1 \
-                      libflite-cmu-grapheme-lex1 libflite-cmu-indic-lang1 \
-                      libflite-cmu-indic-lex1 libflite-cmulex1 libflite-cmu-time-awb1 \
-                      libflite-cmu-us-awb1 libflite-cmu-us-kal161 libflite-cmu-us-kal1 \
-                      libflite-cmu-us-rms1 libflite-cmu-us-slt1 libharfbuzz-icu0 \
-                      libsecret-1-0 libhyphen0 libmanette-0.2-0 libgles2-mesa libx264-dev
+                  sudo apt-get install -y \
+                    libglib2.0-0 libnss3 libxss1 libavif16 \
+                    fonts-liberation libatk-bridge2.0-0 libgtk-3-0
 
             - name: Set up Python
               uses: actions/setup-python@v4
