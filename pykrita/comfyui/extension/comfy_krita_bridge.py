@@ -4,8 +4,6 @@ from .document_monitor import DocumentMonitor
 from .models import DocumentMappingResponse
 from typing import Dict
 
-from PyQt5.QtCore import qDebug
-
 
 class ComfyKritaBridge:
     def __init__(self, comfy_ws: ComfyWebsocket, document_monitor: DocumentMonitor):
@@ -54,8 +52,6 @@ class ComfyKritaBridge:
 
         for docker in ComfyUIExtension.get_comfyui_dockers():
             docker.update_title(workflows_request.name)
-
-            qDebug(workflows_request.model_dump_json())
 
             updated_documents = []
 
