@@ -41,13 +41,25 @@ jobs:
                   "${{ github.workspace }}/ComfyUI/venv/bin/python" -m pip install --upgrade pip
                   "${{ github.workspace }}/ComfyUI/venv/bin/python" -m pip install -r ComfyUI/requirements.txt
 
-            - name: Start ComfyUI server and execute frontend tests
+            - name: Start ComfyUI server
               shell: bash
               run: |
                   set -eux
 
                   nohup "${{ github.workspace }}/ComfyUI/venv/bin/python" "${{ github.workspace }}/ComfyUI/main.py" --cpu --front-end-version "Comfy-Org/ComfyUI_frontend@latest" > "${{ github.workspace }}/comfyui.log" 2>&1 &
+
+            - name: Wait for ComfyUI server
+              shell: bash
+              run: |
+                  set -eux
+
                   cd "${{ github.workspace }}/custom-node/tests"
                   "${{ github.workspace }}/custom-node/venv/bin/python" wait_for_comfyui.py --timeout 20
 
+            - name: Run tests
+              shell: bash
+              run: |
+                  set -eux
+
+                  cd "${{ github.workspace }}/custom-node/tests"
                   "${{ github.workspace }}/custom-node/venv/bin/python" -m pytest -q
