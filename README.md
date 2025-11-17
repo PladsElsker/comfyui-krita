@@ -22,7 +22,7 @@ Existing ComfyUI-Krita extensions tend to do both **too much** and **too little*
 An idiomatic extension:
 - Avoids unnecessary dependencies  
 - Preserves native features of both Krita and ComfyUI  
-- Respects user workflows without intrusive overrides 
+- Respects prior user workflows without intrusive overrides 
 
 ## 🔨 Scope of the project
 ### Krita
