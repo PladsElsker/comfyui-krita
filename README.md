@@ -25,8 +25,12 @@ This project is in active development.
 
 If you try to port the UI of ComfyUI in Krita through a Krita extension, a few things can happen:
 - `Feature drift` → New UI features in ComfyUI take longer to be ported to the Krita extension
-- `Feature masking` → Some very useful UI features like live previews and workflow progress become inaccessible
-- `Dependency hell` → Forcing users to install unrelated tools, even when they don't intend to use them
+- `Feature masking` → Some useful UI features like live previews and workflow progress can become inaccessible
+- `Dependency hell` → It can be tempting to force users to install unrelated tools models, even when they don't intend to use them
+- Etc.
+
+Instead of reinventing the wheel and maintaining it, we could use **the best of both worlds**.  
+Minimal. Feature complete. A seemless link. 
 
 ### Existing ComfyUI-Krita extensions tend to do both **too much** and **too little**
 
