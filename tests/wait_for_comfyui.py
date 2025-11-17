@@ -1,8 +1,9 @@
 import argparse
+import socket
 import sys
 import time
 from http import HTTPStatus
-import socket
+
 import requests
 
 
@@ -26,13 +27,15 @@ def wait_for_server(url: str, timeout: int) -> int:
         time.sleep(0.5)
 
 
-def open_tcp_ports(host="127.0.0.1", start=1, end=65535):
+def open_tcp_ports(host: str = "127.0.0.1", start: int = 1, end: int = 65535) -> list[int]:
     ports = []
+
     for port in range(start, end + 1):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(0.05)
             if s.connect_ex((host, port)) == 0:
                 ports.append(port)
+
     return ports
 
 
