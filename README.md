@@ -8,7 +8,7 @@ This project is in active development.
 ### Krita
 - [x] Requires only a running and accessible ComfyUI server
 - [x] Adds a settings popup under `settings/ComfyUI...` to set up the ComfyUI URL
-- [ ] Dynamically updates the workflow inputs in Krita based on the opened workflow in ComfyUI
+- [x] Dynamically updates the workflow inputs in Krita based on the opened workflow in ComfyUI
 - [ ] Allows users to select a list of layers to composite into a single image before sending as workflow input
 
 ### ComfyUI
