@@ -50,7 +50,7 @@ class ComfyKritaBridge:
     def update_workflows(self, workflows_request: UpdateWorkflowsRequest):
         from . import ComfyUIExtension
 
-        for docker in ComfyUIExtension.get_comfyui_dockers():
+        for docker, window in ComfyUIExtension.get_comfyui_window_docker_pairs():
             docker.update_title(workflows_request.name)
 
             for document_id, nodes in workflows_request.workflows.items():

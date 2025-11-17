@@ -1,4 +1,4 @@
-from krita import Extension, DockWidgetFactory, DockWidgetFactoryBase, Krita
+from krita import Extension, DockWidgetFactory, DockWidgetFactoryBase, Krita, Window
 from typing import cast
 
 from .config import Config
@@ -30,8 +30,8 @@ class ComfyUIExtension(Extension):
         Krita.instance().addDockWidgetFactory(self.docker_factory)
 
     @classmethod
-    def get_comfyui_dockers(cls) -> list[ComfyUIDocker]:
-        dockers = []
+    def get_comfyui_window_docker_pairs(cls) -> list[tuple[ComfyUIDocker, Window]]:
+        pairs = []
 
         for window in Krita.instance().windows():
             for docker in window.dockers():
@@ -39,9 +39,9 @@ class ComfyUIExtension(Extension):
                     continue
 
                 docker = cast(ComfyUIDocker, docker)
-                dockers.append(docker)
+                pairs.append((docker, window))
 
-        return dockers
+        return pairs
 
     def setup(self):
         self.comfy_ws.enable_automatic_reconnection()
@@ -59,10 +59,15 @@ class ComfyUIExtension(Extension):
         dialog.exec_()
 
     def broadcast_active_document_changed_to_comfy_dockers(self) -> None:
-        active_document = self.document_monitor.get_active_document()
+        for docker, window in ComfyUIExtension.get_comfyui_window_docker_pairs():
+            active_view = window.activeView()
 
-        if active_document is None:
-            return
+            if active_view is None:
+                continue
 
-        for docker in ComfyUIExtension.get_comfyui_dockers():
+            active_document = active_view.document()
+
+            if active_document is None:
+                continue
+    
             docker.set_active_document(active_document)
