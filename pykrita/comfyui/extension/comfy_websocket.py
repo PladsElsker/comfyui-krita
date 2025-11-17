@@ -7,6 +7,7 @@ from PyQt5.QtCore import QObject, pyqtSignal, pyqtBoundSignal, QMetaObject, Qt, 
 from typing import cast
 import atexit
 import signal
+from krita import Krita
 
 
 class ComfyWebsocket(QObject):
@@ -152,6 +153,10 @@ class ComfyWebsocket(QObject):
         app = QCoreApplication.instance()
         if app is not None:
             app.aboutToQuit.connect(self.close)
+
+        notifier = Krita.instance().notifier()
+        notifier.setActive(True)
+        notifier.applicationClosing.connect(self.close) # type: ignore
 
         atexit.register(self.close)
 

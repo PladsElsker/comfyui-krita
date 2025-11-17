@@ -53,8 +53,6 @@ class ComfyKritaBridge:
         for docker in ComfyUIExtension.get_comfyui_dockers():
             docker.update_title(workflows_request.name)
 
-            updated_documents = []
-
             for document_id, nodes in workflows_request.workflows.items():
                 document = self.document_monitor.mapping.get(document_id, None)
 
@@ -62,11 +60,3 @@ class ComfyKritaBridge:
                     raise ValueError(f"Unable to find document referenced by id {document_id}.")
 
                 docker.update_node_list(document, nodes)
-                updated_documents.append(document)
-
-            for document in self.document_monitor.get_opened_documents():
-                if document in updated_documents:
-                    continue
-
-                docker.update_node_list(document, [])
-                updated_documents.append(document)

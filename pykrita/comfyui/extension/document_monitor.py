@@ -1,6 +1,6 @@
 from typing import Dict, cast
 
-from krita import Krita, Document
+from krita import Krita, Document, View
 from PyQt5.QtCore import QObject, pyqtBoundSignal, pyqtSignal, QTimer
 
 
@@ -16,6 +16,10 @@ class DocumentMonitor(QObject):
         self._timer = QTimer()
         self._timer.timeout.connect(self._check_for_changes)
         self._timer.start(interval_ms)
+        self._notifier = self._krita.notifier()
+        self._notifier.setActive(True)
+        self._notifier.viewCreated.connect(self._view_event) # type: ignore
+        self._notifier.viewClosed.connect(self._view_event) # type: ignore
         self.mapping: dict[str, Document] = {}
     
     def test_mappings(self, mappings: Dict[str, str]) -> bool:
@@ -61,14 +65,26 @@ class DocumentMonitor(QObject):
     def _current_doc_names(self) -> tuple[str, ...]:
         return tuple(doc.name() for doc in self._krita.documents())
 
+    def _view_event(self, view: View) -> None:
+        self._check_for_changes()
+
     def _check_for_changes(self):
         current_documents = tuple(self._krita.documents())
         current_active_document = self._krita.activeDocument()
 
+        have_documents_changed = False
+        has_active_document_changed = False
+
         if current_documents != self._last_documents:
             self._last_documents = current_documents
-            self.on_documents_changed.emit()
+            have_documents_changed = True
 
         if current_active_document != self._last_active_document:
             self._last_active_document = current_active_document
+            has_active_document_changed = True
+
+        if have_documents_changed:
+            self.on_documents_changed.emit()
+        
+        if has_active_document_changed:
             self.on_active_document_changed.emit()
