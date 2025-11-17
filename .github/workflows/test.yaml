@@ -20,12 +20,11 @@ jobs:
               run: |
                   git clone https://github.com/comfyanonymous/ComfyUI.git ComfyUI
 
-            - name: Install system deps for Playwright (Ubuntu)
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y \
-                    libglib2.0-0 libnss3 libxss1 libavif16 \
-                    fonts-liberation libatk-bridge2.0-0 libgtk-3-0
+            - name: Install Playwright system dependencies & browsers
+              uses: microsoft/playwright-action@v1
+              with:
+                  install-deps: true
+                  install: true
 
             - name: Set up Python
               uses: actions/setup-python@v4
