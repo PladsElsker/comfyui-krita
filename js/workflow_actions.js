@@ -15,7 +15,7 @@ import { app } from "../../../scripts/app.js";
 
     let baseUrl = null;
     let previousTabName = null;
-    let previousUsedDocumentIdsInGraph = {};
+    let previousDocumentIdLists = {};
 
 
     const api = (() => {
@@ -144,6 +144,7 @@ import { app } from "../../../scripts/app.js";
         const tabName = tabElements?.innerHTML ?? previousTabName;
         if(!tabName) return;
 
+        const documentIdListsStringified = {};
         const documentIdLists = {};
 
         const kritaNodes = generateCustomKritaNodes();
@@ -151,34 +152,31 @@ import { app } from "../../../scripts/app.js";
         for(const node of kritaNodes) {
             for(const documentId of node.documentIds) {
                 if(!(documentId in documentIdLists)) documentIdLists[documentId] = [];
-                documentIdLists[documentId].push(JSON.stringify({
+                documentIdLists[documentId].push({
                     id: node.id,
                     type: node.type,
                     name: node.name,
-                }));
+                });
             }
         }
 
-        if(
-            !skipCondition &&
-            Object.entries(documentIdLists).every(([documentId, nodes]) => haveSameElements(previousUsedDocumentIdsInGraph[documentId], nodes)) && 
-            Object.entries(previousUsedDocumentIdsInGraph).every(([documentId, nodes]) => haveSameElements(documentIdLists[documentId], nodes)) && 
-            (previousTabName === tabName)
-        ) return;
-
-        console.log(documentIdLists);
-
         Object.entries(documentIdLists).forEach(([documentId, nodes]) => {
-            const workflowResponse = {
-                name: tabName, 
-                workflow: {
-                    nodes: nodes.map(JSON.parse),
-                },
-            };
-            return api.put(`/krita/documents/${documentId}/workflow`, workflowResponse)
+            documentIdListsStringified[documentId] = documentIdLists[documentId].map(JSON.stringify);
         });
 
-        previousUsedDocumentIdsInGraph = documentIdLists;
+        const changesDetected = skipCondition ||
+            Object.entries(documentIdListsStringified).any(([documentId, nodes]) => !haveSameElements(previousUsedDocumentIdsInGraph[documentId], nodes)) ||
+            Object.entries(previousUsedDocumentIdsInGraph).any(([documentId, nodes]) => !haveSameElements(documentIdListsStringified[documentId], nodes)) ||
+            (previousTabName !== tabName);
+
+        if(!changesDetected) return;
+
+        api.put(`/krita/documents/workflows`, {
+            name: tabName,
+            workflows: documentIdLists,
+        });
+
+        previousDocumentIdLists = documentIdListsStringified;
         previousTabName = tabName;
     }
 

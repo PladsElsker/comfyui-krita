@@ -4,7 +4,7 @@ from typing import Dict
 
 from server import PromptServer
 
-from .models import KritaDocuments, UpdateKritaWorkflowRequest
+from .models import KritaDocuments, UpdateKritaWorkflowRequest, UpdateWorkflowsRequest
 
 
 STALE_SIDS_PRUNING_REFRESH_RATE = 3
@@ -51,17 +51,28 @@ class KritaApi:
         return document_mapping
 
     @prune_sids
-    async def update_workflow(self, document_id, pruned_workflow):
-        sid = next(
-            sid
-            for sid, document_set in self.registered_documents.items()
-            for d in document_set
-            if d == document_id
-        )
+    async def update_workflows(self, workflows_request: UpdateWorkflowsRequest):
+        sid_request_map: Dict[str, UpdateWorkflowsRequest] = {}
+        document_id_sid_map: Dict[str, str] = {}
 
-        if sid:
-            update_workflow_request = UpdateKritaWorkflowRequest(id=document_id, workflow=pruned_workflow)
-            await PromptServer.instance.send("krita::workflow::update", update_workflow_request.model_dump(), sid)
+        for document_id, nodes in workflows_request.workflows.items():
+            if document_id in document_id_sid_map:
+                sid = document_id_sid_map[document_id]
+            else:
+                sid = self.document_id_to_sid(document_id)
+
+                if sid is None:
+                    continue # Ignored, Krita client disconnected
+
+                document_id_sid_map[document_id] = sid
+
+            if sid not in sid_request_map:
+                sid_request_map[sid] = UpdateWorkflowsRequest(name=workflows_request.name, workflows={})
+            
+            sid_request_map[sid].workflows[document_id] = nodes
+
+        for sid, request in sid_request_map.items():
+            await PromptServer.instance.send("krita::workflows::update", request.model_dump(), sid)
 
     def get_registered_documents(self) -> KritaDocuments:
         return KritaDocuments(documents=sorted([
@@ -90,6 +101,14 @@ class KritaApi:
     async def _unregister_documents_by_sid_async(self, sid) -> None:
         if sid in self.registered_documents.keys():
             del self.registered_documents[sid]
+    
+    def document_id_to_sid(self, document_id: str) -> str | None:
+        return next((
+            sid
+            for sid, document_set in self.registered_documents.items()
+            for d in document_set
+            if d == document_id
+        ), None)
 
 
 def _ensure_unique_id(document_id, registered_documents) -> str:

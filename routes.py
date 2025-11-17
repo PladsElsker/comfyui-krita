@@ -2,8 +2,8 @@ from aiohttp import web
 
 from server import PromptServer
 
-from .constants import KRITA_INPUT_NODE_TYPES, KRITA_OUTPUT_NODE_TYPES
-from .models import PrunedKritaWorkflow, UpdateKritaDocumentsRequest, UpdateWorkflowRequest, DocumentMappingResponse
+from .constants import KRITA_IO_NODE_TYPES
+from .models import UpdateKritaDocumentsRequest, UpdateWorkflowsRequest, DocumentMappingResponse
 from .krita_api import api
 
 
@@ -33,16 +33,16 @@ def _define_krita_routes():
 
 
 def _define_comfy_routes():
-    @PromptServer.instance.routes.put("/krita/documents/{id}/workflow")
-    async def update_workflow(request):
-        document_id = request.match_info["id"]
+    @PromptServer.instance.routes.put("/krita/documents/workflows")
+    async def update_workflows(request):
         try:
-            workflow_request = UpdateWorkflowRequest.model_validate(await request.json())
-            name = workflow_request.name
-            input_nodes = [node for node in workflow_request.workflow.nodes if node.type in KRITA_INPUT_NODE_TYPES]
-            output_nodes = [node for node in workflow_request.workflow.nodes if node.type in KRITA_OUTPUT_NODE_TYPES]
-            pruned_workflow = PrunedKritaWorkflow(name=name, inputs=input_nodes, outputs=output_nodes)
-            await api.update_workflow(document_id, pruned_workflow)
+            workflows_request = UpdateWorkflowsRequest.model_validate(await request.json())
+            workflows = workflows_request.workflows
+
+            for document_id, nodes in workflows.items():
+                workflows[document_id] = [node for node in nodes if node.type in KRITA_IO_NODE_TYPES]
+
+            await api.update_workflows(workflows_request)
         except:
             return web.json_response(status=400)
         return web.json_response()

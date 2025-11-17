@@ -8,13 +8,9 @@ class Node(BaseModel):
     name: str
 
 
-class Workflow(BaseModel):
-    nodes: List[Node]
-
-
-class UpdateWorkflowRequest(BaseModel):
+class UpdateWorkflowsRequest(BaseModel):
     name: str
-    workflow: Workflow
+    workflows: Dict[str, List[Node]]
 
 
 class PrunedKritaWorkflow(BaseModel):
