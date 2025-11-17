@@ -52,26 +52,9 @@ class KritaApi:
 
     @prune_sids
     async def update_workflows(self, workflows_request: UpdateWorkflowsRequest):
-        sid_request_map: Dict[str, UpdateWorkflowsRequest] = {}
-        document_id_sid_map: Dict[str, str] = {}
+        sid_map = self._split_update_workflows_request_per_sids(workflows_request)
 
-        for document_id, nodes in workflows_request.workflows.items():
-            if document_id in document_id_sid_map:
-                sid = document_id_sid_map[document_id]
-            else:
-                sid = self.document_id_to_sid(document_id)
-
-                if sid is None:
-                    continue # Ignored, Krita client disconnected
-
-                document_id_sid_map[document_id] = sid
-
-            if sid not in sid_request_map:
-                sid_request_map[sid] = UpdateWorkflowsRequest(name=workflows_request.name, workflows={})
-            
-            sid_request_map[sid].workflows[document_id] = nodes
-
-        for sid, request in sid_request_map.items():
+        for sid, request in sid_map.items():
             await PromptServer.instance.send("krita::workflows::update", request.model_dump(), sid)
 
     def get_registered_documents(self) -> KritaDocuments:
@@ -95,6 +78,28 @@ class KritaApi:
         krita_documents = self.get_registered_documents().model_dump()
         await PromptServer.instance.send("krita::documents::update", krita_documents)
 
+    def _split_update_workflows_request_per_sids(self, workflows_request: UpdateWorkflowsRequest) -> Dict[str, UpdateWorkflowsRequest]:
+        sid_request_map: Dict[str, UpdateWorkflowsRequest] = {}
+        document_id_sid_map: Dict[str, str] = {}
+
+        for document_id in self._get_registered_document_ids():
+            if document_id in document_id_sid_map:
+                sid = document_id_sid_map[document_id]
+            else:
+                sid = self._document_id_to_sid(document_id)
+
+                if sid is None:
+                    continue # Ignored, Krita client disconnected
+
+                document_id_sid_map[document_id] = sid
+
+            if sid not in sid_request_map:
+                sid_request_map[sid] = UpdateWorkflowsRequest(name=workflows_request.name, workflows={})
+
+            sid_request_map[sid].workflows[document_id] = workflows_request.workflows.get(document_id, [])
+        
+        return sid_request_map
+
     def _prune_stale_sids(self):
         PromptServer.instance.loop.create_task(self.prune_stale_sids_async())
 
@@ -102,13 +107,20 @@ class KritaApi:
         if sid in self.registered_documents.keys():
             del self.registered_documents[sid]
     
-    def document_id_to_sid(self, document_id: str) -> str | None:
+    def _document_id_to_sid(self, document_id: str) -> str | None:
         return next((
             sid
             for sid, document_set in self.registered_documents.items()
             for d in document_set
             if d == document_id
         ), None)
+    
+    def _get_registered_document_ids(self) -> set[str]:
+        return set(
+            document_id
+            for document_set in self.registered_documents.values()
+            for document_id in document_set
+        )
 
 
 def _ensure_unique_id(document_id, registered_documents) -> str:
