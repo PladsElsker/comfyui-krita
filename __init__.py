@@ -1,8 +1,9 @@
 # noqa: N999
-from typing import Any, override
+from typing import override
 
 from comfy_api.latest import ComfyExtension, io
 from torch import Tensor
+from torchvision.transforms.functional import to_pil_image
 
 from .constants import (
     KRITA_DOCUMENT_DROPDOWN_LABEL,
@@ -47,11 +48,14 @@ class KritaSaveImage(io.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, image: Tensor, **kwargs: dict[str, Any]) -> io.NodeOutput:  # type: ignore
-        document = kwargs[KRITA_DOCUMENT_DROPDOWN_LABEL]
-        meta = kwargs[META_WIDGET_LABEL]
+    def execute(cls, image: Tensor, **kwargs: dict | list | float | None) -> io.NodeOutput:  # type: ignore
+        document = str(kwargs[KRITA_DOCUMENT_DROPDOWN_LABEL])
+        meta = {}
+        meta_arg = kwargs[META_WIDGET_LABEL]
+        if isinstance(meta_arg, dict):
+            meta = meta_arg
 
-        api.create_layer(document, meta, image)
+        api.create_layer(document, meta, to_pil_image(image))
 
         return io.NodeOutput()
 

@@ -31,7 +31,7 @@ class KritaApi:
     def __init__(self) -> None:
         self.registered_documents: dict[str, set[str]] = {}
 
-    def create_layer(self, document_id: str, layer_path: str, image: Image) -> None:
+    def create_layer(self, document_id: str, meta: dict, image: Image) -> None:
         pass
 
     @prune_sids
