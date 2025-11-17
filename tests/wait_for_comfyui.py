@@ -11,7 +11,7 @@ def wait_for_server(url: str, timeout: int) -> int:
     start = time.time()
     while True:
         try:
-            r = requests.get(url, timeout=1)
+            r = requests.get(f"{url}/system_stats", timeout=1)
             if r.status_code == HTTPStatus.OK:
                 return 0
         except requests.exceptions.RequestException:
