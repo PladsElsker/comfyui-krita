@@ -7,13 +7,13 @@ This project is in active development.
 ## 🎲 Why another ComfyUI-Krita extension? 
 ### ComfyUI is already a UI
 
-If you try to port some features of the UI of ComfyUI to Krita through a Krita extension, a few things can happen:
+If you try to port some features of ComfyUI to Krita through a Krita extension, a few things can happen:
 - `Feature drift` → New UI features in ComfyUI take longer to be ported to the Krita extension
 - `Feature masking` → Some useful features like live previews and workflow progress can become inaccessible
 - `Dependency hell` → It can be tempting to force users to install unrelated tools and models, even when they don't intend to use them
 - Etc.
 
-Instead of reinventing the wheel (and maintaining it), we can use **the best of both worlds**.  
+Instead of reinventing the wheel (and maintaining it), we can leverage **the best of both worlds**.  
 
 ### Minimal. Feature complete. A seemless link. 
 Be lazy.  
