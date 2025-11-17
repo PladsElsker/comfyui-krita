@@ -41,7 +41,7 @@ def test__given_default_page_loaded__when_css_selecting_active_workflow_tab__the
         browser.close()
 
 
-def test__given_default_page_loaded__when_getActiveTabName__then_active_tab_name_is_not_none() -> None:
+def test__given_default_page_loaded__when_get_active_tab_name__then_active_tab_name_is_not_none() -> None:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
