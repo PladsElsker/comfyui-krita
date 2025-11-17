@@ -38,3 +38,10 @@ An idiomatic extension:
 - [ ] `Load Image (from krita layers)` → Composites specific Krita layers and sends them as a single image to ComfyUI
 - [ ] `Load Mask (from Krita selection)` → Retrieves the active mask selection 
 - [ ] `Load Image (from krita document)` → Retrieves all the active layers of a document composited together
+
+## 🏷️ Versions
+This extension has been tested and developped with:
+- Krita on Windows
+- ComfyUI on Ubuntu
+
+It may work on other system configurations, but other configurations won't be tested for practical reasons. 
