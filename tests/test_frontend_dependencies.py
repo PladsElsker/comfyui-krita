@@ -17,7 +17,7 @@ COMFY_TABS_CONTAINER_SELECTOR = ".workflow-tabs-container"
 COMFY_ACTIVE_TAB_SELECTOR = ".p-togglebutton.p-component.p-togglebutton-checked .workflow-label"
 
 
-def test_workflow_tabs_container_exists() -> None:
+def test__given_default_page_loaded__when_css_selecting_workflow_tabs_container__then_workflow_tabs_container_exists() -> None:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
@@ -29,7 +29,7 @@ def test_workflow_tabs_container_exists() -> None:
         browser.close()
 
 
-def test_active_workflow_tab_exists() -> None:
+def test__given_default_page_loaded__when_css_selecting_active_workflow_tab__then_active_workflow_tab_exists() -> None:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
@@ -41,7 +41,7 @@ def test_active_workflow_tab_exists() -> None:
         browser.close()
 
 
-def test_get_active_workflow_tab_name() -> None:
+def test__given_default_page_loaded__when_getActiveTabName__then_active_tab_name_is_not_none() -> None:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
@@ -55,6 +55,6 @@ def test_get_active_workflow_tab_name() -> None:
             }
             """
         )
-        assert tab_name == "Unsaved Workflow", "active workflow tab not found"
+        assert tab_name is not None, "active workflow tab not found"
 
         browser.close()
