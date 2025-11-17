@@ -16,11 +16,6 @@ jobs:
               with:
                   path: custom-node
 
-            - name: Install node
-              uses: actions/setup-node@v5
-              with:
-                  node-version: lts/*
-
             - name: Clone ComfyUI backend
               run: |
                   git clone https://github.com/comfyanonymous/ComfyUI.git ComfyUI
