@@ -35,7 +35,7 @@ An idiomatic extension:
 - [x] Exposes the currently opened workflow in the UI to Krita
 - [x] Minimizes patching and hijacking of ComfyUI internals to avoid maintenance hell
 - [ ] Test brittle code with CI
-- [ ] `Save Image (as krita layer)`: sends the generated image back to a specified location in Krita’s layer tree
-- [ ] `Load Image (from krita layers)`: composites specific Krita layers and sends them as a single image to ComfyUI
-- [ ] `Load Mask (from Krita selection)`: retrieves the active mask selection 
-- [ ] `Load Image (from krita document)`: retrieves all the active layers of a document composited together
+- [ ] `Save Image (as krita layer)` → Sends the generated image back to a specified location in Krita’s layer tree
+- [ ] `Load Image (from krita layers)` → Composites specific Krita layers and sends them as a single image to ComfyUI
+- [ ] `Load Mask (from Krita selection)` → Retrieves the active mask selection 
+- [ ] `Load Image (from krita document)` → Retrieves all the active layers of a document composited together
