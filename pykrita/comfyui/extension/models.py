@@ -19,9 +19,9 @@ class PrunedKritaWorkflow(BaseModel):
     outputs: List[Node]
 
 
-class UpdateKritaWorkflowRequest(BaseModel):
-    id: str
-    workflow: PrunedKritaWorkflow
+class UpdateWorkflowsRequest(BaseModel):
+    name: str
+    workflows: Dict[str, List[Node]]
 
 
 class UpdateKritaDocumentsRequest(BaseModel):

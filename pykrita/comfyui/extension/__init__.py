@@ -58,6 +58,11 @@ class ComfyUIExtension(Extension):
         dialog = ComfyUIWebsocketConnectionDialog(comfy_ws=self.comfy_ws, config=self.config)
         dialog.exec_()
 
-    def broadcast_active_document_changed_to_comfy_dockers(self, document_id: str) -> None:
+    def broadcast_active_document_changed_to_comfy_dockers(self) -> None:
+        active_document = self.document_monitor.get_active_document()
+
+        if active_document is None:
+            return
+
         for docker in ComfyUIExtension.get_comfyui_dockers():
-            docker.set_active_document(document_id)
+            docker.set_active_document(active_document)

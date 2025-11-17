@@ -1,4 +1,4 @@
-from .models import StatusRequest, UpdateKritaDocumentsRequest, UpdateKritaWorkflowRequest
+from .models import StatusRequest, UpdateKritaDocumentsRequest, UpdateWorkflowsRequest
 from .comfy_websocket import ComfyWebsocket
 from .document_monitor import DocumentMonitor
 from .models import DocumentMappingResponse
@@ -19,10 +19,10 @@ class ComfyKritaBridge:
             status_request = StatusRequest.model_validate(data)
             return self.status_statement(status_request)
 
-        @self.comfy_ws.handler("krita::workflow::update")
-        def update_workflow(data: dict):
-            workflow_request = UpdateKritaWorkflowRequest.model_validate(data)
-            return self.update_workflow(workflow_request)
+        @self.comfy_ws.handler("krita::workflows::update")
+        def update_workflows(data: dict):
+            workflows_request = UpdateWorkflowsRequest.model_validate(data)
+            return self.update_workflows(workflows_request)
 
     def status_statement(self, status_request: StatusRequest):
         self.comfy_ws.sid = status_request.sid
@@ -32,39 +32,45 @@ class ComfyKritaBridge:
         if not self.comfy_ws.is_connected:
             return
 
-        try:
+        mappings = self.generate_document_name_mappings()
+
+        if not self.document_monitor.test_mappings(mappings):
             mappings = self.generate_document_name_mappings()
 
-            if not self.document_monitor.test_mappings(mappings):
-                mappings = self.generate_document_name_mappings()
-
-            self.document_monitor.assign_name_mappings(mappings)
-            qDebug(f"Received {mappings}")
-        except Exception as exception:
-            qDebug(str(exception))
+        self.document_monitor.assign_name_mappings(mappings)
 
     def generate_document_name_mappings(self) -> Dict[str, str]:
         if self.comfy_ws.sid is None:
             raise ValueError("The sid is not defined")
 
         sid = self.comfy_ws.sid
-        documents = [doc.name() for doc in self.document_monitor.get_last_docs()]
+        documents = [doc.name() for doc in self.document_monitor.get_opened_documents()]
         update_request = UpdateKritaDocumentsRequest(documents=documents)
         response = self.comfy_ws.put(f"/krita/{sid}/documents", update_request.model_dump())
         return DocumentMappingResponse.model_validate_json(response).mapping
 
-    def update_workflow(self, workflow_request: UpdateKritaWorkflowRequest):
+    def update_workflows(self, workflows_request: UpdateWorkflowsRequest):
         from . import ComfyUIExtension
 
-        try:
-            for docker in ComfyUIExtension.get_comfyui_dockers():
-                document = self.document_monitor.mapping.get(workflow_request.id, None)
+        for docker in ComfyUIExtension.get_comfyui_dockers():
+            docker.update_title(workflows_request.name)
+
+            qDebug(workflows_request.model_dump_json())
+
+            updated_documents = []
+
+            for document_id, nodes in workflows_request.workflows.items():
+                document = self.document_monitor.mapping.get(document_id, None)
 
                 if document is None:
-                    raise ValueError(f"Unable to find document referenced by id {workflow_request.id}.")
-                
-                docker.update_workflow(workflow_request.workflow)
+                    raise ValueError(f"Unable to find document referenced by id {document_id}.")
 
-            qDebug(workflow_request.model_dump_json())
-        except Exception as exception:
-            qDebug(str(exception))
+                docker.update_node_list(document, nodes)
+                updated_documents.append(document)
+
+            for document in self.document_monitor.get_opened_documents():
+                if document in updated_documents:
+                    continue
+
+                docker.update_node_list(document, [])
+                updated_documents.append(document)

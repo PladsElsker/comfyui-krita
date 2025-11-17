@@ -1,6 +1,5 @@
 from typing import List
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel
-from PyQt5.QtCore import qDebug
 
 from ...models import Node
 
@@ -14,9 +13,7 @@ class NodeListWidget(QWidget):
         self.main_layout.addStretch(1)
         self.labels = []
 
-    def rebuild(self, inputs: List[Node], outputs: List[Node]):
-        nodes = inputs + outputs
-
+    def rebuild(self, nodes: List[Node]):
         while self.main_layout.count() > 1:
             item = self.main_layout.takeAt(0)
             if item is not None:
@@ -27,7 +24,6 @@ class NodeListWidget(QWidget):
         self.labels.clear()
 
         for node in nodes:
-            qDebug(node.model_dump_json())
             label = QLabel(f"{node.type} ({node.id})")
             self.main_layout.insertWidget(self.main_layout.count() - 1, label)
             self.labels.append(label)

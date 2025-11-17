@@ -1,7 +1,7 @@
-from krita import DockWidget
+from krita import DockWidget, Document
 from PyQt5.QtWidgets import QVBoxLayout,  QWidget
 
-from ...models import PrunedKritaWorkflow
+from ...models import Node
 
 from .workflow_header import WorkflowHeader
 from .node_list_widget import NodeListWidget
@@ -13,6 +13,11 @@ COMFYUI_DOCKER_OBJECT_NAME = "comfyui_docker"
 class ComfyUIDocker(DockWidget):
     def __init__(self):
         super().__init__()
+
+        self._active_document = None
+        self._workflows: dict[int, list[Node]] = {}
+        self._registered_documents: list[Document] = []
+
         self.setWindowTitle("ComfyUI")
 
         self.container = QWidget()
@@ -25,18 +30,32 @@ class ComfyUIDocker(DockWidget):
         self.node_list = NodeListWidget()
         self.main_layout.addWidget(self.node_list)
 
-    def is_assigned_to(self, document_id):
-        # TODO: 
-        # Handle multi docker interactions. 
+    def update_title(self, name: str):
+        self.workflow_header.set_workflow_name(name)
 
-        return True
+    def update_node_list(self, document: Document, nodes: list[Node]):
+        document_index = -1
+        if document not in self._registered_documents:
+            self._registered_documents.append(document)
+            document_index = len(self._registered_documents) - 1
+        else:
+            document_index = self._registered_documents.index(document)
 
-    def update_workflow(self, workflow: PrunedKritaWorkflow):
-        # TODO: 
-        # Handle multi docker interactions. 
+        self._workflows[document_index] = nodes
+        self.set_active_document(self._active_document)
 
-        self.workflow_header.set_workflow_name(workflow.name)
-        self.node_list.rebuild(workflow.inputs, workflow.outputs)
+    def set_active_document(self, document: Document | None):
+        self._active_document = document
+
+        if document is None:
+            return
+
+        if document not in self._registered_documents:
+            return
+
+        document_index = self._registered_documents.index(document)
+        nodes = self._workflows[document_index]
+        self.node_list.rebuild(nodes)
 
     def canvasChanged(self, canvas):
         pass
