@@ -59,7 +59,7 @@ jobs:
               run: |
                   set -eux
 
-                  cd "${{ github.workspace }}/custom-node/tests"
+                  cd "${{ github.workspace }}/custom-node/ci"
                   "${{ github.workspace }}/custom-node/venv/bin/python" wait_for_comfyui.py --timeout 20
 
             - name: Run tests
