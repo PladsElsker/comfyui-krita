@@ -165,8 +165,8 @@ import { app } from "../../../scripts/app.js";
         });
 
         const changesDetected = skipCondition ||
-            Object.entries(documentIdListsStringified).any(([documentId, nodes]) => !haveSameElements(previousUsedDocumentIdsInGraph[documentId], nodes)) ||
-            Object.entries(previousUsedDocumentIdsInGraph).any(([documentId, nodes]) => !haveSameElements(documentIdListsStringified[documentId], nodes)) ||
+            Object.entries(documentIdListsStringified).some(([documentId, nodes]) => !haveSameElements(previousDocumentIdLists[documentId], nodes)) ||
+            Object.entries(previousDocumentIdLists).some(([documentId, nodes]) => !haveSameElements(documentIdListsStringified[documentId], nodes)) ||
             (previousTabName !== tabName);
 
         if(!changesDetected) return;
