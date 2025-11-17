@@ -16,7 +16,9 @@ If you try to port some features of the UI of ComfyUI to Krita through a Krita e
 Instead of reinventing the wheel (and maintaining it), we can use **the best of both worlds**.  
 
 ### Minimal. Feature complete. A seemless link. 
-Existing ComfyUI-Krita extensions tend to do both **too much** and **too little**. 
+Be lazy.  
+Existing ComfyUI-Krita extensions tend to do both **too much** and **too little**.  
+
 An idiomatic extension:
 - Avoids unnecessary dependencies  
 - Preserves native features of both Krita and ComfyUI  
