@@ -4,6 +4,24 @@ Minimal Krita extension and ComfyUI custom nodes for integrating both UIs togeth
 ## ⚠️ WIP
 This project is in active development. 
 
+## 🎲 Why another ComfyUI-Krita extension? 
+### ComfyUI is already a UI
+
+If you try to port some features of the UI of ComfyUI to Krita through a Krita extension, a few things can happen:
+- `Feature drift` → New UI features in ComfyUI take longer to be ported to the Krita extension
+- `Feature masking` → Some useful features like live previews and workflow progress can become inaccessible
+- `Dependency hell` → It can be tempting to force users to install unrelated tools and models, even when they don't intend to use them
+- Etc.
+
+Instead of reinventing the wheel (and maintaining it), we can use **the best of both worlds**.  
+
+### Minimal. Feature complete. A seemless link. 
+Existing ComfyUI-Krita extensions tend to do both **too much** and **too little**. 
+An idiomatic extension:
+- Avoids unnecessary dependencies  
+- Preserves native features of both Krita and ComfyUI  
+- Respects user workflows without intrusive overrides 
+
 ## 🔨 Scope of the project
 ### Krita
 - [x] Requires only a running and accessible ComfyUI server
@@ -19,22 +37,3 @@ This project is in active development.
 - [ ] `Load Image (from krita layers)`: composites specific Krita layers and sends them as a single image to ComfyUI
 - [ ] `Load Mask (from Krita selection)`: retrieves the active mask selection 
 - [ ] `Load Image (from krita document)`: retrieves all the active layers of a document composited together
-
-## 🎲 Why another ComfyUI-Krita extension? 
-### ComfyUI is already a UI
-
-If you try to port the UI of ComfyUI in Krita through a Krita extension, a few things can happen:
-- `Feature drift` → New UI features in ComfyUI take longer to be ported to the Krita extension
-- `Feature masking` → Some useful UI features like live previews and workflow progress can become inaccessible
-- `Dependency hell` → It can be tempting to force users to install unrelated tools models, even when they don't intend to use them
-- Etc.
-
-Instead of reinventing the wheel and maintaining it, we could use **the best of both worlds**.  
-Minimal. Feature complete. A seemless link. 
-
-### Existing ComfyUI-Krita extensions tend to do both **too much** and **too little**
-
-An idiomatic extension:
-- Avoids unnecessary dependencies  
-- Preserves native features of both Krita and ComfyUI  
-- Respects user workflows without intrusive overrides 
