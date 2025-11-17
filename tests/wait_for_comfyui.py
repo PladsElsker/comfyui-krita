@@ -1,17 +1,18 @@
-#!/usr/bin/env python3
+import argparse
 import sys
 import time
-import argparse
+from http import HTTPStatus
+
 import requests
 
 
-def wait_for_server(url: str, timeout: int):
+def wait_for_server(url: str, timeout: int) -> int:
     """Poll the server until it responds with status 200 or timeout expires."""
     start = time.time()
     while True:
         try:
-            r = requests.get(url)
-            if r.status_code == 200:
+            r = requests.get(url, timeout=1)
+            if r.status_code == HTTPStatus.OK:
                 return 0
         except requests.exceptions.RequestException:
             pass
@@ -22,7 +23,7 @@ def wait_for_server(url: str, timeout: int):
         time.sleep(0.5)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Wait for ComfyUI server to start")
     parser.add_argument("--url", type=str, default="http://127.0.0.1:8188", help="URL of the ComfyUI server to poll")
     parser.add_argument("--timeout", type=int, default=20, help="Maximum number of seconds to wait")
