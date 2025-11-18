@@ -39,7 +39,7 @@ An idiomatic extension:
 - [ ] `Load Mask (from Krita selection)` → Retrieves the active mask selection 
 - [ ] `Load Image (from krita document)` → Retrieves all the active layers of a document composited together
 
-## 🖥️ Tested Environments
+## 🖥️ Tested environments
 This extension has been tested and developped with:
 - Krita on Windows
 - ComfyUI on Ubuntu
