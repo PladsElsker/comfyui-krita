@@ -1,47 +1,45 @@
-import os
 import json
+from pathlib import Path
+from typing import Any
+
 from PyQt5.QtCore import QStandardPaths
 
 
 class Config(dict):
-    def __init__(self, app_name: str = "KritaComfyUI-15347", filename: str = "config.json"):
+    def __init__(self, app_name: str = "KritaComfyUI-15347", filename: str = "config.json") -> None:
         super().__init__()
         self._app_name = app_name
         self._filename = filename
         self._path = self._resolve_path()
         self._load()
 
-    def _resolve_path(self) -> str:
+    def save(self) -> None:
+        with Path(self._path).open("w", encoding="utf-8") as f:
+            json.dump(self, f, indent=2, ensure_ascii=False)
+
+    def _resolve_path(self) -> Path:
         base_dir = QStandardPaths.writableLocation(QStandardPaths.GenericConfigLocation)
-        app_dir = os.path.join(base_dir, self._app_name)
-        os.makedirs(app_dir, exist_ok=True)
-        return os.path.join(app_dir, self._filename)
+        app_dir = Path(base_dir) / self._app_name
+        app_dir.mkdir(parents=True, exist_ok=True)
+        return app_dir / self._filename
 
     def _load(self) -> None:
-        if os.path.exists(self._path):
-            try:
-                with open(self._path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, dict):
-                        self.update(data)
-            except Exception:
-                pass
+        if not self._path.exists():
+            return
 
-    def save(self) -> None:
-        try:
-            with open(self._path, "w", encoding="utf-8") as f:
-                json.dump(self, f, indent=2, ensure_ascii=False)
-        except Exception:
-            pass
+        with self._path.open(encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                self.update(data)
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: Any) -> None:  # noqa: ANN401
         super().__setitem__(key, value)
         self.save()
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: str) -> None:
         super().__delitem__(key)
         self.save()
 
     @property
-    def path(self) -> str:
+    def path(self) -> Path:
         return self._path

@@ -1,12 +1,11 @@
-import os
 import json
+from pathlib import Path
 
-
-CONFIG_PATH = 'krita.json'
+CONFIG_PATH = "krita.json"
 
 
 try:
-    with open(CONFIG_PATH, 'r') as json_file:
+    with Path(CONFIG_PATH).open() as json_file:
         config = json.load(json_file)
-except:
+except Exception:  # noqa: BLE001
     config = None

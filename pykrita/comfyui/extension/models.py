@@ -1,9 +1,10 @@
-from typing import Any, Dict, List
+from typing import Any
+
 from pydantic import BaseModel
 
 
 class StatusRequest(BaseModel):
-    status: Dict[str, Any]
+    status: dict[str, Any]
     sid: str
 
 
@@ -15,18 +16,18 @@ class Node(BaseModel):
 
 class PrunedKritaWorkflow(BaseModel):
     name: str
-    inputs: List[Node]
-    outputs: List[Node]
+    inputs: list[Node]
+    outputs: list[Node]
 
 
 class UpdateWorkflowsRequest(BaseModel):
     name: str
-    workflows: Dict[str, List[Node]]
+    workflows: dict[str, list[Node]]
 
 
 class UpdateKritaDocumentsRequest(BaseModel):
-    documents: List[str]
+    documents: list[str]
 
 
 class DocumentMappingResponse(BaseModel):
-    mapping: Dict[str, str]
+    mapping: dict[str, str]

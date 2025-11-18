@@ -1,14 +1,21 @@
+import logging
 import shutil
 import sys
 from pathlib import Path
 
 
-def _update_vendors_func(venv_dir: str = "venv", plugin_dir: str = str(Path("pykrita") / "comfyui"), clean: bool = True, ignore_list=[]):
+def _update_vendors_func(
+    venv_dir: str = "venv-pkg",
+    plugin_dir: str = str(Path("pykrita") / "comfyui"),
+    clean: bool = True,  # noqa: FBT002
+    ignore_list: list[str] = [],
+) -> None:
     base = Path(__file__).resolve().parent
     venv_site = base / venv_dir / "Lib" / "site-packages"
 
     if not venv_site or not venv_site.exists():
-        print(f"[!] Could not locate site-packages inside {venv_dir}")
+        message = f"[!] Could not locate site-packages inside {venv_dir}"
+        logging.info(message)
         sys.exit(1)
 
     vendor_dir = base / plugin_dir / "vendor"
@@ -18,15 +25,12 @@ def _update_vendors_func(venv_dir: str = "venv", plugin_dir: str = str(Path("pyk
 
     vendor_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Copying from {venv_site}")
+    message = f"Copying from {venv_site}"
+    logging.info(message)
     for item in venv_site.iterdir():
         name = item.name
-        
-        if any(
-            name.startswith(prefix.rstrip("*")) or name.endswith(suffix.lstrip("*"))
-            for prefix in ignore_list 
-            for suffix in ignore_list
-        ):
+
+        if any(name.startswith(prefix.rstrip("*")) or name.endswith(suffix.lstrip("*")) for prefix in ignore_list for suffix in ignore_list):
             continue
 
         if name.endswith((".dist-info", ".data", "__pycache__")):
@@ -39,11 +43,12 @@ def _update_vendors_func(venv_dir: str = "venv", plugin_dir: str = str(Path("pyk
         else:
             shutil.copy2(item, dest)
 
-    print(f"Vendor folder updated: {vendor_dir}")
+    message = f"Vendor folder updated: {vendor_dir}"
+    logging.info(message)
 
 
-def update_vendors():
-    _update_vendors_func(ignore_list=["pip", "watchdog", "PyQt5"])
+def update_vendors() -> None:
+    _update_vendors_func(ignore_list=["pip", "watchdog", "PyQt5", "setuptools"])
 
 
 if __name__ == "__main__":

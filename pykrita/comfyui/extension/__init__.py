@@ -1,16 +1,17 @@
-from krita import Extension, DockWidgetFactory, DockWidgetFactoryBase, Krita, Window
 from typing import cast
 
-from .config import Config
-from .comfy_websocket import ComfyWebsocket
+from krita import DockWidgetFactory, DockWidgetFactoryBase, Extension, Krita, Window
+
 from .comfy_krita_bridge import ComfyKritaBridge
+from .comfy_websocket import ComfyWebsocket
+from .config import Config
 from .document_monitor import DocumentMonitor
 from .ui.connection import ComfyUIWebsocketConnectionDialog
-from .ui.docker import ComfyUIDocker, COMFYUI_DOCKER_OBJECT_NAME
+from .ui.docker import COMFYUI_DOCKER_OBJECT_NAME, ComfyUIDocker
 
 
 class ComfyUIExtension(Extension):
-    def __init__(self, parent):
+    def __init__(self, parent: Krita) -> None:
         super().__init__(parent)
         self.comfy_ws = ComfyWebsocket()
         self.document_monitor = DocumentMonitor()
@@ -18,14 +19,14 @@ class ComfyUIExtension(Extension):
         self.config = Config()
 
         ComfyUIWebsocketConnectionDialog(
-            comfy_ws=self.comfy_ws, 
-            config=self.config
+            comfy_ws=self.comfy_ws,
+            config=self.config,
         ).connect()
 
         self.docker_factory = DockWidgetFactory(
             "comfyui_docker",
             DockWidgetFactoryBase.DockPosition.DockRight,
-            ComfyUIDocker
+            ComfyUIDocker,
         )
         Krita.instance().addDockWidgetFactory(self.docker_factory)
 
@@ -38,23 +39,25 @@ class ComfyUIExtension(Extension):
                 if docker.objectName() != COMFYUI_DOCKER_OBJECT_NAME:
                     continue
 
-                docker = cast(ComfyUIDocker, docker)
+                docker = cast("ComfyUIDocker", docker)
                 pairs.append((docker, window))
 
         return pairs
 
-    def setup(self):
+    def setup(self) -> None:
         self.comfy_ws.enable_automatic_reconnection()
         self.document_monitor.on_documents_changed.connect(self.bridge.update_documents)
         self.document_monitor.on_active_document_changed.connect(self.broadcast_active_document_changed_to_comfy_dockers)
 
-    def createActions(self, window):
+    def createActions(self, window: Window) -> None:  # noqa: N802
         action = window.createAction(
-            "ComfyUISetup-15347", "ComfyUI...", "settings", 
+            "ComfyUISetup-15347",
+            "ComfyUI...",
+            "settings",
         )
         action.triggered.connect(self.open_config)
 
-    def open_config(self):
+    def open_config(self) -> None:
         dialog = ComfyUIWebsocketConnectionDialog(comfy_ws=self.comfy_ws, config=self.config)
         dialog.exec_()
 
@@ -69,5 +72,5 @@ class ComfyUIExtension(Extension):
 
             if active_document is None:
                 continue
-    
+
             docker.set_active_document(active_document)

@@ -1,12 +1,8 @@
-from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton
-)
 from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
-from ..config import Config
 from ..comfy_websocket import ComfyWebsocket
-
+from ..config import Config
 
 SUCCESS_COLOR_STYLE = "color: rgb(69, 255, 81);"
 ERROR_COLOR_STYLE = "color: rgb(255, 69, 69);"
@@ -16,7 +12,7 @@ COMFYUI_SERVER_URL_CONFIG = "comfyui-server-url"
 
 
 class ComfyUIWebsocketConnectionDialog(QDialog):
-    def __init__(self, comfy_ws: ComfyWebsocket, config: Config, parent=None):
+    def __init__(self, comfy_ws: ComfyWebsocket, config: Config, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.config = config
@@ -62,7 +58,7 @@ class ComfyUIWebsocketConnectionDialog(QDialog):
         else:
             self._on_ws_disconnected()
 
-    def connect(self):
+    def connect(self) -> None:
         if self.comfy_ws.is_connected:
             self.comfy_ws.close()
             self.comfy_ws.disable_automatic_reconnection()
@@ -74,21 +70,21 @@ class ComfyUIWebsocketConnectionDialog(QDialog):
             self.comfy_ws.connect(url)
             self.comfy_ws.enable_automatic_reconnection()
 
-    def _on_ws_connected(self):
+    def _on_ws_connected(self) -> None:
         self.connect_button.setText("Disconnect")
         self.connect_button.setEnabled(True)
         self.status_label.setText("Connected")
         self.status_label.setStyleSheet(SUCCESS_COLOR_STYLE)
         self.url_edit.setDisabled(True)
 
-    def _on_ws_disconnected(self):
+    def _on_ws_disconnected(self) -> None:
         self.connect_button.setText("Connect")
         self.connect_button.setEnabled(True)
         self.status_label.setText("Disconnected")
         self.status_label.setStyleSheet(ERROR_COLOR_STYLE)
         self.url_edit.setEnabled(True)
 
-    def _on_ws_reconnect(self):
+    def _on_ws_reconnect(self) -> None:
         self.connect_button.setText("Cancel")
         self.connect_button.setEnabled(True)
         self.status_label.setText("Connecting...")
