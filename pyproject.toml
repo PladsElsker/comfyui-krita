@@ -21,7 +21,8 @@ lint.ignore = [
     "B006",
     "C408",
     "PGH003",
-    "T100"
+    "T100",
+    "TID252"
 ]
 exclude = [
     ".git"

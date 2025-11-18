@@ -1,7 +1,7 @@
 from krita import Canvas, DockWidget, Document
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QWidget
 
-from ...models import Node  # noqa: TID252
+from ...models import Node
 from .node_list import NodeListWidget
 from .workflow_header import WorkflowHeader
 

@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-from ...models import Node  # noqa: TID252
+from ...models import Node
 
 
 class NodeListWidget(QWidget):

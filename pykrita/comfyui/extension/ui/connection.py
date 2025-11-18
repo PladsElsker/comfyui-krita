@@ -1,8 +1,8 @@
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
-from ..comfy_websocket import ComfyWebsocket  # noqa: TID252
-from ..config import Config  # noqa: TID252
+from ..comfy_websocket import ComfyWebsocket
+from ..config import Config
 
 SUCCESS_COLOR_STYLE = "color: rgb(69, 255, 81);"
 ERROR_COLOR_STYLE = "color: rgb(255, 69, 69);"
