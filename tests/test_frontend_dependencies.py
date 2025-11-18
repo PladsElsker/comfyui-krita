@@ -3,9 +3,13 @@ import os
 from pathlib import Path
 
 import pytest
+import requests
 from dotenv import load_dotenv
 from playwright.sync_api import Page
 from pydantic import BaseModel, RootModel, ValidationError
+from websocket import WebSocket
+
+from .conftest import COMFY_URL
 
 parent_path = Path(__file__).resolve().parent
 env_file = ".test.gh.env" if os.getenv("GITHUB_ACTIONS") else ".test.env"
@@ -14,7 +18,6 @@ env_file = ".test.gh.env" if os.getenv("GITHUB_ACTIONS") else ".test.env"
 load_dotenv(parent_path / env_file)
 
 
-COMFY_URL = os.getenv("COMFY_URL", "http://127.0.0.1:8188")
 COMFY_TABS_CONTAINER_SELECTOR = ".workflow-tabs-container"
 COMFY_ACTIVE_TAB_SELECTOR = ".p-togglebutton.p-component.p-togglebutton-checked .workflow-label"
 
@@ -176,8 +179,9 @@ def test__given_si3_workflow__when_get_document_ids_node_map__then_map_contains_
         pytest.fail("getDocumentIdsNodeMap() returned a bad model")
 
 
-def test__given_si4_workflow__when_get_document_ids_node_map__then_map_contains_expected_structure(si4_workflow: Page) -> None:
-    document_map = si4_workflow.evaluate(
+def test__given_si4_workflow__when_get_document_ids_node_map__then_map_contains_expected_structure(si4_workflow: tuple[Page, WebSocket, str]) -> None:
+    page, ws, sid = si4_workflow  # noqa: RUF059
+    document_map = page.evaluate(
         """
         async () => {
             const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
@@ -195,5 +199,65 @@ def test__given_si4_workflow__when_get_document_ids_node_map__then_map_contains_
 
         assert len(document_map.root["banner"]) == SI4_AMOUNT_OF_NODES_IN_DOCUMENT_ID_MAP_UNDER_BANNER, "expected 2 nodes in 'banner'"
         assert len(document_map.root["badaboom"]) == SI4_AMOUNT_OF_NODES_IN_DOCUMENT_ID_MAP_UNDER_BADABOOM, "expected 2 nodes in 'badaboom'"
+    except ValidationError:
+        pytest.fail("getDocumentIdsNodeMap() returned a bad model")
+
+
+def test__given_si4_workflow__when_modify_documents__then_document_ids_are_modified(si4_workflow: tuple[Page, WebSocket, str]) -> None:
+    page, ws, sid = si4_workflow  # noqa: RUF059
+    document_map = page.evaluate(
+        """
+        async () => {
+            const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+            return workflow_actions_module.getDocumentIdsNodeMap();
+        }
+        """,
+    )
+
+    try:
+        document_map = DocumentIdsNodeMap.model_validate(document_map)
+        assert all(
+            document_id in document_map.root for document_id in ["banner", "badaboom"]
+        ), "expected document ids 'banner' and 'badaboom' in the map"
+    except ValidationError:
+        pytest.fail("getDocumentIdsNodeMap() returned a bad model")
+
+    url = f"{COMFY_URL}/krita/{sid}/documents"
+    payload = {"documents": []}
+    response = requests.put(url, json=payload, timeout=1)
+    response.raise_for_status()
+
+    document_map = page.evaluate(
+        """
+        async () => {
+            const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+            return workflow_actions_module.getDocumentIdsNodeMap();
+        }
+        """,
+    )
+
+    try:
+        document_map = DocumentIdsNodeMap.model_validate(document_map)
+        assert all(document_id in document_map.root for document_id in ["null"]), "expected document id 'null' in the map"
+    except ValidationError:
+        pytest.fail("getDocumentIdsNodeMap() returned a bad model")
+
+    url = f"{COMFY_URL}/krita/{sid}/documents"
+    payload = {"documents": ["candy"]}
+    response = requests.put(url, json=payload, timeout=1)
+    response.raise_for_status()
+
+    document_map = page.evaluate(
+        """
+        async () => {
+            const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+            return workflow_actions_module.getDocumentIdsNodeMap();
+        }
+        """,
+    )
+
+    try:
+        document_map = DocumentIdsNodeMap.model_validate(document_map)
+        assert all(document_id in document_map.root for document_id in ["candy"]), "expected document id 'candy' in the map"
     except ValidationError:
         pytest.fail("getDocumentIdsNodeMap() returned a bad model")
