@@ -1,11 +1,8 @@
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 
 class WorkflowHeader(QWidget):
-    workflow_changed = pyqtSignal(str)
-    refresh_requested = pyqtSignal()
-
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._workflow_name = None
