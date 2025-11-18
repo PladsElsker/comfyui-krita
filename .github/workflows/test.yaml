@@ -8,6 +8,7 @@ on:
 
 jobs:
     frontend-tests:
+        name: ComfyUI Frontend Tests
         runs-on: ubuntu-latest
 
         steps:
