@@ -55,11 +55,9 @@ def si3_workflow(default_page: Page) -> Page:
 
 
 # TODO:
-# Before loading the graph data, create a websocket
-# connection with the server, then send a request to
-# "PUT /krita/{sid}/documents" with sids
-# ["banner", "badaboom"] in the body.
-# After yielding, close the websocket connection.
+# Before loading the graph data, send a request to
+# "PUT /krita/{sid}/documents" with sid "1234" and
+# document ids ["banner", "badaboom"] in the body.
 @pytest.fixture
 def si4_workflow(default_page: Page) -> Page:
     default_page.evaluate(
