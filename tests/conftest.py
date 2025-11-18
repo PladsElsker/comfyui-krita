@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 import pytest
 import requests
 import websocket
+from websocket import WebSocket
 from dotenv import load_dotenv
 from playwright.sync_api import Page, sync_playwright
 
@@ -59,7 +60,7 @@ def si3_workflow(default_page: Page) -> Page:
 
 
 @pytest.fixture
-def si4_workflow(default_page: Page) -> Generator[Page]:
+def si4_workflow(default_page: Page) -> Generator[tuple[Page, WebSocket, str]]:
     parsed_url = urlparse(COMFY_URL)
     ws_scheme = "wss" if parsed_url.scheme == "https" else "ws"
     ws_url = f"{ws_scheme}://{parsed_url.netloc}/ws"
@@ -81,5 +82,5 @@ def si4_workflow(default_page: Page) -> Generator[Page]:
             }}
             """,
     )
-    yield default_page
+    yield default_page, ws, sid
     ws.close()
