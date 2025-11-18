@@ -1,8 +1,12 @@
+import json
 import os
 from collections.abc import Generator
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
+import requests
+import websocket
 from dotenv import load_dotenv
 from playwright.sync_api import Page, sync_playwright
 
@@ -54,12 +58,21 @@ def si3_workflow(default_page: Page) -> Page:
     return default_page
 
 
-# TODO:
-# Before loading the graph data, send a request to
-# "PUT /krita/{sid}/documents" with sid "1234" and
-# document ids ["banner", "badaboom"] in the body.
 @pytest.fixture
-def si4_workflow(default_page: Page) -> Page:
+def si4_workflow(default_page: Page) -> Generator[Page]:
+    parsed_url = urlparse(COMFY_URL)
+    ws_scheme = "wss" if parsed_url.scheme == "https" else "ws"
+    ws_url = f"{ws_scheme}://{parsed_url.netloc}/ws"
+    ws = websocket.create_connection(ws_url)
+
+    data = json.loads(ws.recv())["data"]
+    sid = data["sid"]
+
+    url = f"{COMFY_URL}/krita/{sid}/documents"
+    payload = {"documents": ["banner", "badaboom"]}
+    response = requests.put(url, json=payload, timeout=1)
+    response.raise_for_status()
+
     default_page.evaluate(
         f"""
             async () => {{
@@ -68,4 +81,5 @@ def si4_workflow(default_page: Page) -> Page:
             }}
             """,
     )
-    return default_page
+    yield default_page
+    ws.close()

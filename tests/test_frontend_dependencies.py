@@ -186,11 +186,6 @@ def test__given_si4_workflow__when_get_document_ids_node_map__then_map_contains_
         """,
     )
 
-    # TODO:
-    # Just construct the exact expected data here and make sure both expected and actual are equal.
-
-    # expected = DocumentIdsNodeMap(root={"banner": [Node()], "badaboom": []}) # noqa: ERA001
-
     try:
         document_map = DocumentIdsNodeMap.model_validate(document_map)
         assert len(document_map.root.keys()) == SI4_AMOUNT_OF_DOCUMENT_IDS_IN_DOCUMENT_ID_MAP, "expected 2 document ids"
