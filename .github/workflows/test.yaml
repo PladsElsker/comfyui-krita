@@ -4,10 +4,11 @@ on:
     pull_request:
         branches: ["**"]
     schedule:
-        - cron: "0 3 * * *"
+        - cron: "0 0 * * *"
 
 jobs:
     frontend-tests:
+        name: ComfyUI Frontend Tests
         runs-on: ubuntu-latest
 
         steps:
@@ -46,6 +47,13 @@ jobs:
 
                   "${{ github.workspace }}/ComfyUI/venv/bin/python" -m pip install --upgrade pip
                   "${{ github.workspace }}/ComfyUI/venv/bin/python" -m pip install -r ComfyUI/requirements.txt
+
+            - name: Install custom node in ComfyUI
+              shell: bash
+              run: |
+                  set -eux
+
+                  ln -s "${{ github.workspace }}/custom-node" "${{ github.workspace }}/ComfyUI/custom_nodes/comfyui-krita"
 
             - name: Start ComfyUI server
               shell: bash
