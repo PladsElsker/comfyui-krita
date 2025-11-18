@@ -29,7 +29,7 @@ def default_page() -> Generator[Page]:
 
 
 @pytest.fixture
-def si1_workflow(default_page: Page) -> Generator[Page]:
+def si1_workflow(default_page: Page) -> Page:
     default_page.evaluate(
         f"""
             async () => {{
@@ -42,7 +42,7 @@ def si1_workflow(default_page: Page) -> Generator[Page]:
 
 
 @pytest.fixture
-def si3_workflow(default_page: Page) -> Generator[Page]:
+def si3_workflow(default_page: Page) -> Page:
     default_page.evaluate(
         f"""
             async () => {{
@@ -61,7 +61,7 @@ def si3_workflow(default_page: Page) -> Generator[Page]:
 # ["banner", "badaboom"] in the body.
 # After yielding, close the websocket connection.
 @pytest.fixture
-def si4_workflow(default_page: Page) -> Generator[Page]:
+def si4_workflow(default_page: Page) -> Page:
     default_page.evaluate(
         f"""
             async () => {{
