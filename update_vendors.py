@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def _update_vendors_func(
-    venv_dir: str = "venv",
+    venv_dir: str = "venv-pkg",
     plugin_dir: str = str(Path("pykrita") / "comfyui"),
     clean: bool = True,  # noqa: FBT002
     ignore_list: list[str] = [],
@@ -48,7 +48,7 @@ def _update_vendors_func(
 
 
 def update_vendors() -> None:
-    _update_vendors_func(ignore_list=["pip", "watchdog", "PyQt5"])
+    _update_vendors_func(ignore_list=["pip", "watchdog", "PyQt5", "setuptools"])
 
 
 if __name__ == "__main__":

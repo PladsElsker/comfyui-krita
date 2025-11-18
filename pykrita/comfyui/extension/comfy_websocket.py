@@ -3,10 +3,11 @@ import json
 import signal
 import threading
 from collections.abc import Callable
+from http import HTTPStatus
 from typing import cast
 from urllib.parse import urlparse, urlunparse
 
-import requests
+import urllib3
 import websocket
 from krita import Krita
 from PyQt5.QtCore import Q_ARG, QCoreApplication, QMetaObject, QObject, Qt, QTimer, pyqtBoundSignal, pyqtSignal, pyqtSlot
@@ -34,6 +35,7 @@ class ComfyWebsocket(QObject):
         self._setup_graceful_termination()
 
         self._reconnect_timer = None
+        self._http = urllib3.PoolManager()
 
     def enable_automatic_reconnection(self, attempt_every: int = 3000) -> None:
         if self._reconnect_timer is not None:
@@ -79,17 +81,8 @@ class ComfyWebsocket(QObject):
 
         return decorator
 
-    def get(self, route: str) -> str:
-        return self._request("GET", route)
-
-    def post(self, route: str, data: WsDataType = None) -> str:
-        return self._request("POST", route, data)
-
     def put(self, route: str, data: WsDataType = None) -> str:
         return self._request("PUT", route, data)
-
-    def delete(self, route: str) -> str:
-        return self._request("DELETE", route)
 
     def _attempt_reconnect(self) -> None:
         if not self.is_connected and self.http_base is not None:
@@ -108,10 +101,22 @@ class ComfyWebsocket(QObject):
 
         url = f"{self.http_base.rstrip('/')}/{route.lstrip('/')}"
         headers = {"Content-Type": "application/json"}
-        payload = json.dumps(data) if data is not None else None
-        resp = requests.request(method, url, data=payload, headers=headers, timeout=timeout)
-        resp.raise_for_status()
-        return resp.text
+
+        payload = json.dumps(data).encode("utf-8") if data is not None else None
+
+        resp = self._http.request(
+            method=method,
+            url=url,
+            body=payload,
+            headers=headers,
+            timeout=urllib3.Timeout(total=timeout),
+        )
+
+        if resp.status >= HTTPStatus.BAD_REQUEST.value:
+            message = f"HTTP {resp.status}: {resp.data.decode('utf-8', 'replace')}"
+            raise RuntimeError(message)
+
+        return resp.data.decode("utf-8")
 
     def _on_open(self, ws: WebSocketApp) -> None:  # noqa: ARG002
         QMetaObject.invokeMethod(self, "_emit_open", Qt.ConnectionType.QueuedConnection)
