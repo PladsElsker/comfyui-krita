@@ -1,3 +1,6 @@
+# Keep this line at the top.
+from . import vendors  # noqa: F401, I001
+
 import os
 
 import debugpy
@@ -5,8 +8,6 @@ from krita import Krita
 
 from comfyui.extension import ComfyUIExtension
 from comfyui.extension.exception_hook import setup_exception_hook
-
-from . import vendors  # noqa: F401
 
 
 def main() -> None:
