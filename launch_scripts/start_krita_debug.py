@@ -2,7 +2,6 @@ import os
 import subprocess
 import sys
 
-
 if sys.platform.startswith("win"):
     default_path = r"C:\Program Files\Krita (x64)\bin\krita.exe"
 elif sys.platform.startswith("darwin"):
@@ -14,4 +13,4 @@ else:
 krita_path = os.environ.get("KRITA_PATH", default_path)
 cmd = [krita_path]
 os.environ["KRITA_DEBUG"] = "1"
-subprocess.Popen(cmd, env=os.environ)
+subprocess.Popen(cmd, env=os.environ)  # noqa: S603

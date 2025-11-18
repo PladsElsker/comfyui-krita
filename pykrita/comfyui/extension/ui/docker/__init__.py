@@ -1,17 +1,15 @@
-from krita import DockWidget, Document
-from PyQt5.QtWidgets import QVBoxLayout,  QWidget, QFrame, QHBoxLayout
+from krita import Canvas, DockWidget, Document
+from PyQt5.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QWidget
 
-from ...models import Node
-
-from .workflow_header import WorkflowHeader
+from ...models import Node  # noqa: TID252
 from .node_list import NodeListWidget
-
+from .workflow_header import WorkflowHeader
 
 COMFYUI_DOCKER_OBJECT_NAME = "comfyui_docker"
 
 
 class ComfyUIDocker(DockWidget):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
         self._active_document = None
@@ -43,10 +41,10 @@ class ComfyUIDocker(DockWidget):
 
         self.main_layout.addStretch()
 
-    def update_title(self, name: str):
+    def update_title(self, name: str) -> None:
         self.workflow_header.set_workflow_name(name)
 
-    def update_node_list(self, document: Document, nodes: list[Node]):
+    def update_node_list(self, document: Document, nodes: list[Node]) -> None:
         document_index = -1
         if document not in self._registered_documents:
             self._registered_documents.append(document)
@@ -57,7 +55,7 @@ class ComfyUIDocker(DockWidget):
         self._workflows[document_index] = nodes
         self.set_active_document(self._active_document)
 
-    def set_active_document(self, document: Document | None):
+    def set_active_document(self, document: Document | None) -> None:
         self._active_document = document
 
         if document is None:
@@ -70,6 +68,5 @@ class ComfyUIDocker(DockWidget):
         nodes = self._workflows[document_index]
         self.node_list.rebuild(nodes)
 
-    def canvasChanged(self, canvas):
+    def canvasChanged(self, canvas: Canvas) -> None:  # noqa: N802
         pass
-

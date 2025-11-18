@@ -1,32 +1,30 @@
-from .models import StatusRequest, UpdateKritaDocumentsRequest, UpdateWorkflowsRequest
 from .comfy_websocket import ComfyWebsocket
 from .document_monitor import DocumentMonitor
-from .models import DocumentMappingResponse
-from typing import Dict
+from .models import DocumentMappingResponse, StatusRequest, UpdateKritaDocumentsRequest, UpdateWorkflowsRequest
 
 
 class ComfyKritaBridge:
-    def __init__(self, comfy_ws: ComfyWebsocket, document_monitor: DocumentMonitor):
+    def __init__(self, comfy_ws: ComfyWebsocket, document_monitor: DocumentMonitor) -> None:
         self.comfy_ws = comfy_ws
         self.document_monitor = document_monitor
         self._define_commands()
-    
-    def _define_commands(self):
+
+    def _define_commands(self) -> None:
         @self.comfy_ws.handler("status")
-        def status_statement(data: dict):
+        def status_statement(data: dict) -> None:
             status_request = StatusRequest.model_validate(data)
             return self.status_statement(status_request)
 
         @self.comfy_ws.handler("krita::workflows::update")
-        def update_workflows(data: dict):
+        def update_workflows(data: dict) -> None:
             workflows_request = UpdateWorkflowsRequest.model_validate(data)
             return self.update_workflows(workflows_request)
 
-    def status_statement(self, status_request: StatusRequest):
+    def status_statement(self, status_request: StatusRequest) -> None:
         self.comfy_ws.sid = status_request.sid
         self.update_documents()
 
-    def update_documents(self):
+    def update_documents(self) -> None:
         if not self.comfy_ws.is_connected:
             return
 
@@ -37,9 +35,10 @@ class ComfyKritaBridge:
 
         self.document_monitor.assign_name_mappings(mappings)
 
-    def generate_document_name_mappings(self) -> Dict[str, str]:
+    def generate_document_name_mappings(self) -> dict[str, str]:
         if self.comfy_ws.sid is None:
-            raise ValueError("The sid is not defined")
+            message = "The sid is not defined"
+            raise ValueError(message)
 
         sid = self.comfy_ws.sid
         documents = [doc.name() for doc in self.document_monitor.get_opened_documents()]
@@ -47,16 +46,17 @@ class ComfyKritaBridge:
         response = self.comfy_ws.put(f"/krita/{sid}/documents", update_request.model_dump())
         return DocumentMappingResponse.model_validate_json(response).mapping
 
-    def update_workflows(self, workflows_request: UpdateWorkflowsRequest):
-        from . import ComfyUIExtension
+    def update_workflows(self, workflows_request: UpdateWorkflowsRequest) -> None:
+        from . import ComfyUIExtension  # noqa: PLC0415
 
-        for docker, window in ComfyUIExtension.get_comfyui_window_docker_pairs():
+        for docker, window in ComfyUIExtension.get_comfyui_window_docker_pairs():  # noqa: B007
             docker.update_title(workflows_request.name)
 
             for document_id, nodes in workflows_request.workflows.items():
                 document = self.document_monitor.mapping.get(document_id, None)
 
                 if document is None:
-                    raise ValueError(f"Unable to find document referenced by id {document_id}.")
+                    message = f"Unable to find document referenced by id {document_id}."
+                    raise ValueError(message)
 
                 docker.update_node_list(document, nodes)

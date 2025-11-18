@@ -1,10 +1,11 @@
-from krita_hook.export import export_directory
+import logging
+
 from krita_hook.config import config
+from krita_hook.export import export_directory
 from update_vendors import update_vendors
 
-
-print('Updating vendors...')
+logging.info("Updating vendors...")
 update_vendors()
 
-print('Export...')
-export_directory(config['ExportFrom'], config['ExportTo'])
+logging.info("Export...")
+export_directory(config["ExportFrom"], config["ExportTo"])

@@ -1,0 +1,28 @@
+python = "3.10"
+
+[tool.black]
+target-version = ["py310"]
+line-length = 150
+
+[tool.ruff]
+line-length = 150
+fix = true
+target-version = "py310"
+lint.select = ["A", "B", "C", "E", "F", "G", "I", "N", "Q", "S", "T", "W",
+          "ANN", "ARG", "BLE", "COM", "DJ", "DTZ", "EM", "ERA", "EXE", "FBT",
+          "ICN", "INP", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PTH",
+          "PYI", "RET", "RSE", "RUF", "SIM", "SLF", "TCH", "TID", "TRY", "UP", "YTT"
+          # see: https://github.com/charliermarsh/ruff#table-of-contents
+]
+lint.ignore = [
+    "UP007",
+    "DTZ001",
+    "FBT001",
+    "B006",
+    "C408",
+    "PGH003",
+    "T100"
+]
+exclude = [
+    ".git"
+]
