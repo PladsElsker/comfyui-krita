@@ -12,7 +12,7 @@ COMFYUI_SERVER_URL_CONFIG = "comfyui-server-url"
 
 
 class ComfyUIWebsocketConnectionDialog(QDialog):
-    def __init__(self, comfy_ws: ComfyWebsocket, config: Config, parent: "QWidget | None" = None) -> None:
+    def __init__(self, comfy_ws: ComfyWebsocket, config: Config, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.config = config

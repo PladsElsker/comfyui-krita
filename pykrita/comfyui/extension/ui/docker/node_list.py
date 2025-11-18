@@ -4,7 +4,7 @@ from ...models import Node
 
 
 class NodeListWidget(QWidget):
-    def __init__(self, parent: "QWidget | None" = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(4, 4, 4, 4)

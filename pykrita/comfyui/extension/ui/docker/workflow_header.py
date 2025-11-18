@@ -6,7 +6,7 @@ class WorkflowHeader(QWidget):
     workflow_changed = pyqtSignal(str)
     refresh_requested = pyqtSignal()
 
-    def __init__(self, parent: "QWidget | None" = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._workflow_name = None
 
