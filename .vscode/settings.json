@@ -2,5 +2,18 @@
     "python.analysis.extraPaths": [
         "/home/plads/.vscode-server/extensions/mcunderground.kritaexec-1.0.4/krita-lang",
         "c:\\Users\\Plads\\.vscode\\extensions\\mcunderground.kritaexec-1.0.4\\krita-lang"
-    ]
+    ],
+    "editor.formatOnSave": true,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter"
+    },
+    "editor.codeActionsOnSave": {
+        "source.fixAll.ruff": "always"
+    },
+    "ruff.enable": true,
+    "[json]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "prettier.tabWidth": 4
 }
