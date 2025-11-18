@@ -1,8 +1,8 @@
 # ruff: noqa: S101
 import os
 from pathlib import Path
-from typing import Dict, List
 
+import pytest
 from dotenv import load_dotenv
 from playwright.sync_api import Page
 from pydantic import BaseModel, RootModel, ValidationError
@@ -19,13 +19,23 @@ COMFY_TABS_CONTAINER_SELECTOR = ".workflow-tabs-container"
 COMFY_ACTIVE_TAB_SELECTOR = ".p-togglebutton.p-component.p-togglebutton-checked .workflow-label"
 
 
+SI3_AMOUNT_OF_KRITA_NODES = 3
+SI3_AMOUNT_OF_INTERNAL_KRITA_NODES = 3
+SI3_AMOUNT_OF_NODES_IN_DOCUMENT_ID_MAP = 3
+SI3_TOTAL_AMOUNT_OF_NODES = 4
+
+SI4_AMOUNT_OF_DOCUMENT_IDS_IN_DOCUMENT_ID_MAP = 2
+SI4_AMOUNT_OF_NODES_IN_DOCUMENT_ID_MAP_UNDER_BANNER = 2
+SI4_AMOUNT_OF_NODES_IN_DOCUMENT_ID_MAP_UNDER_BADABOOM = 2
+
+
 class Node(BaseModel):
     id: int
     type: str
     name: str
 
 
-class DocumentIdsNodeMap(RootModel[Dict[str, List[Node]]]):
+class DocumentIdsNodeMap(RootModel[dict[str, list[Node]]]):
     pass
 
 
@@ -46,7 +56,7 @@ def test__given_default_page_loaded__when_get_active_tab_name__then_active_tab_n
             const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
             return workflow_actions_module.getActiveTabName();
         }
-        """
+        """,
     )
     assert tab_name is not None, "active workflow tab not found"
 
@@ -58,7 +68,7 @@ def test__given_default_page_loaded__when_get_app_graph__then_app_graph_is_not_n
             const app = (await import('../../../scripts/app.js')).app;
             return app.graph;
         }
-        """
+        """,
     )
     assert app_graph is not None, "app.graph is not defined"
 
@@ -70,7 +80,7 @@ def test__given_default_page_loaded__when_get_app_graph_nodes__then_app_graph_no
             const app = (await import('../../../scripts/app.js')).app;
             return app.graph._nodes;
         }
-        """
+        """,
     )
     assert app_graph is not None, "app.graph._nodes is not defined"
 
@@ -82,7 +92,7 @@ def test__given_default_page_loaded__when_serialize_graph__then_serialized_graph
             const app = (await import('../../../scripts/app.js')).app;
             return app.graph.serialize().nodes;
         }
-        """
+        """,
     )
     assert app_graph is not None, "app.graph.serialized().nodes is not defined"
 
@@ -94,7 +104,7 @@ def test__given_si1_workflow__when_generate_custom_krita_nodes__then_1_node_is_r
             const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
             return workflow_actions_module.generateCustomKritaNodes();
         }
-        """
+        """,
     )
     assert len(custom_krita_nodes) == 1, "the amount of nodes parsed should be 1"
 
@@ -106,9 +116,9 @@ def test__given_si3_workflow__when_generate_custom_krita_nodes__then_3_nodes_are
             const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
             return workflow_actions_module.generateCustomKritaNodes();
         }
-        """
+        """,
     )
-    assert len(custom_krita_nodes) == 3, "the amount of nodes parsed should be 3"
+    assert len(custom_krita_nodes) == SI3_AMOUNT_OF_KRITA_NODES, "the amount of nodes parsed should be 3"
 
 
 def test__given_si3_workflow__when_get_node_pairs__then_4_tuples_are_returned(si3_workflow: Page) -> None:
@@ -118,9 +128,9 @@ def test__given_si3_workflow__when_get_node_pairs__then_4_tuples_are_returned(si
             const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
             return workflow_actions_module.getNodePairs();
         }
-        """
+        """,
     )
-    assert len(node_pairs) == 4, "the amount of node pairs parsed should be 4"
+    assert len(node_pairs) == SI3_TOTAL_AMOUNT_OF_NODES, "the amount of node pairs parsed should be 4"
 
 
 def test__given_si1_workflow__when_get_internal_krita_nodes__then_1_node_is_returned(si1_workflow: Page) -> None:
@@ -130,7 +140,7 @@ def test__given_si1_workflow__when_get_internal_krita_nodes__then_1_node_is_retu
             const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
             return workflow_actions_module.getInternalKritaNodes();
         }
-        """
+        """,
     )
     assert len(internal_krita_nodes) == 1, "expected exactly 1 internal krita node for si1 workflow"
 
@@ -142,9 +152,9 @@ def test__given_si3_workflow__when_get_internal_krita_nodes__then_3_nodes_are_re
             const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
             return workflow_actions_module.getInternalKritaNodes();
         }
-        """
+        """,
     )
-    assert len(internal_krita_nodes) == 3, "expected exactly 3 internal krita nodes for si3 workflow"
+    assert len(internal_krita_nodes) == SI3_AMOUNT_OF_INTERNAL_KRITA_NODES, "expected exactly 3 internal krita nodes for si3 workflow"
 
 
 def test__given_si3_workflow__when_get_document_ids_node_map__then_map_contains_expected_structure(si3_workflow: Page) -> None:
@@ -154,15 +164,15 @@ def test__given_si3_workflow__when_get_document_ids_node_map__then_map_contains_
             const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
             return workflow_actions_module.getDocumentIdsNodeMap();
         }
-        """
+        """,
     )
 
     try:
         document_map = DocumentIdsNodeMap.model_validate(document_map)
         assert len(document_map.root.keys()) == 1, "expected 1 document id"
-        assert len(next(iter(document_map.root.values()))) == 3, "expected 3 nodes"
+        assert len(next(iter(document_map.root.values()))) == SI3_AMOUNT_OF_NODES_IN_DOCUMENT_ID_MAP, "expected 3 nodes"
     except ValidationError:
-        assert False, "getDocumentIdsNodeMap() returned a bad model"
+        pytest.fail("getDocumentIdsNodeMap() returned a bad model")
 
 
 def test__given_si4_workflow__when_get_document_ids_node_map__then_map_contains_expected_structure(si4_workflow: Page) -> None:
@@ -172,22 +182,22 @@ def test__given_si4_workflow__when_get_document_ids_node_map__then_map_contains_
             const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
             return workflow_actions_module.getDocumentIdsNodeMap();
         }
-        """
+        """,
     )
 
     # TODO:
     # Just construct the exact expected data here and make sure both expected and actual are equal.
 
-    # expected = DocumentIdsNodeMap(root={"banner": [Node()], "badaboom": []})
+    # expected = DocumentIdsNodeMap(root={"banner": [Node()], "badaboom": []}) # noqa: ERA001
 
     try:
         document_map = DocumentIdsNodeMap.model_validate(document_map)
-        assert len(document_map.root.keys()) == 2, "expected 2 document ids"
+        assert len(document_map.root.keys()) == SI4_AMOUNT_OF_DOCUMENT_IDS_IN_DOCUMENT_ID_MAP, "expected 2 document ids"
         assert all(
             document_id in document_map.root for document_id in ["banner", "badaboom"]
         ), "expected document ids 'banner' and 'badaboom' in the map"
 
-        assert len(document_map.root["banner"]) == 2, "expected 2 nodes in 'banner'"
-        assert len(document_map.root["badaboom"]) == 2, "expected 2 nodes in 'badaboom'"
+        assert len(document_map.root["banner"]) == SI4_AMOUNT_OF_NODES_IN_DOCUMENT_ID_MAP_UNDER_BANNER, "expected 2 nodes in 'banner'"
+        assert len(document_map.root["badaboom"]) == SI4_AMOUNT_OF_NODES_IN_DOCUMENT_ID_MAP_UNDER_BADABOOM, "expected 2 nodes in 'badaboom'"
     except ValidationError:
-        assert False, "getDocumentIdsNodeMap() returned a bad model"
+        pytest.fail("getDocumentIdsNodeMap() returned a bad model")

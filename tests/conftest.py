@@ -1,8 +1,8 @@
-# ruff: noqa: S101
 import os
+from collections.abc import Generator
 from pathlib import Path
-import pytest
 
+import pytest
 from dotenv import load_dotenv
 from playwright.sync_api import Page, sync_playwright
 
@@ -19,7 +19,7 @@ COMFY_URL = os.getenv("COMFY_URL", "http://127.0.0.1:8188")
 
 
 @pytest.fixture
-def default_page():
+def default_page() -> Generator[Page]:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
@@ -29,29 +29,29 @@ def default_page():
 
 
 @pytest.fixture
-def si1_workflow(default_page: Page):
+def si1_workflow(default_page: Page) -> Generator[Page]:
     default_page.evaluate(
         f"""
             async () => {{
                 const app = (await import('../../../scripts/app.js')).app;
                 await app.loadGraphData({SI1});
             }}
-            """
+            """,
     )
-    yield default_page
+    return default_page
 
 
 @pytest.fixture
-def si3_workflow(default_page: Page):
+def si3_workflow(default_page: Page) -> Generator[Page]:
     default_page.evaluate(
         f"""
             async () => {{
                 const app = (await import('../../../scripts/app.js')).app;
                 await app.loadGraphData({SI3});
             }}
-            """
+            """,
     )
-    yield default_page
+    return default_page
 
 
 # TODO:
@@ -61,13 +61,13 @@ def si3_workflow(default_page: Page):
 # ["banner", "badaboom"] in the body.
 # After yielding, close the websocket connection.
 @pytest.fixture
-def si4_workflow(default_page: Page):
+def si4_workflow(default_page: Page) -> Generator[Page]:
     default_page.evaluate(
         f"""
             async () => {{
                 const app = (await import('../../../scripts/app.js')).app;
                 await app.loadGraphData({SI4});
             }}
-            """
+            """,
     )
-    yield default_page
+    return default_page

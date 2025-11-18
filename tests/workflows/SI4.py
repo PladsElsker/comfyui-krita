@@ -1,3 +1,4 @@
+# noqa: N999
 SI4 = """
 {
     "id": "d2491bed-c229-4a06-a6bd-f6b237bdb534",
