@@ -1,9 +1,11 @@
 # ruff: noqa: S101
 import os
 from pathlib import Path
+from typing import Dict, List
 
 from dotenv import load_dotenv
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Page
+from pydantic import BaseModel, RootModel, ValidationError
 
 parent_path = Path(__file__).resolve().parent
 env_file = ".test.gh.env" if os.getenv("GITHUB_ACTIONS") else ".test.env"
@@ -17,44 +19,175 @@ COMFY_TABS_CONTAINER_SELECTOR = ".workflow-tabs-container"
 COMFY_ACTIVE_TAB_SELECTOR = ".p-togglebutton.p-component.p-togglebutton-checked .workflow-label"
 
 
-def test__given_default_page_loaded__when_css_selecting_workflow_tabs_container__then_workflow_tabs_container_exists() -> None:
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        page.goto(COMFY_URL, wait_until="networkidle")
-
-        tabs = page.locator(COMFY_TABS_CONTAINER_SELECTOR)
-        assert tabs.count() > 0, "workflow-tabs-container missing"
-
-        browser.close()
+class Node(BaseModel):
+    id: int
+    type: str
+    name: str
 
 
-def test__given_default_page_loaded__when_css_selecting_active_workflow_tab__then_active_workflow_tab_exists() -> None:
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        page.goto(COMFY_URL, wait_until="networkidle")
-
-        active = page.locator(COMFY_ACTIVE_TAB_SELECTOR)
-        assert active.count() > 0, "active workflow tab not found"
-
-        browser.close()
+class DocumentIdsNodeMap(RootModel[Dict[str, List[Node]]]):
+    pass
 
 
-def test__given_default_page_loaded__when_get_active_tab_name__then_active_tab_name_is_not_none() -> None:
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        page.goto(COMFY_URL, wait_until="networkidle")
+def test__given_default_page_loaded__when_css_selecting_workflow_tabs_container__then_workflow_tabs_container_exists(default_page: Page) -> None:
+    tabs = default_page.locator(COMFY_TABS_CONTAINER_SELECTOR)
+    assert tabs.count() > 0, "workflow-tabs-container missing"
 
-        tab_name = page.evaluate(
-            """
-            async () => {
-                const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
-                return workflow_actions_module.getActiveTabName();
-            }
-            """
-        )
-        assert tab_name is not None, "active workflow tab not found"
 
-        browser.close()
+def test__given_default_page_loaded__when_css_selecting_active_workflow_tab__then_active_workflow_tab_exists(default_page: Page) -> None:
+    active = default_page.locator(COMFY_ACTIVE_TAB_SELECTOR)
+    assert active.count() > 0, "active workflow tab not found"
+
+
+def test__given_default_page_loaded__when_get_active_tab_name__then_active_tab_name_is_not_none(default_page: Page) -> None:
+    tab_name = default_page.evaluate(
+        """
+        async () => {
+            const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+            return workflow_actions_module.getActiveTabName();
+        }
+        """
+    )
+    assert tab_name is not None, "active workflow tab not found"
+
+
+def test__given_default_page_loaded__when_get_app_graph__then_app_graph_is_not_none(default_page: Page) -> None:
+    app_graph = default_page.evaluate(
+        """
+        async () => {
+            const app = (await import('../../../scripts/app.js')).app;
+            return app.graph;
+        }
+        """
+    )
+    assert app_graph is not None, "app.graph is not defined"
+
+
+def test__given_default_page_loaded__when_get_app_graph_nodes__then_app_graph_nodes_are_not_none(default_page: Page) -> None:
+    app_graph = default_page.evaluate(
+        """
+        async () => {
+            const app = (await import('../../../scripts/app.js')).app;
+            return app.graph._nodes;
+        }
+        """
+    )
+    assert app_graph is not None, "app.graph._nodes is not defined"
+
+
+def test__given_default_page_loaded__when_serialize_graph__then_serialized_graph_nodes_are_not_none(default_page: Page) -> None:
+    app_graph = default_page.evaluate(
+        """
+        async () => {
+            const app = (await import('../../../scripts/app.js')).app;
+            return app.graph.serialize().nodes;
+        }
+        """
+    )
+    assert app_graph is not None, "app.graph.serialized().nodes is not defined"
+
+
+def test__given_si1_workflow__when_generate_custom_krita_nodes__then_1_node_is_returned(si1_workflow: Page) -> None:
+    custom_krita_nodes = si1_workflow.evaluate(
+        """
+        async () => {
+            const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+            return workflow_actions_module.generateCustomKritaNodes();
+        }
+        """
+    )
+    assert len(custom_krita_nodes) == 1, "the amount of nodes parsed should be 1"
+
+
+def test__given_si3_workflow__when_generate_custom_krita_nodes__then_3_nodes_are_returned(si3_workflow: Page) -> None:
+    custom_krita_nodes = si3_workflow.evaluate(
+        """
+        async () => {
+            const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+            return workflow_actions_module.generateCustomKritaNodes();
+        }
+        """
+    )
+    assert len(custom_krita_nodes) == 3, "the amount of nodes parsed should be 3"
+
+
+def test__given_si3_workflow__when_get_node_pairs__then_4_tuples_are_returned(si3_workflow: Page) -> None:
+    node_pairs = si3_workflow.evaluate(
+        """
+        async () => {
+            const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+            return workflow_actions_module.getNodePairs();
+        }
+        """
+    )
+    assert len(node_pairs) == 4, "the amount of node pairs parsed should be 4"
+
+
+def test__given_si1_workflow__when_get_internal_krita_nodes__then_1_node_is_returned(si1_workflow: Page) -> None:
+    internal_krita_nodes = si1_workflow.evaluate(
+        """
+        async () => {
+            const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+            return workflow_actions_module.getInternalKritaNodes();
+        }
+        """
+    )
+    assert len(internal_krita_nodes) == 1, "expected exactly 1 internal krita node for si1 workflow"
+
+
+def test__given_si3_workflow__when_get_internal_krita_nodes__then_3_nodes_are_returned(si3_workflow: Page) -> None:
+    internal_krita_nodes = si3_workflow.evaluate(
+        """
+        async () => {
+            const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+            return workflow_actions_module.getInternalKritaNodes();
+        }
+        """
+    )
+    assert len(internal_krita_nodes) == 3, "expected exactly 3 internal krita nodes for si3 workflow"
+
+
+def test__given_si3_workflow__when_get_document_ids_node_map__then_map_contains_expected_structure(si3_workflow: Page) -> None:
+    document_map = si3_workflow.evaluate(
+        """
+        async () => {
+            const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+            return workflow_actions_module.getDocumentIdsNodeMap();
+        }
+        """
+    )
+
+    try:
+        document_map = DocumentIdsNodeMap.model_validate(document_map)
+        assert len(document_map.root.keys()) == 1, "expected 1 document id"
+        assert len(next(iter(document_map.root.values()))) == 3, "expected 3 nodes"
+    except ValidationError:
+        assert False, "getDocumentIdsNodeMap() returned a bad model"
+
+
+def test__given_si4_workflow__when_get_document_ids_node_map__then_map_contains_expected_structure(si4_workflow: Page) -> None:
+    document_map = si4_workflow.evaluate(
+        """
+        async () => {
+            const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+            return workflow_actions_module.getDocumentIdsNodeMap();
+        }
+        """
+    )
+
+    # TODO:
+    # Just construct the exact expected data here and make sure both expected and actual are equal.
+
+    # expected = DocumentIdsNodeMap(root={"banner": [Node()], "badaboom": []})
+
+    try:
+        document_map = DocumentIdsNodeMap.model_validate(document_map)
+        assert len(document_map.root.keys()) == 2, "expected 2 document ids"
+        assert all(
+            document_id in document_map.root for document_id in ["banner", "badaboom"]
+        ), "expected document ids 'banner' and 'badaboom' in the map"
+
+        assert len(document_map.root["banner"]) == 2, "expected 2 nodes in 'banner'"
+        assert len(document_map.root["badaboom"]) == 2, "expected 2 nodes in 'badaboom'"
+    except ValidationError:
+        assert False, "getDocumentIdsNodeMap() returned a bad model"
