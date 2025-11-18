@@ -73,7 +73,7 @@ export const extension = {
 export function fixKritaNodeUi(node) {
     if(node.type && !KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)) return;
 
-    const metaWidget = node.widgets.find(w => w.label === META_WIDGET_LABEL);
+    const metaWidget = node.widgets?.find(w => w.label === META_WIDGET_LABEL);
     const metaSlot = node.inputs.find(i => i.name === META_WIDGET_LABEL);
     const documentSlot = node.inputs.find(i => i.name === DOCUMENT_WIDGET_LABEL);
     if(documentSlot) {
@@ -141,29 +141,16 @@ export async function sendWorkflow(skipCondition=false) {
     const tabName = getActiveTabName();
     if(!tabName) return;
 
+    const documentIdLists = getDocumentIdsNodeMap();
+
     const documentIdListsStringified = {};
-    const documentIdLists = {};
-
-    const kritaNodes = generateCustomKritaNodes();
-
-    for(const node of kritaNodes) {
-        for(const documentId of node.documentIds) {
-            if(!(documentId in documentIdLists)) documentIdLists[documentId] = [];
-            documentIdLists[documentId].push({
-                id: node.id,
-                type: node.type,
-                name: node.name,
-            });
-        }
-    }
-
     Object.entries(documentIdLists).forEach(([documentId, nodes]) => {
         documentIdListsStringified[documentId] = documentIdLists[documentId].map(JSON.stringify);
     });
 
     const changesDetected = skipCondition ||
+        Object.keys(documentIdListsStringified).length !== Object.keys(previousDocumentIdLists).length ||
         Object.entries(documentIdListsStringified).some(([documentId, nodes]) => !haveSameElements(previousDocumentIdLists[documentId], nodes)) ||
-        Object.entries(previousDocumentIdLists).some(([documentId, nodes]) => !haveSameElements(documentIdListsStringified[documentId], nodes)) ||
         (previousTabName !== tabName);
 
     if(!changesDetected) return;
@@ -182,6 +169,26 @@ export function getActiveTabName() {
     const tabGroupElement = document.querySelector(COMFY_TABS_CONTAINER_SELECTOR);
     const tabElements = tabGroupElement?.querySelector(COMFY_ACTIVE_TAB_SELECTOR);
     return tabElements?.innerHTML ?? previousTabName;
+}
+
+
+export function getDocumentIdsNodeMap() {
+    const getDocumentIdsNodeMap = {};
+
+    const kritaNodes = generateCustomKritaNodes();
+
+    for(const node of kritaNodes) {
+        for(const documentId of node.documentIds) {
+            if(!(documentId in getDocumentIdsNodeMap)) getDocumentIdsNodeMap[documentId] = [];
+            getDocumentIdsNodeMap[documentId].push({
+                id: node.id,
+                type: node.type,
+                name: node.name,
+            });
+        }
+    }
+
+    return getDocumentIdsNodeMap;
 }
 
 

@@ -38,7 +38,7 @@ def si1_workflow(default_page: Page) -> Generator[Page]:
             }}
             """,
     )
-    return default_page
+    yield default_page
 
 
 @pytest.fixture
@@ -51,7 +51,7 @@ def si3_workflow(default_page: Page) -> Generator[Page]:
             }}
             """,
     )
-    return default_page
+    yield default_page
 
 
 # TODO:
@@ -70,4 +70,4 @@ def si4_workflow(default_page: Page) -> Generator[Page]:
             }}
             """,
     )
-    return default_page
+    yield default_page
