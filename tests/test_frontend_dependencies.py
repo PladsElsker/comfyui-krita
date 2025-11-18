@@ -22,6 +22,7 @@ COMFY_ACTIVE_TAB_SELECTOR = ".p-togglebutton.p-component.p-togglebutton-checked 
 SI3_AMOUNT_OF_KRITA_NODES = 3
 SI3_AMOUNT_OF_INTERNAL_KRITA_NODES = 3
 SI3_AMOUNT_OF_NODES_IN_DOCUMENT_ID_MAP = 3
+SI3_AMOUNT_OF_DOCUMENT_IDS_IN_DOCUMENT_ID_MAP = 1
 SI3_TOTAL_AMOUNT_OF_NODES = 4
 
 SI4_AMOUNT_OF_DOCUMENT_IDS_IN_DOCUMENT_ID_MAP = 2
@@ -169,7 +170,7 @@ def test__given_si3_workflow__when_get_document_ids_node_map__then_map_contains_
 
     try:
         document_map = DocumentIdsNodeMap.model_validate(document_map)
-        assert len(document_map.root.keys()) == 1, "expected 1 document id"
+        assert len(document_map.root.keys()) == SI3_AMOUNT_OF_DOCUMENT_IDS_IN_DOCUMENT_ID_MAP, "expected 1 document id"
         assert len(next(iter(document_map.root.values()))) == SI3_AMOUNT_OF_NODES_IN_DOCUMENT_ID_MAP, "expected 3 nodes"
     except ValidationError:
         pytest.fail("getDocumentIdsNodeMap() returned a bad model")
