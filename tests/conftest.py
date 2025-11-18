@@ -7,9 +7,9 @@ from urllib.parse import urlparse
 import pytest
 import requests
 import websocket
-from websocket import WebSocket
 from dotenv import load_dotenv
 from playwright.sync_api import Page, sync_playwright
+from websocket import WebSocket
 
 from .workflows import SI1, SI3, SI4
 
