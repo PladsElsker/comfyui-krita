@@ -18,10 +18,6 @@ env_file = ".test.gh.env" if os.getenv("GITHUB_ACTIONS") else ".test.env"
 load_dotenv(parent_path / env_file)
 
 
-COMFY_TABS_CONTAINER_SELECTOR = ".workflow-tabs-container"
-COMFY_ACTIVE_TAB_SELECTOR = ".p-togglebutton.p-component.p-togglebutton-checked .workflow-label"
-
-
 SI3_AMOUNT_OF_KRITA_NODES = 3
 SI3_AMOUNT_OF_INTERNAL_KRITA_NODES = 3
 SI3_AMOUNT_OF_NODES_IN_DOCUMENT_ID_MAP = 3
@@ -44,13 +40,27 @@ class DocumentIdsNodeMap(RootModel[dict[str, list[Node]]]):
 
 
 def test__given_default_page_loaded__when_css_selecting_workflow_tabs_container__then_workflow_tabs_container_exists(default_page: Page) -> None:
-    tabs = default_page.locator(COMFY_TABS_CONTAINER_SELECTOR)
-    assert tabs.count() > 0, "workflow-tabs-container missing"
+    workflow_tabs_container = default_page.evaluate(
+        """
+        async () => {
+            const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+            return Array.from(document.querySelectorAll(workflow_actions_module.COMFY_TABS_CONTAINER_SELECTOR));
+        }
+        """,
+    )
+    assert len(workflow_tabs_container) > 0, "workflow-tabs-container missing"
 
 
 def test__given_default_page_loaded__when_css_selecting_active_workflow_tab__then_active_workflow_tab_exists(default_page: Page) -> None:
-    active = default_page.locator(COMFY_ACTIVE_TAB_SELECTOR)
-    assert active.count() > 0, "active workflow tab not found"
+    active_workflow_tab = default_page.evaluate(
+        """
+        async () => {
+            const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+            return Array.from(document.querySelectorAll(workflow_actions_module.COMFY_ACTIVE_TAB_SELECTOR));
+        }
+        """,
+    )
+    assert len(active_workflow_tab) > 0, "active workflow tab not found"
 
 
 def test__given_default_page_loaded__when_get_active_tab_name__then_active_tab_name_is_not_none(default_page: Page) -> None:
