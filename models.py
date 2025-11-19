@@ -11,6 +11,10 @@ class UpdateWorkflowsRequest(BaseModel):
     name: str
     workflows: dict[str, list[Node]]
 
+    @classmethod
+    def default(cls) -> "UpdateWorkflowsRequest":
+        return cls(name="", workflows={})
+
 
 class PrunedKritaWorkflow(BaseModel):
     name: str
