@@ -35,6 +35,15 @@ def _define_krita_routes() -> None:
         except Exception:  # noqa: BLE001
             return web.json_response(status=400)
 
+    @PromptServer.instance.routes.get("/krita/{sid}/workflows")
+    async def get_krita_workflows(request: Request) -> Response:  # noqa: ARG001
+        sid = request.match_info["sid"]
+        try:
+            krita_workflows = api.get_registered_workflows_by_sid(sid)
+            return web.json_response(krita_workflows.model_dump() if krita_workflows is not None else None)
+        except Exception:  # noqa: BLE001
+            return web.json_response(status=400)
+
 
 def _define_comfy_routes() -> None:
     @PromptServer.instance.routes.put("/krita/documents/workflows")

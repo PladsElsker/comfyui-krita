@@ -30,6 +30,7 @@ def prune_sids(f: Callable) -> Callable:
 class KritaApi:
     def __init__(self) -> None:
         self.registered_documents: dict[str, set[str]] = {}
+        self._last_workflows_request: UpdateWorkflowsRequest = UpdateWorkflowsRequest.default()
 
     def create_layer(self, document_id: str, meta: dict, image: Image) -> None:
         pass
@@ -56,7 +57,8 @@ class KritaApi:
 
     @prune_sids
     async def update_workflows(self, workflows_request: UpdateWorkflowsRequest) -> None:
-        sid_map = self._split_update_workflows_request_per_sids(workflows_request)
+        self._last_workflows_request = workflows_request
+        sid_map = self._split_update_workflows_request_per_sids(self._last_workflows_request)
 
         for sid, request in sid_map.items():
             await PromptServer.instance.send(
@@ -64,6 +66,10 @@ class KritaApi:
                 request.model_dump(),
                 sid,
             )
+
+    @prune_sids
+    def get_registered_workflows_by_sid(self, sid: str) -> UpdateWorkflowsRequest | None:
+        return self._split_update_workflows_request_per_sids(self._last_workflows_request).get(sid, None)
 
     def get_registered_documents(self) -> KritaDocuments:
         return KritaDocuments(
