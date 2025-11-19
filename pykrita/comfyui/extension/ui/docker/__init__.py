@@ -44,6 +44,9 @@ class ComfyUIDocker(DockWidget):
     def update_title(self, name: str) -> None:
         self.workflow_header.set_workflow_name(name)
 
+    def update_document_id(self, document_id: str) -> None:
+        self.workflow_header.set_document_name(document_id)
+
     def update_node_list(self, document: Document, nodes: list[Node]) -> None:
         document_index = -1
         if document not in self._registered_documents:

@@ -84,6 +84,9 @@ class ComfyWebsocket(QObject):
     def put(self, route: str, data: WsDataType = None) -> str:
         return self._request("PUT", route, data)
 
+    def get(self, route: str) -> str:
+        return self._request("GET", route)
+
     def _attempt_reconnect(self) -> None:
         if not self.is_connected and self.http_base is not None:
             self.connect(self.http_base)

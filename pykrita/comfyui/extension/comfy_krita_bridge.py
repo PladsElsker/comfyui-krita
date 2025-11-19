@@ -1,3 +1,5 @@
+import json
+
 from .comfy_websocket import ComfyWebsocket
 from .document_monitor import DocumentMonitor
 from .models import DocumentMappingResponse, StatusRequest, UpdateKritaDocumentsRequest, UpdateWorkflowsRequest
@@ -13,16 +15,15 @@ class ComfyKritaBridge:
         @self.comfy_ws.handler("status")
         def status_statement(data: dict) -> None:
             status_request = StatusRequest.model_validate(data)
-            return self.status_statement(status_request)
+            self.status_statement(status_request)
 
         @self.comfy_ws.handler("krita::workflows::update")
         def update_workflows(data: dict) -> None:
             workflows_request = UpdateWorkflowsRequest.model_validate(data)
-            return self.update_workflows(workflows_request)
+            self.update_workflows(workflows_request)
 
     def status_statement(self, status_request: StatusRequest) -> None:
         self.comfy_ws.sid = status_request.sid
-        self.update_documents()
 
     def update_documents(self) -> None:
         if not self.comfy_ws.is_connected:
@@ -34,6 +35,21 @@ class ComfyKritaBridge:
             mappings = self.generate_document_name_mappings()
 
         self.document_monitor.assign_name_mappings(mappings)
+        self.request_workflows()
+
+    def request_workflows(self) -> None:
+        if self.comfy_ws.sid is None:
+            message = "The sid is not defined"
+            raise ValueError(message)
+
+        data = self.comfy_ws.get(f"krita/{self.comfy_ws.sid}/workflows")
+
+        # None is allowed, no workflows for our sid
+        if json.loads(data) is None:
+            return
+
+        workflows_request = UpdateWorkflowsRequest.model_validate_json(data)
+        self.update_workflows(workflows_request)
 
     def generate_document_name_mappings(self) -> dict[str, str]:
         if self.comfy_ws.sid is None:
@@ -49,14 +65,19 @@ class ComfyKritaBridge:
     def update_workflows(self, workflows_request: UpdateWorkflowsRequest) -> None:
         from . import ComfyUIExtension  # noqa: PLC0415
 
-        for docker, window in ComfyUIExtension.get_comfyui_window_docker_pairs():  # noqa: B007
+        for docker, window in ComfyUIExtension.get_comfyui_window_docker_pairs():
             docker.update_title(workflows_request.name)
+            window_documents = [view.document() for view in window.views()]
 
             for document_id, nodes in workflows_request.workflows.items():
                 document = self.document_monitor.mapping.get(document_id, None)
+
+                if document not in window_documents:
+                    continue
 
                 if document is None:
                     message = f"Unable to find document referenced by id {document_id}."
                     raise ValueError(message)
 
                 docker.update_node_list(document, nodes)
+                docker.update_document_id(document_id)
