@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import QLabel
 from ...icons import render_svg_to_pixmap
 
 
-class MiniatureLabel(QLabel):
+class Miniature(QLabel):
     def __init__(self, svg_renderer: QSvgRenderer) -> None:
         super().__init__()
         self.setFixedSize(32, 32)

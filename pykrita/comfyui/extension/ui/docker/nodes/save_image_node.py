@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import QHBoxLayout, QLabel
 from ....models import Node
 from ...icons import SAVE_ICON
 from .comfyui_node import ComfyUiNode
-from .miniature_label import MiniatureLabel
+from .miniature import Miniature
 
 
 class SaveImageNode(ComfyUiNode):
@@ -13,8 +13,7 @@ class SaveImageNode(ComfyUiNode):
         super().__init__()
         self.main_layout = QHBoxLayout(self)
 
-        self.miniature = MiniatureLabel(SAVE_ICON)
-        self.miniature.pixmap()
+        self.miniature = Miniature(SAVE_ICON)
         self.main_layout.addWidget(self.miniature)
 
         label = QLabel(f"{node.name} ({node.id})")
