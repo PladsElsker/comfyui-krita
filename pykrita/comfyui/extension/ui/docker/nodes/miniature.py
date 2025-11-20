@@ -17,12 +17,10 @@ class Miniature(QLabel):
         self.svg_renderer = svg_renderer
         self.setPixmap(render_svg_to_pixmap(self.svg_renderer))
 
-    def set_image(self, data: bytes | None) -> None:
-        if data:
-            pixmap = QPixmap()
-            if pixmap.loadFromData(data):
-                self.setPixmap(pixmap.scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-                self.setText("")
-                return
+    def set_image(self, data: bytes) -> None:
+        pixmap = QPixmap()
+        if pixmap.loadFromData(data):
+            self.setPixmap(pixmap.scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 
+    def remove_image(self) -> None:
         self.setPixmap(render_svg_to_pixmap(self.svg_renderer))
