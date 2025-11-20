@@ -2,7 +2,7 @@ from aiohttp import web
 from aiohttp.web import Request, Response
 from server import PromptServer
 
-from .constants import KRITA_IO_NODE_TYPES
+from .constants import KRITA_IO_NODE_TYPES, KRITA_OUTPUT_NODE_TYPES
 from .krita_api import api
 from .models import (
     DocumentMappingResponse,
@@ -55,6 +55,9 @@ def _define_comfy_routes() -> None:
             workflows = workflows_request.workflows
 
             for document_id, nodes in workflows.items():
+                for node in nodes:
+                    node.direction = "output" if node.type in KRITA_OUTPUT_NODE_TYPES else "input"
+
                 workflows[document_id] = [node for node in nodes if node.type in KRITA_IO_NODE_TYPES]
 
             await api.update_workflows(workflows_request)
