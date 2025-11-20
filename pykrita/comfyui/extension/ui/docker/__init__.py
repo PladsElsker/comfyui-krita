@@ -39,8 +39,6 @@ class ComfyUIDocker(DockWidget):
         self.node_list = NodeListWidget()
         self.main_layout.addWidget(self.node_list)
 
-        self.main_layout.addStretch()
-
     def update_title(self, name: str) -> None:
         self.workflow_header.set_workflow_name(name)
 

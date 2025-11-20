@@ -24,6 +24,7 @@ class ComfyKritaBridge:
 
     def status_statement(self, status_request: StatusRequest) -> None:
         self.comfy_ws.sid = status_request.sid
+        self.update_documents()
 
     def update_documents(self) -> None:
         if not self.comfy_ws.is_connected:
