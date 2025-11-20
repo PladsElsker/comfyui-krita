@@ -1,9 +1,9 @@
 from typing import TYPE_CHECKING
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QScrollArea, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
 
-from ...models import Node
+from ...models import Node, NodeDirection
 from .nodes.node_factory import NodeFactory
 
 if TYPE_CHECKING:
@@ -20,7 +20,7 @@ class NodeListWidget(QScrollArea):
         self.setWidgetResizable(True)
 
         self.main_layout = QVBoxLayout()
-        self.main_layout.setContentsMargins(4, 4, 4, 4)
+        self.main_layout.setContentsMargins(4, 0, 4, 0)
 
         self.container = QWidget()
         self.container.setLayout(self.main_layout)
@@ -41,7 +41,35 @@ class NodeListWidget(QScrollArea):
 
         for node in nodes:
             node_widget = NodeFactory.create(node)
-            self.main_layout.insertWidget(self.main_layout.count() - 1, node_widget)
             self.node_widgets.append(node_widget)
 
+        input_mode: NodeDirection = "input"
+        output_mode: NodeDirection = "output"
+
+        input_node_widgets = [node_widget for node_widget in self.node_widgets if node_widget.direction == input_mode]
+        output_node_widgets = [node_widget for node_widget in self.node_widgets if node_widget.direction == output_mode]
+
+        if len(input_node_widgets) > 0:
+            self.main_layout.addWidget(GroupTitle("TO COMFYUI (INPUTS)"))
+
+        for node_widget in input_node_widgets:
+            self.main_layout.addWidget(node_widget)
+
+        if len(output_node_widgets) > 0:
+            self.main_layout.addWidget(GroupTitle("FROM COMFYUI (OUTPUTS)"))
+
+        for node_widget in output_node_widgets:
+            self.main_layout.addWidget(node_widget)
+
         self.main_layout.addStretch(1)
+
+
+class GroupTitle(QLabel):
+    def __init__(self, group_name: str) -> None:
+        super().__init__(group_name)
+        self.setContentsMargins(0, 4, 0, 0)
+
+        font = self.font()
+        font.setBold(True)
+        self.setFont(font)
+        self.setStyleSheet("color: #909090;")

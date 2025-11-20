@@ -1,6 +1,8 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
+
+NodeDirection = Literal["input", "output"]
 
 
 class StatusRequest(BaseModel):
@@ -12,6 +14,7 @@ class Node(BaseModel):
     id: int
     type: str
     name: str
+    direction: NodeDirection
 
 
 class PrunedKritaWorkflow(BaseModel):
