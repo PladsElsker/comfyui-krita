@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QEvent, QObject, QSize
+from PyQt5.QtCore import QEvent, QObject, QSize, Qt
 from PyQt5.QtGui import QColor, QIcon
 from PyQt5.QtWidgets import QComboBox, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
@@ -13,20 +13,30 @@ class SaveImageNode(ComfyUiNode):
 
     def __init__(self, node: Node) -> None:
         super().__init__(node)
+        self.destroyed.connect(self._remove_generator_layer)
+
         self.main_layout = QHBoxLayout(self)
+        self.main_layout.setContentsMargins(2, 2, 0, 0)
 
         self.miniature = Miniature(SAVE_ICON)
         self.main_layout.addWidget(self.miniature)
 
         self.middle_rack = QVBoxLayout()
-        label = QLabel(f"{node.name}")
+        label = QLabel(node.name)
         font = label.font()
         font.setBold(True)
         label.setFont(font)
+        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        label.setWordWrap(False)
+        label.setMinimumWidth(0)
+        label.setMaximumWidth(144)
+        metrics = self.fontMetrics()
+        elided = metrics.elidedText(node.name, Qt.TextElideMode.ElideRight, self.width())
+        label.setText(elided)
         self.middle_rack.addWidget(label)
 
         self.combo_box = QComboBox()
-        self.combo_box.addItems(["Generate Layers Below", " Generate Layers Above"])
+        self.combo_box.addItems(["Insert Layers Below", " Insert Layers Above"])
         self._wheel_filter = WheelFilter(self)
         self.combo_box.installEventFilter(self._wheel_filter)
         self.middle_rack.addWidget(self.combo_box)
@@ -44,6 +54,9 @@ class SaveImageNode(ComfyUiNode):
         self.action_buttons_container.addWidget(self.target_button)
 
         self.main_layout.addLayout(self.action_buttons_container)
+
+    def _remove_generator_layer(self) -> None:
+        pass
 
 
 class WheelFilter(QObject):

@@ -34,6 +34,7 @@ class ComfyUIDocker(DockWidget):
         self.separator_layout = QHBoxLayout(self.separator_container)
         self.separator_layout.setContentsMargins(4, 0, 4, 0)
         self.separator_layout.addWidget(self.separator)
+        self.separator_container.setFixedHeight(2)
         self.main_layout.addWidget(self.separator_container)
 
         self.node_list = NodeListWidget()
