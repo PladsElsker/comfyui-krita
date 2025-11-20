@@ -11,11 +11,14 @@ class WorkflowHeader(QFrame):
         self.row1 = QVBoxLayout()
         self.row2 = QVBoxLayout()
 
-        self.row1.addWidget(QLabel("Workflow: "))
-        self.row1.addWidget(QLabel("Document: "))
+        self.workflow_title = QLabel("Workflow: ")
+        self.document_title = QLabel("Document: ")
+        self.row1.addWidget(self.workflow_title)
+        self.row1.addWidget(self.document_title)
 
         self.workflow_label = QLabel("—")
         self.document_label = QLabel("—")
+        self.document_label.setStyleSheet("color: #3b9df5;")
 
         self.row2.addWidget(self.workflow_label)
         self.row2.addWidget(self.document_label)
