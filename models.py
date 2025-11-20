@@ -1,3 +1,4 @@
+from typing import Literal
 from pydantic import BaseModel
 
 
@@ -5,6 +6,7 @@ class Node(BaseModel):
     id: int
     type: str
     name: str
+    direction: Literal["input", "output"] | None = None
 
 
 class UpdateWorkflowsRequest(BaseModel):
@@ -14,12 +16,6 @@ class UpdateWorkflowsRequest(BaseModel):
     @classmethod
     def default(cls) -> "UpdateWorkflowsRequest":
         return cls(name="", workflows={})
-
-
-class PrunedKritaWorkflow(BaseModel):
-    name: str
-    inputs: list[Node]
-    outputs: list[Node]
 
 
 class UpdateKritaDocumentsRequest(BaseModel):
@@ -33,8 +29,3 @@ class DocumentMappingResponse(BaseModel):
 
 class KritaDocuments(BaseModel):
     documents: list[str]
-
-
-class UpdateKritaWorkflowRequest(BaseModel):
-    id: str
-    workflow: PrunedKritaWorkflow
