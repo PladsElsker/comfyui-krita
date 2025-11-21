@@ -75,7 +75,7 @@ class PersistentLayerManager:
         modifications = {
             uuid: layer
             for uuid, layer in self.registered_layers.items()
-            if layer.linked_uuid is not None and (uuid in actual_state and actual_state[uuid].name != layer.name)
+            if layer.linked_uuid is not None and (uuid in actual_state and PersistentLayer.state_differs(actual_state[uuid], layer))
         }
         deletions = {uuid: layer for uuid, layer in self.registered_layers.items() if layer.scheduled_for_deletion}
 
@@ -162,6 +162,10 @@ class PersistentLayerManager:
             return
 
         match.setName(_to.name)
+        match.setLocked(False)
+        match.setAlphaLocked(True)
+        match.setVisible(False)
+        match.setOpacity(0)
 
     def _schedule_step_slow(self) -> None:
         self._timer.start(self.refresh_ms)
@@ -193,13 +197,25 @@ class PersistentLayer(BaseModel):
     name: str
     linked_uuid: Any | None = None
     scheduled_for_deletion: bool = False
+    locked: bool = False
+    alpha_locked: bool = True
+    visible: bool = False
+    opacity: int = 0
+    type: str = "vectorlayer"
 
     @classmethod
     def from_krita(cls, layer: Node) -> "PersistentLayer":
         return cls(
             name=layer.name(),
             linked_uuid=layer.uniqueId(),
+            locked=layer.locked(),
+            visible=layer.visible(),
+            opacity=layer.opacity(),
         )
+
+    @staticmethod
+    def state_differs(layer1: "PersistentLayer", layer2: "PersistentLayer") -> bool:
+        return layer1.name != layer2.name or layer1.locked != layer2.locked or layer1.visible != layer2.visible or layer1.opacity != layer2.opacity
 
 
 class LayerUtils:
@@ -211,7 +227,7 @@ class LayerUtils:
         while len(remaining) > 0:
             node = remaining.pop()
             flat_list.append(node)
-            children = [n for n in reversed(node.children()) if isinstance(n, Node)]
+            children = [n for n in reversed(node.childNodes()) if isinstance(n, Node)]
             remaining += children
 
         return flat_list
