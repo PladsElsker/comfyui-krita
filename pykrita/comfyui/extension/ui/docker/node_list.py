@@ -2,7 +2,7 @@ from typing import ClassVar
 
 from krita import Document
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from ...layers_manager import PersistentLayerManager
 from ...models import Node, NodeDirection
@@ -31,7 +31,7 @@ class NodeListWidget(QScrollArea):
 
         self.node_widgets: list[ComfyUiNode] = []
 
-    def rebuild(self, nodes: list[Node], document: Document) -> None:
+    def rebuild(self, nodes: list[Node], document: Document) -> None:  # noqa: C901
         while self.main_layout.count() > 0:
             item = self.main_layout.takeAt(0)
 
@@ -58,16 +58,28 @@ class NodeListWidget(QScrollArea):
         if len(input_node_widgets) > 0:
             self.main_layout.addWidget(GroupTitle("TO COMFYUI (INPUTS)"))
 
-        for node_widget in input_node_widgets:
+        for i, node_widget in enumerate(input_node_widgets):
             self.main_layout.addWidget(node_widget)
+            if i < len(input_node_widgets) - 1:
+                self._add_separator()
 
         if len(output_node_widgets) > 0:
             self.main_layout.addWidget(GroupTitle("FROM COMFYUI (OUTPUTS)"))
 
-        for node_widget in output_node_widgets:
+        for i, node_widget in enumerate(output_node_widgets):
             self.main_layout.addWidget(node_widget)
+            if i < len(output_node_widgets) - 1:
+                self._add_separator()
 
         self.main_layout.addStretch(1)
+
+    def _add_separator(self) -> None:
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        line.setFixedHeight(1)
+        line.setStyleSheet("background-color: rgba(0, 0, 0, 20); border: none;")
+        self.main_layout.addWidget(line)
 
 
 class GroupTitle(QLabel):
