@@ -1,6 +1,6 @@
 import json
 import os
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -9,9 +9,8 @@ import requests
 import websocket
 from dotenv import load_dotenv
 from playwright.sync_api import Page, sync_playwright
-from websocket import WebSocket
 
-from .workflows import SI1, SI3, SI4
+from .workflows import SI1, SI3, SI4, SI5R
 
 parent_path = Path(__file__).resolve().parent
 env_file = ".test.gh.env" if os.getenv("GITHUB_ACTIONS") else ".test.env"
@@ -31,6 +30,26 @@ def default_page() -> Generator[Page]:
         page.goto(COMFY_URL, wait_until="networkidle")
         yield page
         browser.close()
+
+
+@pytest.fixture
+def set_document_ids_func() -> Generator[Callable]:
+    parsed_url = urlparse(COMFY_URL)
+    ws_scheme = "wss" if parsed_url.scheme == "https" else "ws"
+    ws_url = f"{ws_scheme}://{parsed_url.netloc}/ws"
+    ws = websocket.create_connection(ws_url)
+
+    data = json.loads(ws.recv())["data"]
+    sid = data["sid"]
+
+    def f(document_ids: list) -> None:
+        url = f"{COMFY_URL}/krita/{sid}/documents"
+        payload = {"documents": document_ids}
+        response = requests.put(url, json=payload, timeout=1)
+        response.raise_for_status()
+
+    yield f
+    ws.close()
 
 
 @pytest.fixture
@@ -60,20 +79,8 @@ def si3_workflow(default_page: Page) -> Page:
 
 
 @pytest.fixture
-def si4_workflow(default_page: Page) -> Generator[tuple[Page, WebSocket, str]]:
-    parsed_url = urlparse(COMFY_URL)
-    ws_scheme = "wss" if parsed_url.scheme == "https" else "ws"
-    ws_url = f"{ws_scheme}://{parsed_url.netloc}/ws"
-    ws = websocket.create_connection(ws_url)
-
-    data = json.loads(ws.recv())["data"]
-    sid = data["sid"]
-
-    url = f"{COMFY_URL}/krita/{sid}/documents"
-    payload = {"documents": ["banner", "badaboom"]}
-    response = requests.put(url, json=payload, timeout=1)
-    response.raise_for_status()
-
+def si4_workflow(default_page: Page, set_document_ids_func: Callable) -> Generator[Page]:
+    set_document_ids_func(["banner", "badaboom"])
     default_page.evaluate(
         f"""
             async () => {{
@@ -82,5 +89,18 @@ def si4_workflow(default_page: Page) -> Generator[tuple[Page, WebSocket, str]]:
             }}
             """,
     )
-    yield default_page, ws, sid
-    ws.close()
+    return default_page
+
+
+@pytest.fixture
+def si5r_workflow(default_page: Page, set_document_ids_func: Callable) -> Generator[Page]:
+    set_document_ids_func(["banner"])
+    default_page.evaluate(
+        f"""
+            async () => {{
+                const app = (await import('../../../scripts/app.js')).app;
+                await app.loadGraphData({SI5R});
+            }}
+            """,
+    )
+    return default_page

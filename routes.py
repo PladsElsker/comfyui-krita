@@ -36,7 +36,7 @@ def _define_krita_routes() -> None:
             return web.json_response(status=400)
 
     @PromptServer.instance.routes.get("/krita/{sid}/workflows")
-    async def get_krita_workflows(request: Request) -> Response:  # noqa: ARG001
+    async def get_krita_workflows(request: Request) -> Response:
         sid = request.match_info["sid"]
         try:
             krita_workflows = api.get_registered_workflows_by_sid(sid)
