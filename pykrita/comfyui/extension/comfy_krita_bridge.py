@@ -67,7 +67,6 @@ class ComfyKritaBridge:
         from . import ComfyUIExtension  # noqa: PLC0415
 
         for docker, window in ComfyUIExtension.get_comfyui_window_docker_pairs():
-            docker.update_title(workflows_request.name)
             active_document = window.activeView().document()
 
             found_document_id = None
@@ -88,5 +87,5 @@ class ComfyKritaBridge:
             if found_nodes is None:
                 return
 
+            docker.update_title(workflows_request.name, found_document_id)
             docker.update_node_list(found_nodes, active_document)
-            docker.update_document_id(found_document_id)
