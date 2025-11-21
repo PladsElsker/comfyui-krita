@@ -79,7 +79,7 @@ def si3_workflow(default_page: Page) -> Page:
 
 
 @pytest.fixture
-def si4_workflow(default_page: Page, set_document_ids_func: Callable) -> Generator[Page]:
+def si4_workflow(default_page: Page, set_document_ids_func: Callable) -> Page:
     set_document_ids_func(["banner", "badaboom"])
     default_page.evaluate(
         f"""
@@ -93,7 +93,7 @@ def si4_workflow(default_page: Page, set_document_ids_func: Callable) -> Generat
 
 
 @pytest.fixture
-def si5r_workflow(default_page: Page, set_document_ids_func: Callable) -> Generator[Page]:
+def si5r_workflow(default_page: Page, set_document_ids_func: Callable) -> Page:
     set_document_ids_func(["banner"])
     default_page.evaluate(
         f"""
