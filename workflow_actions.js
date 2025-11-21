@@ -292,7 +292,6 @@ export class CustomKritaNodeFactory {
             .filter(([w, _]) => w.label === DOCUMENT_WIDGET_LABEL)
             .map(([_, i]) => internalNode.serialize().widgets_values[i]);
 
-        console.log(internalNode);
         return new CustomKritaNode(
             internalNode.id,
             internalNode.type,
