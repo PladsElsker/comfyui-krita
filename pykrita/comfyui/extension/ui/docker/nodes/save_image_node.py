@@ -10,8 +10,8 @@ from .miniature import Miniature
 
 COMBO_ABOVE_TEXT = "Insert Layers Above"
 COMBO_BELOW_TEXT = "Insert Layers Below"
-ARROW_UP = "↑"
-ARROW_DOWN = "↓"
+ARROW_UP = "▲"
+ARROW_DOWN = "▼"
 
 
 class SaveImageNode(ComfyUiNode):
