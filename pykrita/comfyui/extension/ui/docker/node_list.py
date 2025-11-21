@@ -1,5 +1,5 @@
 from krita import Document
-from PyQt5.QtCore import Qt, qDebug
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from ...layers_manager import PersistentLayerManager
@@ -28,7 +28,6 @@ class NodeListWidget(QScrollArea):
         self.node_widgets: list[ComfyUiNode] = []
 
     def rebuild(self, nodes: list[Node], document: Document) -> None:
-        qDebug("1")
         while self.main_layout.count() > 0:
             item = self.main_layout.takeAt(0)
 
@@ -38,7 +37,6 @@ class NodeListWidget(QScrollArea):
                     if isinstance(widget, ComfyUiNode):
                         widget.cleanup()
 
-                    widget.setParent(None)
                     widget.deleteLater()
 
         self.node_widgets.clear()
@@ -66,7 +64,6 @@ class NodeListWidget(QScrollArea):
             self.main_layout.addWidget(node_widget)
 
         self.main_layout.addStretch(1)
-        qDebug("2")
 
 
 class GroupTitle(QLabel):
