@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from PyQt5.QtCore import QEvent, QObject, QSize, Qt
 from PyQt5.QtGui import QColor, QIcon
 from PyQt5.QtWidgets import QComboBox, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
@@ -15,7 +17,7 @@ ARROW_DOWN = "▼"
 
 
 class SaveImageNode(ComfyUiNode):
-    type: str | None = "KritaSaveImage-15347"
+    type: ClassVar[str | None] = "KritaSaveImage-15347"
 
     def __init__(self, node: Node, layers_manager: PersistentLayerManager) -> None:
         super().__init__(node, layers_manager)
@@ -79,16 +81,18 @@ class SaveImageNode(ComfyUiNode):
             self.layers_manager.select(self.linked_layer)
 
     def _create_layer(self) -> None:
-        name = self._generate_layer_name()
         if self.layers_manager.exists(self.linked_layer):
             return
 
+        name = self._generate_layer_name()
         self.linked_layer = self.layers_manager.create(name)
 
     def _update_layer_name(self) -> None:
-        name = self._generate_layer_name()
         if self.layers_manager.exists(self.linked_layer):
+            name = self._generate_layer_name()
             self.layers_manager.rename(self.linked_layer, name)
+        else:
+            self._create_layer()
 
     def _generate_layer_name(self) -> str:
         arrow = ARROW_DOWN if self.combo_box.currentText() == COMBO_BELOW_TEXT else ARROW_UP

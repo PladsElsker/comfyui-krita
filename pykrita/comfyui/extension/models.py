@@ -17,20 +17,25 @@ class Node(BaseModel):
     direction: NodeDirection
 
 
-class PrunedKritaWorkflow(BaseModel):
-    name: str
-    inputs: list[Node]
-    outputs: list[Node]
-
-
 class UpdateWorkflowsRequest(BaseModel):
     name: str
     workflows: dict[str, list[Node]]
 
 
-class UpdateKritaDocumentsRequest(BaseModel):
+class UpdateDocumentsRequest(BaseModel):
     documents: list[str]
 
 
 class DocumentMappingResponse(BaseModel):
     mapping: dict[str, str]
+
+
+class FlatLayerToken(BaseModel):
+    quuid: str
+    type: Literal["layer", "group_start", "group_end", "target"]
+
+
+class SaveImageState(BaseModel):
+    id: int
+    insert_direction: Literal["above", "below"]
+    flat_layer_path: list[FlatLayerToken]

@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from krita import Document
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
@@ -9,6 +11,8 @@ from .nodes.node_factory import NodeFactory
 
 
 class NodeListWidget(QScrollArea):
+    LayerManager: ClassVar[type[PersistentLayerManager]] = PersistentLayerManager
+
     def __init__(self) -> None:
         super().__init__()
         self.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -42,7 +46,7 @@ class NodeListWidget(QScrollArea):
         self.node_widgets.clear()
 
         for node in nodes:
-            node_widget = NodeFactory.create(node, PersistentLayerManager.get_by_document(document))
+            node_widget = NodeFactory.create(node, NodeListWidget.LayerManager.get_by_document(document))
             self.node_widgets.append(node_widget)
 
         input_mode: NodeDirection = "input"

@@ -2,7 +2,7 @@ import json
 
 from .comfy_websocket import ComfyWebsocket
 from .document_monitor import DocumentMonitor
-from .models import DocumentMappingResponse, StatusRequest, UpdateKritaDocumentsRequest, UpdateWorkflowsRequest
+from .models import DocumentMappingResponse, StatusRequest, UpdateDocumentsRequest, UpdateWorkflowsRequest
 
 
 class ComfyKritaBridge:
@@ -59,7 +59,7 @@ class ComfyKritaBridge:
 
         sid = self.comfy_ws.sid
         documents = [doc.name() for doc in self.document_monitor.get_opened_documents()]
-        update_request = UpdateKritaDocumentsRequest(documents=documents)
+        update_request = UpdateDocumentsRequest(documents=documents)
         response = self.comfy_ws.put(f"/krita/{sid}/documents", update_request.model_dump())
         return DocumentMappingResponse.model_validate_json(response).mapping
 
