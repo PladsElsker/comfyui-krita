@@ -181,7 +181,7 @@ export function getActiveTabName() {
 export function getDocumentIdsNodeMap() {
     const getDocumentIdsNodeMap = {};
 
-    const kritaNodes = generateCustomKritaNodes();
+    const kritaNodes = generateActiveKritaNodes();
 
     for(const node of kritaNodes) {
         for(const documentId of node.documentIds) {
@@ -235,7 +235,7 @@ export function getInternalKritaNodes() {
 }
 
 
-export function generateCustomKritaNodes() {
+export function generateActiveKritaNodes() {
     const kritaNodes = [];
     const customKritaNodeFactory = new CustomKritaNodeFactory();
 
@@ -253,7 +253,7 @@ export function generateCustomKritaNodes() {
 }
 
 
-function getGraphNodesRecursive(rootGraph) {
+export function getGraphNodesRecursive(rootGraph) {
     if(!rootGraph) rootGraph = app.graph;
 
     const nodes = [];
