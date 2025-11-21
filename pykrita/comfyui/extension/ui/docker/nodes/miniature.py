@@ -12,7 +12,7 @@ class Miniature(QLabel):
         self.setFixedSize(32, 32)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet(
-            "background-color: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 2px; color: #666;",
+            "background-color: #303030; border: 1px solid #3a3a3a; border-radius: 2px; color: #666;",
         )
         self.svg_renderer = svg_renderer
         self.setPixmap(render_svg_to_pixmap(self.svg_renderer))

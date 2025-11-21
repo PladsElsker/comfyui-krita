@@ -1,18 +1,20 @@
-from typing import TYPE_CHECKING
+from typing import ClassVar
 
+from krita import Document
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
 
+from ...layers_manager import PersistentLayerManager
 from ...models import Node, NodeDirection
+from .nodes.comfyui_node import ComfyUiNode
 from .nodes.node_factory import NodeFactory
-
-if TYPE_CHECKING:
-    from .nodes.comfyui_node import ComfyUiNode
 
 
 class NodeListWidget(QScrollArea):
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
+    LayerManager: ClassVar[type[PersistentLayerManager]] = PersistentLayerManager
+
+    def __init__(self) -> None:
+        super().__init__()
         self.setFrameShape(QScrollArea.Shape.NoFrame)
         self.setFrameShadow(QScrollArea.Shadow.Plain)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -29,18 +31,22 @@ class NodeListWidget(QScrollArea):
 
         self.node_widgets: list[ComfyUiNode] = []
 
-    def rebuild(self, nodes: list[Node]) -> None:
+    def rebuild(self, nodes: list[Node], document: Document) -> None:
         while self.main_layout.count() > 0:
             item = self.main_layout.takeAt(0)
+
             if item is not None:
                 widget = item.widget()
                 if widget is not None:
+                    if isinstance(widget, ComfyUiNode):
+                        widget.cleanup()
+
                     widget.deleteLater()
 
         self.node_widgets.clear()
 
         for node in nodes:
-            node_widget = NodeFactory.create(node)
+            node_widget = NodeFactory.create(node, NodeListWidget.LayerManager.get_by_document(document))
             self.node_widgets.append(node_widget)
 
         input_mode: NodeDirection = "input"

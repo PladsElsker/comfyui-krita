@@ -2,7 +2,7 @@ import json
 
 from .comfy_websocket import ComfyWebsocket
 from .document_monitor import DocumentMonitor
-from .models import DocumentMappingResponse, StatusRequest, UpdateKritaDocumentsRequest, UpdateWorkflowsRequest
+from .models import DocumentMappingResponse, StatusRequest, UpdateDocumentsRequest, UpdateWorkflowsRequest
 
 
 class ComfyKritaBridge:
@@ -59,7 +59,7 @@ class ComfyKritaBridge:
 
         sid = self.comfy_ws.sid
         documents = [doc.name() for doc in self.document_monitor.get_opened_documents()]
-        update_request = UpdateKritaDocumentsRequest(documents=documents)
+        update_request = UpdateDocumentsRequest(documents=documents)
         response = self.comfy_ws.put(f"/krita/{sid}/documents", update_request.model_dump())
         return DocumentMappingResponse.model_validate_json(response).mapping
 
@@ -67,18 +67,25 @@ class ComfyKritaBridge:
         from . import ComfyUIExtension  # noqa: PLC0415
 
         for docker, window in ComfyUIExtension.get_comfyui_window_docker_pairs():
-            docker.update_title(workflows_request.name)
-            window_documents = [view.document() for view in window.views()]
+            active_document = window.activeView().document()
+
+            found_document_id = None
+            found_nodes = None
 
             for document_id, nodes in workflows_request.workflows.items():
                 document = self.document_monitor.mapping.get(document_id, None)
 
-                if document not in window_documents:
+                if document != active_document:
                     continue
 
-                if document is None:
-                    message = f"Unable to find document referenced by id {document_id}."
-                    raise ValueError(message)
+                found_document_id = document_id
+                found_nodes = nodes
 
-                docker.update_node_list(document, nodes)
-                docker.update_document_id(document_id)
+            if found_document_id is None:
+                return
+
+            if found_nodes is None:
+                return
+
+            docker.update_title(workflows_request.name, found_document_id)
+            docker.update_node_list(found_nodes, active_document)
