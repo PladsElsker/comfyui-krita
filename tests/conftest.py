@@ -42,7 +42,7 @@ def set_document_ids_func() -> Generator[Callable]:
     data = json.loads(ws.recv())["data"]
     sid = data["sid"]
 
-    def f(document_ids):
+    def f(document_ids: list) -> None:
         url = f"{COMFY_URL}/krita/{sid}/documents"
         payload = {"documents": document_ids}
         response = requests.put(url, json=payload, timeout=1)
@@ -89,7 +89,7 @@ def si4_workflow(default_page: Page, set_document_ids_func: Callable) -> Generat
             }}
             """,
     )
-    yield default_page
+    return default_page
 
 
 @pytest.fixture
@@ -103,4 +103,4 @@ def si5r_workflow(default_page: Page, set_document_ids_func: Callable) -> Genera
             }}
             """,
     )
-    yield default_page
+    return default_page

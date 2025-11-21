@@ -1,13 +1,12 @@
 # ruff: noqa: S101
-from collections.abc import Callable
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
 from playwright.sync_api import Page
 from pydantic import BaseModel, RootModel, ValidationError
-
 
 parent_path = Path(__file__).resolve().parent
 env_file = ".test.gh.env" if os.getenv("GITHUB_ACTIONS") else ".test.env"
@@ -214,7 +213,7 @@ def test__given_si4_workflow__when_get_document_ids_node_map__then_map_contains_
 
 
 def test__given_si4_workflow__when_modify_documents__then_document_ids_are_modified(si4_workflow: Page, set_document_ids_func: Callable) -> None:
-    page = si4_workflow  # noqa: RUF059
+    page = si4_workflow
     document_map = page.evaluate(
         """
         async () => {
@@ -268,7 +267,7 @@ def test__given_si4_workflow__when_modify_documents__then_document_ids_are_modif
 
 
 def test__given_si5r_workflow__when_generate_active_krita_nodes__then_5_nodes_are_returned(si5r_workflow: Page) -> None:
-    page = si5r_workflow  # noqa: RUF059
+    page = si5r_workflow
 
     nodes = page.evaluate(
         """
@@ -282,7 +281,7 @@ def test__given_si5r_workflow__when_generate_active_krita_nodes__then_5_nodes_ar
 
 
 def test__given_si5r_workflow__when_modify_documents__then_document_ids_are_modified(si5r_workflow: Page, set_document_ids_func: Callable) -> None:
-    page = si5r_workflow  # noqa: RUF059
+    page = si5r_workflow
     document_map = page.evaluate(
         """
         async () => {
