@@ -276,7 +276,7 @@ def test__given_si4_workflow__when_modify_documents__then_document_ids_are_modif
 
 
 def test__given_si5r_workflow__when_generate_active_krita_nodes__then_5_nodes_are_returned(si5r_workflow: tuple[Page, WebSocket, str]) -> None:
-    page, ws, sid = si5r_workflow
+    page, ws, sid = si5r_workflow  # noqa: RUF059
 
     nodes = page.evaluate(
         """
@@ -290,7 +290,7 @@ def test__given_si5r_workflow__when_generate_active_krita_nodes__then_5_nodes_ar
 
 
 def test__given_si5r_workflow__when_modify_documents__then_document_ids_are_modified(si5r_workflow: tuple[Page, WebSocket, str]) -> None:
-    page, ws, sid = si5r_workflow
+    page, ws, sid = si5r_workflow  # noqa: RUF059
     document_map = page.evaluate(
         """
         async () => {

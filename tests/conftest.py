@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from playwright.sync_api import Page, sync_playwright
 from websocket import WebSocket
 
-from .workflows import SI1, SI3, SI5R, SI4
+from .workflows import SI1, SI3, SI4, SI5R
 
 parent_path = Path(__file__).resolve().parent
 env_file = ".test.gh.env" if os.getenv("GITHUB_ACTIONS") else ".test.env"
