@@ -33,7 +33,7 @@ An idiomatic extension:
 ### ComfyUI
 - [x] Exposes the currently opened workflow in the UI to Krita
 - [x] Minimizes patching and hijacking of ComfyUI internals to avoid maintenance hell
-- [ ] Brittle frontend dependencies are tested everyday with CI
+- [x] Brittle frontend dependencies are tested everyday with CI
 - [ ] `Save Image (as krita layer)` → Sends the generated image back to a specified location in Krita’s layer tree
 - [ ] `Load Image (from krita layers)` → Composites specific Krita layers and sends them as a single image to ComfyUI
 - [ ] `Load Mask (from Krita selection)` → Retrieves the active mask selection 
