@@ -89,7 +89,7 @@ export function fixKritaNodeUi(node) {
     }
 
     if(node.subgraph) {
-        for(const subnode in node.subgraph.nodes) {
+        for(const subnode of node.subgraph.nodes) {
             fixKritaNodeUi(subnode);
         }
     }
