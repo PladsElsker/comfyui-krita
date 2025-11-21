@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from playwright.sync_api import Page, sync_playwright
 from websocket import WebSocket
 
-from .workflows import SI1, SI3, SI4
+from .workflows import SI1, SI3, SI5R, SI4
 
 parent_path = Path(__file__).resolve().parent
 env_file = ".test.gh.env" if os.getenv("GITHUB_ACTIONS") else ".test.env"
@@ -79,6 +79,33 @@ def si4_workflow(default_page: Page) -> Generator[tuple[Page, WebSocket, str]]:
             async () => {{
                 const app = (await import('../../../scripts/app.js')).app;
                 await app.loadGraphData({SI4});
+            }}
+            """,
+    )
+    yield default_page, ws, sid
+    ws.close()
+
+
+@pytest.fixture
+def si5r_workflow(default_page: Page) -> Generator[tuple[Page, WebSocket, str]]:
+    parsed_url = urlparse(COMFY_URL)
+    ws_scheme = "wss" if parsed_url.scheme == "https" else "ws"
+    ws_url = f"{ws_scheme}://{parsed_url.netloc}/ws"
+    ws = websocket.create_connection(ws_url)
+
+    data = json.loads(ws.recv())["data"]
+    sid = data["sid"]
+
+    url = f"{COMFY_URL}/krita/{sid}/documents"
+    payload = {"documents": ["banner"]}
+    response = requests.put(url, json=payload, timeout=1)
+    response.raise_for_status()
+
+    default_page.evaluate(
+        f"""
+            async () => {{
+                const app = (await import('../../../scripts/app.js')).app;
+                await app.loadGraphData({SI5R});
             }}
             """,
     )
