@@ -1,3 +1,4 @@
+import contextlib
 import json
 
 from .comfy_websocket import ComfyWebsocket
@@ -14,8 +15,9 @@ class ComfyKritaBridge:
     def _define_commands(self) -> None:
         @self.comfy_ws.handler("status")
         def status_statement(data: dict) -> None:
-            status_request = StatusRequest.model_validate(data)
-            self.status_statement(status_request)
+            with contextlib.suppress(Exception):
+                status_request = StatusRequest.model_validate(data)
+                self.status_statement(status_request)
 
         @self.comfy_ws.handler("krita::workflows::update")
         def update_workflows(data: dict) -> None:
