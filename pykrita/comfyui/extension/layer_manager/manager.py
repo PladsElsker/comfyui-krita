@@ -1,0 +1,55 @@
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, ClassVar
+
+from krita import Document
+
+from ..models import PersistentLayer
+
+if TYPE_CHECKING:
+    from .notifier import PersistentLayerNotifier
+
+
+class LayerManager(ABC):
+    documents: ClassVar[list[Document]] = []
+    managers: ClassVar[dict[int, "LayerManager"]] = {}
+
+    def __init__(self, document: Document) -> None:
+        super().__init__()
+        self.document = document
+
+    @abstractmethod
+    def create(self, name: str, path: list | None = None) -> PersistentLayer: ...
+
+    @abstractmethod
+    def delete(self, persistent_layer: PersistentLayer) -> None: ...
+
+    @abstractmethod
+    def exists(self, persistent_layer: PersistentLayer) -> bool: ...
+
+    @abstractmethod
+    def rename(self, persistent_layer: PersistentLayer, name: str) -> None: ...
+
+    @abstractmethod
+    def select(self, persistent_layer: PersistentLayer) -> None: ...
+
+    @abstractmethod
+    def notifier(self, persistent_layer: PersistentLayer) -> "PersistentLayerNotifier | None": ...
+
+    @abstractmethod
+    def show(self, persistent_layer: PersistentLayer) -> None: ...
+
+    @abstractmethod
+    def hide(self, persistent_layer: PersistentLayer) -> None: ...
+
+    @classmethod
+    def get_by_document(cls, document: Document) -> "LayerManager":
+        if document in cls.documents:
+            index = cls.documents.index(document)
+        else:
+            cls.documents.append(document)
+            index = len(cls.documents) - 1
+
+        if index not in cls.managers:
+            cls.managers[index] = cls(document)
+
+        return cls.managers[index]

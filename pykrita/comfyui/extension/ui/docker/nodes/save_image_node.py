@@ -4,7 +4,7 @@ from PyQt5.QtCore import QEvent, QObject, QSize, Qt
 from PyQt5.QtGui import QColor, QIcon
 from PyQt5.QtWidgets import QComboBox, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
-from ....layers_manager import PersistentLayerManager
+from ....layer_manager import LayerManager
 from ....models import FlatLayerToken, Node, PersistentLayer
 from ...icons import NO_VISIBILITY_ICON, SAVE_ICON, VISIBILITY_ICON, render_svg_to_pixmap
 from .comfyui_node import ComfyUiNode
@@ -19,8 +19,8 @@ ARROW_DOWN = "▼"
 class SaveImageNode(ComfyUiNode):
     type: ClassVar[str | None] = "KritaSaveImage-15347"
 
-    def __init__(self, node: Node, layers_manager: PersistentLayerManager) -> None:
-        super().__init__(node, layers_manager)
+    def __init__(self, node: Node, layer_manager: LayerManager) -> None:
+        super().__init__(node, layer_manager)
         self.node_name = node.name
         self.linked_layer: PersistentLayer | None = None
 
@@ -69,22 +69,22 @@ class SaveImageNode(ComfyUiNode):
         if self.linked_layer is None:
             return
 
-        self.layers_manager.delete(self.linked_layer)
+        self.layer_manager.delete(self.linked_layer)
 
     def _toggle_layer_visibility(self) -> None:
         self.show_linked_layer = not self.show_linked_layer
 
-        if self.linked_layer is None or not self.layers_manager.exists(self.linked_layer):
+        if self.linked_layer is None or not self.layer_manager.exists(self.linked_layer):
             self._create_layer()
 
         assert self.linked_layer is not None  # noqa: S101
 
         if self.show_linked_layer:
             self._set_button_visibility_on()
-            self.layers_manager.show(self.linked_layer)
+            self.layer_manager.show(self.linked_layer)
         else:
             self._set_button_visibility_off()
-            self.layers_manager.hide(self.linked_layer)
+            self.layer_manager.hide(self.linked_layer)
 
     def _set_button_visibility_on(self) -> None:
         self.visibility_button.setToolTip("Hide linked layer")
@@ -105,19 +105,19 @@ class SaveImageNode(ComfyUiNode):
         self.visibility_button.setIcon(QIcon(pixmap))
 
     def _update_layer_name(self) -> None:
-        if self.linked_layer is not None and self.layers_manager.exists(self.linked_layer):
+        if self.linked_layer is not None and self.layer_manager.exists(self.linked_layer):
             name = self._generate_layer_name()
-            self.layers_manager.rename(self.linked_layer, name)
+            self.layer_manager.rename(self.linked_layer, name)
         else:
             self._create_layer()
 
     def _create_layer(self) -> None:
-        if self.linked_layer is not None and self.layers_manager.exists(self.linked_layer):
+        if self.linked_layer is not None and self.layer_manager.exists(self.linked_layer):
             return
 
         name = self._generate_layer_name()
         path = self._generate_layer_path()
-        self.linked_layer = self.layers_manager.create(name, path)
+        self.linked_layer = self.layer_manager.create(name, path)
 
     def _generate_layer_name(self) -> str:
         arrow = ARROW_DOWN if self.combo_box.currentText() == COMBO_BELOW_TEXT else ARROW_UP
