@@ -31,7 +31,7 @@ class NodeListWidget(QScrollArea):
 
         self.node_widgets: list[ComfyUiNode] = []
 
-    def rebuild(self, nodes: list[Node], document: Document) -> None:
+    def rebuild(self, nodes: list[Node], document: Document) -> None:  # noqa: C901
         while self.main_layout.count() > 0:
             item = self.main_layout.takeAt(0)
 
