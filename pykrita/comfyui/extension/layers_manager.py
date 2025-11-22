@@ -106,12 +106,7 @@ class PersistentLayerManager:
         self.registered_layers[persistent_layer.quuid].rendered = False
 
     def _step(self) -> None:
-        (
-            additions,
-            modifications,
-            deletions,
-            actual_state,
-        ) = PersistentLayerInternalState.compute_diffs(self)
+        additions, modifications, deletions, actual_state = PersistentLayerInternalState.compute_diffs(self)
 
         if len(deletions) > 0:
             uuid = next(iter(deletions.keys()))
@@ -421,47 +416,35 @@ class LayerUtils:
         m = len(out_of_date_no_token)
         n = len(up_to_date)
 
-        # 1. Initialize DP table
-        # dp[i][j] = min operations to transform out_of_date_no_token[:i] to up_to_date[:j]
         dp = [[0] * (n + 1) for _ in range(m + 1)]
 
-        # 2. Base cases
-        # Deleting all characters from source
         for i in range(m + 1):
             dp[i][0] = i
 
-        # Inserting all characters into target
         for j in range(n + 1):
             dp[0][j] = j
 
-        # 3. Fill DP table
         for i in range(1, m + 1):
             for j in range(1, n + 1):
                 if out_of_date_no_token[i - 1] == up_to_date[j - 1]:
-                    dp[i][j] = dp[i - 1][j - 1]  # Match: no new action needed
+                    dp[i][j] = dp[i - 1][j - 1]
                 else:
-                    # Min of Delete (from out_of_date) or Create (into up_to_date)
                     dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1])
 
-        # 4. Backtrack to find the specific actions
         actions: list[FlatTokenAction] = []
         i, j = m, n
 
         while i > 0 or j > 0:
-            # If items match, move diagonally
             if i > 0 and j > 0 and out_of_date_no_token[i - 1] == up_to_date[j - 1]:
                 i -= 1
                 j -= 1
-            # If current cost comes from insertion (left cell is min)
+            elif i > 0 and (j == 0 or dp[i][j - 1] > dp[i - 1][j]):
+                actions.append(FlatTokenAction(type="delete", token=out_of_date_no_token[i - 1], index=i - 1))
+                i -= 1
             elif j > 0 and (i == 0 or dp[i][j - 1] <= dp[i - 1][j]):
                 actions.append(FlatTokenAction(type="create", token=up_to_date[j - 1], index=i))
                 j -= 1
-            # If current cost comes from deletion (top cell is min)
-            elif i > 0 and (j == 0 or dp[i][j - 1] > dp[i - 1][j]):
-                actions.append(FlatTokenAction(type="delete", token=up_to_date[i - 1], index=i - 1))
-                i -= 1
 
-        # Backtracking produces actions in reverse order (end-to-start)
         actions.reverse()
 
         rebased, token_index = cls._apply_actions(actions, out_of_date, token_index)
@@ -492,37 +475,28 @@ class LayerUtils:
     def _apply_actions(actions: list["FlatTokenAction"], tokens: list[FlatLayerToken], token_index: int) -> tuple[list[FlatLayerToken], int]:
         tokens = list(tokens)
 
-        # 2. Track the cumulative shift caused by insertions/deletions
         shift = 0
 
         for action in actions:
-            # The index where this action WOULD happen in the current list
-            # (ignoring the existence of the target token for a moment)
             current_action_index = action.index + shift
 
-            # CASE 1: Action happens BEFORE the target
             if current_action_index < token_index:
                 if action.type == "create":
                     tokens.insert(current_action_index, action.token)
-                    token_index += 1  # Target pushed right
-                    shift += 1  # List grew
+                    token_index += 1
+                    shift += 1
                 elif action.type == "delete":
                     tokens.pop(current_action_index)
-                    token_index -= 1  # Target shifts left
-                    shift -= 1  # List shrank
-
-            # CASE 2: Action happens AFTER (or at) the target position
+                    token_index -= 1
+                    shift -= 1
             else:
-                # We must +1 to hop over the target token
                 actual_insertion_point = current_action_index + 1
 
                 if action.type == "create":
                     tokens.insert(actual_insertion_point, action.token)
-                    # Target index does not change
                     shift += 1
                 elif action.type == "delete":
                     tokens.pop(actual_insertion_point)
-                    # Target index does not change
                     shift -= 1
 
         return tokens, token_index
