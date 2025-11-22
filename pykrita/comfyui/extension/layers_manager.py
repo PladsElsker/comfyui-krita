@@ -1,4 +1,5 @@
 import contextlib
+import difflib
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal, cast
 
@@ -407,39 +408,35 @@ class LayerUtils:
 
         out_of_date_no_token = [token for token in out_of_date if token.type != "target"]
 
-        m = len(out_of_date_no_token)
-        n = len(up_to_date)
-
-        dp = [[0] * (n + 1) for _ in range(m + 1)]
-
-        for i in range(m + 1):
-            dp[i][0] = i
-
-        for j in range(n + 1):
-            dp[0][j] = j
-
-        for i in range(1, m + 1):
-            for j in range(1, n + 1):
-                if out_of_date_no_token[i - 1] == up_to_date[j - 1]:
-                    dp[i][j] = dp[i - 1][j - 1]
-                else:
-                    dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1])
-
+        matcher = difflib.SequenceMatcher(None, out_of_date_no_token, up_to_date)
         actions: list[FlatTokenAction] = []
-        i, j = m, n
 
-        while i > 0 or j > 0:
-            if i > 0 and j > 0 and out_of_date_no_token[i - 1] == up_to_date[j - 1]:
-                i -= 1
-                j -= 1
-            elif i > 0 and (j == 0 or dp[i][j - 1] > dp[i - 1][j]):
-                actions.append(FlatTokenAction(type="delete", token=out_of_date_no_token[i - 1], index=i - 1))
-                i -= 1
-            elif j > 0 and (i == 0 or dp[i][j - 1] <= dp[i - 1][j]):
-                actions.append(FlatTokenAction(type="create", token=up_to_date[j - 1], index=i))
-                j -= 1
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "replace":
+                src_slice = out_of_date_no_token[i1:i2]
+                dest_slice = up_to_date[j1:j2]
 
-        actions.reverse()
+                common_len = min(len(src_slice), len(dest_slice))
+
+                for k in range(common_len):
+                    actions.append(FlatTokenAction(type="replace", token=dest_slice[k], index=i1 + k))
+
+                if len(src_slice) > len(dest_slice):
+                    for k in range(common_len, len(src_slice)):
+                        actions.append(FlatTokenAction(type="delete", token=src_slice[k], index=i1 + k))
+
+                elif len(dest_slice) > len(src_slice):
+                    insertion_start = i1 + common_len
+                    for k in range(common_len, len(dest_slice)):
+                        actions.append(FlatTokenAction(type="create", token=dest_slice[k], index=insertion_start))
+
+            elif tag == "delete":
+                for k in range(i1, i2):
+                    actions.append(FlatTokenAction(type="delete", token=out_of_date_no_token[k], index=k))
+
+            elif tag == "insert":
+                for k in range(j1, j2):
+                    actions.append(FlatTokenAction(type="create", token=up_to_date[k], index=i1))
 
         rebased, token_index = cls._apply_actions(actions, out_of_date, token_index)
 
@@ -468,11 +465,18 @@ class LayerUtils:
     @staticmethod
     def _apply_actions(actions: list["FlatTokenAction"], tokens: list[FlatLayerToken], token_index: int) -> tuple[list[FlatLayerToken], int]:
         tokens = list(tokens)
-
         shift = 0
 
         for action in actions:
             current_action_index = action.index + shift
+
+            if action.type == "replace":
+                if current_action_index < token_index:
+                    tokens[current_action_index] = action.token
+                else:
+                    tokens[current_action_index + 1] = action.token
+
+                continue
 
             if current_action_index < token_index:
                 if action.type == "create":
@@ -497,6 +501,6 @@ class LayerUtils:
 
 
 class FlatTokenAction(BaseModel):
-    type: Literal["create", "delete"]
+    type: Literal["create", "delete", "replace"]
     token: FlatLayerToken
     index: int
