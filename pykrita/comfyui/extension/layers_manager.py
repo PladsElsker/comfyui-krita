@@ -325,6 +325,7 @@ class PersistentLayerInternalState(BaseModel):
         for i, token in enumerate(path):
             if token.quuid == layer.uniqueId():
                 path[i] = FlatLayerToken(quuid=layer.uniqueId(), type="target")
+                break
 
         return cls(
             name=layer.name(),
