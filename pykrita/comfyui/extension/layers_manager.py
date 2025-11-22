@@ -208,27 +208,6 @@ class PersistentLayerManager:
 
         _to.path = _from.path
 
-        """
-        if _from.same_path(_to.path):
-            return
-
-        res = self._rebase(_to)
-
-        if res is None:
-            return
-
-        rebased, rel_path = res
-
-        saved_path = _to.path
-        try:
-            _to.path = rebased
-
-            rel_path.parent.removeChildNode(match)
-            rel_path.parent.addChildNode(match, rel_path.sibbling)  # type: ignore
-        except Exception:  # noqa: BLE001
-            _to.path = saved_path
-        """
-
     def _schedule_step_slow(self) -> None:
         self._timer.start(self.refresh_ms)
 
