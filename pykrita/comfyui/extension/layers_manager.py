@@ -182,7 +182,7 @@ class PersistentLayerManager:
         saved_path = layer.path
         try:
             layer.path = rebased
-            rel_path.parent.addChildNode(new_layer, rel_path.sibbling)  # type: ignore
+            rel_path.parent.addChildNode(new_layer, rel_path.sibling)  # type: ignore
         except Exception:  # noqa: BLE001
             layer.path = saved_path
 
@@ -220,7 +220,7 @@ class PersistentLayerManager:
         roots = self.document.topLevelNodes()
         tokens = LayerUtils.to_flat_tokens(roots)
         tokens = [token for token in tokens if token.quuid != to.linked_uuid]
-        rebased, parent_token, sibbling_token = LayerUtils.rebase(to.path, tokens)
+        rebased, parent_token, sibling_token = LayerUtils.rebase(to.path, tokens)
         all_layers = LayerUtils.flatten_tree(roots)
 
         if parent_token is None:
@@ -231,12 +231,12 @@ class PersistentLayerManager:
         if parent is None:
             return None
 
-        if sibbling_token is not None:
-            sibbling = next((layer_search for layer_search in all_layers if layer_search.uniqueId() == sibbling_token.quuid), None)
+        if sibling_token is not None:
+            sibling = next((layer_search for layer_search in all_layers if layer_search.uniqueId() == sibling_token.quuid), None)
         else:
-            sibbling = None
+            sibling = None
 
-        return rebased, LayerRelativePath(parent=parent, sibbling=sibbling)
+        return rebased, LayerRelativePath(parent=parent, sibling=sibling)
 
     @classmethod
     def get_by_document(cls, document: Document) -> "PersistentLayerManager":
@@ -356,7 +356,7 @@ class VolatileId(QUuid):
 @dataclass
 class LayerRelativePath:
     parent: Node
-    sibbling: Node | None
+    sibling: Node | None
 
 
 class LayerUtils:
@@ -454,13 +454,13 @@ class LayerUtils:
                 parent = rebased[parent_index]
                 break
 
-        sibbling = None
-        sibbling_index = token_index - 1
+        sibling = None
+        sibling_index = token_index - 1
 
-        if sibbling_index >= 0 and rebased[sibbling_index].type != "group_start":
-            sibbling = rebased[sibbling_index]
+        if sibling_index >= 0 and rebased[sibling_index].type != "group_start":
+            sibling = rebased[sibling_index]
 
-        return rebased, parent, sibbling
+        return rebased, parent, sibling
 
     @staticmethod
     def _apply_actions(actions: list["FlatTokenAction"], tokens: list[FlatLayerToken], token_index: int) -> tuple[list[FlatLayerToken], int]:
