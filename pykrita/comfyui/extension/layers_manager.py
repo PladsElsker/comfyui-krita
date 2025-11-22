@@ -156,8 +156,13 @@ class PersistentLayerManager:
             return
 
         node_id = new_layer.uniqueId()
-        layer.set_uuid(node_id)
+        layer.linked_uuid = node_id
         self.reverse_lookup[node_id] = uuid
+
+        for token in layer.path:
+            if token.type == "target":
+                token.quuid = node_id
+
         new_layer.setOpacity(0)
         new_layer.setVisible(False)
         new_layer.setAlphaLocked(True)
@@ -254,13 +259,6 @@ class PersistentLayerInternalState(BaseModel):
     type: str = "vectorlayer"
     path: list[FlatLayerToken]
     rendered: bool = False
-
-    def set_uuid(self, uuid: "VolatileId") -> None:
-        self.linked_uuid = uuid
-
-        for token in self.path:
-            if token.type == "target":
-                token.quuid = uuid
 
     def should_be_deleted(self) -> bool:
         if not self.rendered and self.linked_uuid is not None:
