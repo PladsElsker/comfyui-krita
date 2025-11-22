@@ -5,8 +5,8 @@ from PyQt5.QtGui import QColor, QIcon
 from PyQt5.QtWidgets import QComboBox, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
 from ....layers_manager import PersistentLayerManager
-from ....models import Node, PersistentLayer
-from ...icons import SAVE_ICON, TARGET_ICON, render_svg_to_pixmap
+from ....models import FlatLayerToken, Node, PersistentLayer
+from ...icons import NO_VISIBILITY_ICON, SAVE_ICON, VISIBILITY_ICON, render_svg_to_pixmap
 from .comfyui_node import ComfyUiNode
 from .miniature import Miniature
 
@@ -53,18 +53,13 @@ class SaveImageNode(ComfyUiNode):
 
         self.main_layout.addLayout(self.middle_rack)
 
+        self.show_linked_layer = True
         self.action_buttons_container = QHBoxLayout()
-        self.target_button = QToolButton()
-        self.target_button.setAutoRaise(True)
-        pixmap = render_svg_to_pixmap(TARGET_ICON, size=QSize(20, 20), color=QColor(192, 192, 192))
-        self.target_button.setIcon(QIcon(pixmap))
-
-        if pixmap is not None:
-            self.target_button.setIconSize(pixmap.size())
-
-        self.target_button.setToolTip("Locate linked layer")
-        self.action_buttons_container.addWidget(self.target_button)
-        self.target_button.clicked.connect(self._locate_layer)
+        self.visibility_button = QToolButton()
+        self.visibility_button.setAutoRaise(True)
+        self._set_button_visibility_on()
+        self.action_buttons_container.addWidget(self.visibility_button)
+        self.visibility_button.clicked.connect(self._toggle_layer_visibility)
 
         self.main_layout.addLayout(self.action_buttons_container)
 
@@ -76,20 +71,38 @@ class SaveImageNode(ComfyUiNode):
 
         self.layers_manager.delete(self.linked_layer)
 
-    def _locate_layer(self) -> None:
-        if self.linked_layer is not None and self.layers_manager.exists(self.linked_layer):
-            self.layers_manager.select(self.linked_layer)
-        else:
+    def _toggle_layer_visibility(self) -> None:
+        self.show_linked_layer = not self.show_linked_layer
+
+        if self.linked_layer is None or not self.layers_manager.exists(self.linked_layer):
             self._create_layer()
-            assert self.linked_layer is not None  # noqa: S101
-            self.layers_manager.select(self.linked_layer)
 
-    def _create_layer(self) -> None:
-        if self.linked_layer is not None and self.layers_manager.exists(self.linked_layer):
-            return
+        assert self.linked_layer is not None  # noqa: S101
 
-        name = self._generate_layer_name()
-        self.linked_layer = self.layers_manager.create(name)
+        if self.show_linked_layer:
+            self._set_button_visibility_on()
+            self.layers_manager.show(self.linked_layer)
+        else:
+            self._set_button_visibility_off()
+            self.layers_manager.hide(self.linked_layer)
+
+    def _set_button_visibility_on(self) -> None:
+        self.visibility_button.setToolTip("Hide linked layer")
+        pixmap = render_svg_to_pixmap(VISIBILITY_ICON, size=QSize(20, 20), color=QColor(192, 192, 192))
+
+        if pixmap is not None:
+            self.visibility_button.setIconSize(pixmap.size())
+
+        self.visibility_button.setIcon(QIcon(pixmap))
+
+    def _set_button_visibility_off(self) -> None:
+        self.visibility_button.setToolTip("Show linked layer")
+        pixmap = render_svg_to_pixmap(NO_VISIBILITY_ICON, size=QSize(20, 20), color=QColor(192, 192, 192))
+
+        if pixmap is not None:
+            self.visibility_button.setIconSize(pixmap.size())
+
+        self.visibility_button.setIcon(QIcon(pixmap))
 
     def _update_layer_name(self) -> None:
         if self.linked_layer is not None and self.layers_manager.exists(self.linked_layer):
@@ -98,9 +111,20 @@ class SaveImageNode(ComfyUiNode):
         else:
             self._create_layer()
 
+    def _create_layer(self) -> None:
+        if self.linked_layer is not None and self.layers_manager.exists(self.linked_layer):
+            return
+
+        name = self._generate_layer_name()
+        path = self._generate_layer_path()
+        self.linked_layer = self.layers_manager.create(name, path)
+
     def _generate_layer_name(self) -> str:
         arrow = ARROW_DOWN if self.combo_box.currentText() == COMBO_BELOW_TEXT else ARROW_UP
         return f"{self.node_name} {arrow}"
+
+    def _generate_layer_path(self) -> list[FlatLayerToken] | None:
+        return None
 
 
 class WheelFilter(QObject):

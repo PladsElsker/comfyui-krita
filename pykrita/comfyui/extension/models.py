@@ -49,9 +49,10 @@ class SaveImageState(BaseModel):
     id: int
     insert_direction: Literal["above", "below"]
     path: list[FlatLayerToken]
+    visible: bool
 
 
 class PersistentLayer(BaseModel):
     quuid: Any
     path: list[FlatLayerToken] | None = None
-    hidden: bool = False
+    visible: bool = True

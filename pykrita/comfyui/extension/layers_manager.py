@@ -85,14 +85,6 @@ class PersistentLayerManager:
 
         return self.layer_notifiers[persistent_layer.quuid]
 
-    def move(self, persistent_layer: PersistentLayer, path: list[FlatLayerToken]) -> None:
-        if not self.exists(persistent_layer):
-            message = f"Layer {persistent_layer.model_dump()} does not exist"
-            raise ValueError(message)
-
-        roots = self.document.topLevelNodes()
-        tokens = LayerUtils.to_flat_tokens(roots)
-
     def show(self, persistent_layer: PersistentLayer) -> None:
         if persistent_layer.quuid not in self.registered_layers:
             return
@@ -130,6 +122,7 @@ class PersistentLayerManager:
     def _delete(self, uuid: "PersistentId", layer: "PersistentLayerInternalState") -> None:
         def _remove_id() -> None:
             linked_uuid = self.registered_layers[uuid].linked_uuid
+            self.registered_layers[uuid].linked_uuid = None
 
             if linked_uuid is not None:
                 self.reverse_lookup.pop(linked_uuid, None)
@@ -270,7 +263,7 @@ class PersistentLayerInternalState(BaseModel):
                 token.quuid = uuid
 
     def should_be_deleted(self) -> bool:
-        if not self.rendered:
+        if not self.rendered and self.linked_uuid is not None:
             return True
 
         return self.scheduled_for_deletion
@@ -464,9 +457,9 @@ class LayerUtils:
                 break
 
         sibbling = None
-        sibbling_index = token_index + 1
+        sibbling_index = token_index - 1
 
-        if sibbling_index < len(rebased) and rebased[sibbling_index].type != "group_end":
+        if sibbling_index >= 0 and rebased[sibbling_index].type != "group_start":
             sibbling = rebased[sibbling_index]
 
         return rebased, parent, sibbling
