@@ -4,14 +4,14 @@ from krita import Document
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
-from ...layers_manager import PersistentLayerManager
+from ...layer_manager import LayerManager, PersistentLayerManager
 from ...models import Node, NodeDirection
 from .nodes.comfyui_node import ComfyUiNode
 from .nodes.node_factory import NodeFactory
 
 
 class NodeListWidget(QScrollArea):
-    LayerManager: ClassVar[type[PersistentLayerManager]] = PersistentLayerManager
+    LayerManager: ClassVar[type["LayerManager"]] = PersistentLayerManager
 
     def __init__(self) -> None:
         super().__init__()
