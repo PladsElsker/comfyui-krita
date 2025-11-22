@@ -1,86 +1,117 @@
-from typing import Any, ClassVar
+from dataclasses import dataclass
+from typing import Any, ClassVar, Literal, cast
 
 from krita import Document, Node
 from pydantic import BaseModel
-from PyQt5.QtCore import QTimer, QUuid
+from PyQt5.QtCore import QObject, QTimer, QUuid, pyqtBoundSignal, pyqtSignal
+
+from .models import FlatLayerToken, PersistentLayer
 
 
 class PersistentLayerManager:
     documents: ClassVar[list[Document]] = []
     managers: ClassVar[dict[int, "PersistentLayerManager"]] = {}
 
-    def __init__(self, document: Document, refresh_ms: int = 300) -> None:
+    def __init__(self, document: Document, refresh_ms: int = 300, default_layer_type: str = "vectorlayer") -> None:
         self.document = document
         self.refresh_ms = refresh_ms
-        self.registered_layers: dict[QUuid, PersistentLayer] = {}
-        self.reverse_lookup: dict[QUuid, QUuid] = {}
-        self.expected: dict[PersistentLayer, QUuid | None] = {}
+        self.default_layer_type = default_layer_type
+        self.registered_layers: dict[PersistentId, PersistentLayerInternalState] = {}
+        self.reverse_lookup: dict[VolatileId, PersistentId] = {}
         self._timer = QTimer()
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._step)
         self._schedule_step_slow()
+        self.layer_notifiers: dict[PersistentId, PersistentLayerNotifier] = {}
 
-    def create(self, name: str) -> QUuid:
+    def create(self, name: str, path: list[FlatLayerToken] | None = None) -> PersistentLayer:
         uuid = QUuid.createUuid()
-        layer = PersistentLayer(name=name)
-        self.registered_layers[uuid] = layer
-        return uuid
 
-    def delete(self, uuid: QUuid) -> None:
-        if uuid not in self.registered_layers:
+        if path is None:
+            roots = self.document.topLevelNodes()
+            tokens = LayerUtils.to_flat_tokens(roots)
+            tokens.append(FlatLayerToken(quuid=None, type="target"))
+            path = tokens
+
+        layer = PersistentLayerInternalState(name=name, path=path, rendered=True)
+        self.registered_layers[uuid] = layer
+        return PersistentLayer(quuid=uuid)
+
+    def delete(self, persistent_layer: PersistentLayer) -> None:
+        if persistent_layer.quuid not in self.registered_layers:
             return
 
-        self.registered_layers[uuid].scheduled_for_deletion = True
+        self.registered_layers[persistent_layer.quuid].scheduled_for_deletion = True
 
-    def exists(self, uuid: QUuid) -> bool:
-        if uuid not in self.registered_layers:
+    def exists(self, persistent_layer: PersistentLayer) -> bool:
+        if persistent_layer.quuid not in self.registered_layers:
             return False
 
-        return not self.registered_layers[uuid].scheduled_for_deletion
+        return not self.registered_layers[persistent_layer.quuid].scheduled_for_deletion
 
-    def rename(self, uuid: QUuid, name: str) -> None:
-        if uuid not in self.registered_layers:
-            message = f"Layer {uuid} has not been created"
+    def rename(self, persistent_layer: PersistentLayer, name: str) -> None:
+        if persistent_layer.quuid not in self.registered_layers:
+            message = f"Layer {persistent_layer.quuid} has not been created"
             raise ValueError(message)
 
-        self.registered_layers[uuid].name = name
+        self.registered_layers[persistent_layer.quuid].name = name
 
-    def select(self, uuid: QUuid) -> None:
-        if uuid not in self.registered_layers:
+    def select(self, persistent_layer: PersistentLayer) -> None:
+        if persistent_layer.quuid not in self.registered_layers:
             return
 
-        if self.registered_layers[uuid] is None:
+        if self.registered_layers[persistent_layer.quuid] is None:
             return
 
-        persistent_layer = self.registered_layers[uuid]
+        internal_layer = self.registered_layers[persistent_layer.quuid]
 
-        if persistent_layer.linked_uuid is None:
+        if internal_layer.linked_uuid is None:
             return
 
-        match = self._validate_uuid(persistent_layer.linked_uuid)
+        match = self._validate_uuid(internal_layer.linked_uuid)
 
         if match is None:
             return
 
         self.document.setActiveNode(match)
 
-    def _step(self) -> None:
+    def notifier(self, persistent_layer: PersistentLayer) -> "PersistentLayerNotifier | None":
+        if not self.exists(persistent_layer):
+            message = f"Layer {persistent_layer.model_dump()} does not exist"
+            raise ValueError(message)
+
+        if persistent_layer.quuid not in self.layer_notifiers:
+            self.layer_notifiers[persistent_layer.quuid] = PersistentLayerNotifier()
+
+        return self.layer_notifiers[persistent_layer.quuid]
+
+    def move(self, persistent_layer: PersistentLayer, path: list[FlatLayerToken]) -> None:
+        if not self.exists(persistent_layer):
+            message = f"Layer {persistent_layer.model_dump()} does not exist"
+            raise ValueError(message)
+
         roots = self.document.topLevelNodes()
-        existing_layers = [PersistentLayer.from_krita(layer) for layer in LayerUtils.flatten_tree(roots)]
-        actual_state = {
-            self.reverse_lookup[ex.linked_uuid]: ex for ex in existing_layers if ex.linked_uuid is not None and ex.linked_uuid in self.reverse_lookup
-        }
+        tokens = LayerUtils.to_flat_tokens(roots)
 
-        additions = {uuid: layer for uuid, layer in self.registered_layers.items() if layer.linked_uuid is None or uuid not in actual_state}
-        modifications = {
-            uuid: layer
-            for uuid, layer in self.registered_layers.items()
-            if layer.linked_uuid is not None and (uuid in actual_state and PersistentLayer.state_differs(actual_state[uuid], layer))
-        }
-        deletions = {uuid: layer for uuid, layer in self.registered_layers.items() if layer.scheduled_for_deletion}
+    def show(self, persistent_layer: PersistentLayer) -> None:
+        if persistent_layer.quuid not in self.registered_layers:
+            return
 
-        if len(deletions) > 1 or len(additions) > 1 or len(modifications) > 1:
-            pass
+        self.registered_layers[persistent_layer.quuid].rendered = True
+
+    def hide(self, persistent_layer: PersistentLayer) -> None:
+        if persistent_layer.quuid not in self.registered_layers:
+            return
+
+        self.registered_layers[persistent_layer.quuid].rendered = False
+
+    def _step(self) -> None:
+        (
+            additions,
+            modifications,
+            deletions,
+            actual_state,
+        ) = PersistentLayerInternalState.compute_diffs(self)
 
         if len(deletions) > 0:
             uuid = next(iter(deletions.keys()))
@@ -101,14 +132,15 @@ class PersistentLayerManager:
         else:
             self._schedule_step_slow()
 
-    def _delete(self, uuid: QUuid, layer: "PersistentLayer") -> None:
+    def _delete(self, uuid: "PersistentId", layer: "PersistentLayerInternalState") -> None:
         def _remove_id() -> None:
             linked_uuid = self.registered_layers[uuid].linked_uuid
 
             if linked_uuid is not None:
                 self.reverse_lookup.pop(linked_uuid, None)
 
-            self.registered_layers.pop(uuid, None)
+            if self.registered_layers[uuid].scheduled_for_deletion:
+                self.registered_layers.pop(uuid, None)
 
         if layer.linked_uuid is None:
             _remove_id()
@@ -129,29 +161,36 @@ class PersistentLayerManager:
 
         _remove_id()
 
-    def _create(self, uuid: QUuid, layer: "PersistentLayer") -> None:
-        root = self.document.rootNode()
-        top = next(iter(reversed(self.document.topLevelNodes())), None)
-        new_layer = self.document.createNode(layer.name, "vectorlayer")
+    def _create(self, uuid: "PersistentId", layer: "PersistentLayerInternalState") -> None:
+        new_layer = self.document.createNode(layer.name, self.default_layer_type)
 
         if new_layer is None:
             return
 
         node_id = new_layer.uniqueId()
-
-        if layer.linked_uuid is not None:
-            self.reverse_lookup.pop(node_id, None)
-
-        layer.linked_uuid = node_id
+        layer.set_uuid(node_id)
         self.reverse_lookup[node_id] = uuid
         new_layer.setOpacity(0)
         new_layer.setVisible(False)
         new_layer.setAlphaLocked(True)
+        res = self._rebase(layer)
 
-        if isinstance(top, Node | None):
-            root.addChildNode(new_layer, top)  # type: ignore
+        if res is None:
+            return
 
-    def _modify(self, uuid: QUuid, _from: "PersistentLayer", _to: "PersistentLayer") -> None:
+        rebased, rel_path = res
+
+        if rel_path is None:
+            return
+
+        saved_path = layer.path
+        try:
+            layer.path = rebased
+            rel_path.parent.addChildNode(new_layer, rel_path.sibbling)  # type: ignore
+        except Exception:  # noqa: BLE001
+            layer.path = saved_path
+
+    def _modify(self, uuid: "PersistentId", _from: "PersistentLayerInternalState", _to: "PersistentLayerInternalState") -> None:
         assert _from.linked_uuid is not None  # noqa: S101
         assert _to.linked_uuid is not None  # noqa: S101
 
@@ -167,17 +206,61 @@ class PersistentLayerManager:
         match.setVisible(False)
         match.setOpacity(0)
 
+        _to.path = _from.path
+
+        """
+        if _from.same_path(_to.path):
+            return
+
+        res = self._rebase(_to)
+
+        if res is None:
+            return
+
+        rebased, rel_path = res
+
+        saved_path = _to.path
+        try:
+            _to.path = rebased
+
+            rel_path.parent.removeChildNode(match)
+            rel_path.parent.addChildNode(match, rel_path.sibbling)  # type: ignore
+        except Exception:  # noqa: BLE001
+            _to.path = saved_path
+        """
+
     def _schedule_step_slow(self) -> None:
         self._timer.start(self.refresh_ms)
 
     def _schedule_step_immediate(self) -> None:
         self._timer.start(1)
 
-    def _validate_uuid(self, uuid: QUuid) -> Node | None:
+    def _validate_uuid(self, uuid: "VolatileId") -> Node | None:
         roots = self.document.topLevelNodes()
         all_layers = LayerUtils.flatten_tree(roots)
 
         return next((existing_layer for existing_layer in all_layers if existing_layer.uniqueId() == uuid), None)
+
+    def _rebase(self, to: "PersistentLayerInternalState") -> "tuple[list[FlatLayerToken], LayerRelativePath] | None":
+        roots = self.document.topLevelNodes()
+        tokens = LayerUtils.to_flat_tokens(roots)
+        rebased, parent_token, sibbling_token = LayerUtils.rebase(to.path, tokens)
+        all_layers = LayerUtils.flatten_tree(roots)
+
+        if parent_token is None:
+            parent = self.document.rootNode()
+        else:
+            parent = next((layer_search for layer_search in all_layers if layer_search.uniqueId() == parent_token.quuid), None)
+
+        if parent is None:
+            return None
+
+        if sibbling_token is not None:
+            sibbling = next((layer_search for layer_search in all_layers if layer_search.uniqueId() == sibbling_token.quuid), None)
+        else:
+            sibbling = None
+
+        return rebased, LayerRelativePath(parent=parent, sibbling=sibbling)
 
     @classmethod
     def get_by_document(cls, document: Document) -> "PersistentLayerManager":
@@ -193,7 +276,7 @@ class PersistentLayerManager:
         return cls.managers[index]
 
 
-class PersistentLayer(BaseModel):
+class PersistentLayerInternalState(BaseModel):
     name: str
     linked_uuid: Any | None = None
     scheduled_for_deletion: bool = False
@@ -202,20 +285,108 @@ class PersistentLayer(BaseModel):
     visible: bool = False
     opacity: int = 0
     type: str = "vectorlayer"
+    path: list[FlatLayerToken]
+    rendered: bool = False
+
+    def set_uuid(self, uuid: "VolatileId") -> None:
+        self.linked_uuid = uuid
+
+        for token in self.path:
+            if token.type == "target":
+                token.quuid = uuid
+
+    def should_be_deleted(self) -> bool:
+        if not self.rendered:
+            return True
+
+        return self.scheduled_for_deletion
+
+    def should_be_created(self, actual: "dict[PersistentId, PersistentLayerInternalState]") -> bool:
+        if not self.rendered:
+            return False
+
+        if self.scheduled_for_deletion:
+            return False
+
+        return self.linked_uuid is None or self.linked_uuid not in [layer.linked_uuid for layer in actual.values()]
+
+    def should_be_updated(self, actual: "dict[PersistentId, PersistentLayerInternalState]", uuid: "PersistentId") -> bool:
+        if not self.rendered:
+            return False
+
+        if self.linked_uuid is None:
+            return False
+
+        if uuid not in actual:
+            return False
+
+        other = actual[uuid]
+
+        return (
+            self.name != other.name
+            or self.locked != other.locked
+            or self.visible != other.visible
+            or self.opacity != other.opacity
+            or not self.same_path(other.path)
+        )
+
+    def same_path(self, path: list[FlatLayerToken]) -> bool:
+        return tuple(str(t.quuid) for t in self.path) == tuple(str(t.quuid) for t in path)
+
+    @staticmethod
+    def compute_diffs(manager: PersistentLayerManager) -> tuple:
+        roots = manager.document.topLevelNodes()
+        tokens = LayerUtils.to_flat_tokens(roots)
+        existing_layers = [PersistentLayerInternalState.from_krita(layer, tokens) for layer in LayerUtils.flatten_tree(roots)]
+        actual = {
+            manager.reverse_lookup[existing.linked_uuid]: existing
+            for existing in existing_layers
+            if existing.linked_uuid is not None and existing.linked_uuid in manager.reverse_lookup
+        }
+
+        additions = {uuid: layer for uuid, layer in manager.registered_layers.items() if layer.should_be_created(actual)}
+        modifications = {uuid: layer for uuid, layer in manager.registered_layers.items() if layer.should_be_updated(actual, uuid)}
+        deletions = {uuid: layer for uuid, layer in manager.registered_layers.items() if layer.should_be_deleted()}
+
+        return additions, modifications, deletions, actual
 
     @classmethod
-    def from_krita(cls, layer: Node) -> "PersistentLayer":
+    def from_krita(cls, layer: Node, empty_path: list[FlatLayerToken]) -> "PersistentLayerInternalState":
+        path = list(empty_path)
+
+        for i, token in enumerate(path):
+            if token.quuid == layer.uniqueId():
+                path[i] = FlatLayerToken(quuid=layer.uniqueId(), type="target")
+
         return cls(
             name=layer.name(),
             linked_uuid=layer.uniqueId(),
             locked=layer.locked(),
             visible=layer.visible(),
             opacity=layer.opacity(),
+            path=path,
+            rendered=True,
         )
 
-    @staticmethod
-    def state_differs(layer1: "PersistentLayer", layer2: "PersistentLayer") -> bool:
-        return layer1.name != layer2.name or layer1.locked != layer2.locked or layer1.visible != layer2.visible or layer1.opacity != layer2.opacity
+
+class PersistentLayerNotifier(QObject):
+    on_layer_moved = cast("pyqtBoundSignal", pyqtSignal())
+    on_layer_deleted = cast("pyqtBoundSignal", pyqtSignal())
+    on_layer_created = cast("pyqtBoundSignal", pyqtSignal())
+
+
+class PersistentId(QUuid):
+    pass
+
+
+class VolatileId(QUuid):
+    pass
+
+
+@dataclass
+class LayerRelativePath:
+    parent: Node
+    sibbling: Node | None
 
 
 class LayerUtils:
@@ -231,3 +402,154 @@ class LayerUtils:
             remaining += children
 
         return flat_list
+
+    @classmethod
+    def to_flat_tokens(cls, roots: list[Node]) -> list[FlatLayerToken]:
+        result: list[FlatLayerToken] = []
+
+        for node in roots:
+            node_children = node.childNodes()
+            is_parent = len(node_children) > 0
+            if is_parent:
+                result.append(FlatLayerToken(quuid=node.uniqueId(), type="group_start"))
+                result += cls.to_flat_tokens(node_children)
+                result.append(FlatLayerToken(quuid=node.uniqueId(), type="group_end"))
+            else:
+                result.append(FlatLayerToken(quuid=node.uniqueId(), type="layer"))
+
+        return result
+
+    @classmethod
+    def rebase(  # noqa: C901, PLR0912
+        cls,
+        out_of_date: list[FlatLayerToken],
+        up_to_date: list[FlatLayerToken],
+    ) -> tuple[list[FlatLayerToken], FlatLayerToken | None, FlatLayerToken | None]:
+        if len([token for token in out_of_date if token.type == "target"]) != 1:
+            message = "The out of date branch must contain exactly one target"
+            raise ValueError(message)
+
+        token_index, target = next((i, token) for i, token in enumerate(out_of_date) if token.type == "target")
+        assert target.quuid is not None  # noqa: S101
+
+        if any(token.type == "target" for token in up_to_date):
+            message = "The up to date branch must not contain any target"
+            raise ValueError(message)
+
+        up_to_date = [token for token in up_to_date if token.quuid != target.quuid]
+        out_of_date_no_token = [token for token in out_of_date if token.type != "target"]
+
+        m = len(out_of_date_no_token)
+        n = len(up_to_date)
+
+        # 1. Initialize DP table
+        # dp[i][j] = min operations to transform out_of_date_no_token[:i] to up_to_date[:j]
+        dp = [[0] * (n + 1) for _ in range(m + 1)]
+
+        # 2. Base cases
+        # Deleting all characters from source
+        for i in range(m + 1):
+            dp[i][0] = i
+
+        # Inserting all characters into target
+        for j in range(n + 1):
+            dp[0][j] = j
+
+        # 3. Fill DP table
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                if out_of_date_no_token[i - 1] == up_to_date[j - 1]:
+                    dp[i][j] = dp[i - 1][j - 1]  # Match: no new action needed
+                else:
+                    # Min of Delete (from out_of_date) or Create (into up_to_date)
+                    dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1])
+
+        # 4. Backtrack to find the specific actions
+        actions: list[FlatTokenAction] = []
+        i, j = m, n
+
+        while i > 0 or j > 0:
+            # If items match, move diagonally
+            if i > 0 and j > 0 and out_of_date_no_token[i - 1] == up_to_date[j - 1]:
+                i -= 1
+                j -= 1
+            # If current cost comes from insertion (left cell is min)
+            elif j > 0 and (i == 0 or dp[i][j - 1] <= dp[i - 1][j]):
+                actions.append(FlatTokenAction(type="create", token=up_to_date[j - 1], index=i))
+                j -= 1
+            # If current cost comes from deletion (top cell is min)
+            elif i > 0 and (j == 0 or dp[i][j - 1] > dp[i - 1][j]):
+                actions.append(FlatTokenAction(type="delete", token=up_to_date[i - 1], index=i - 1))
+                i -= 1
+
+        # Backtracking produces actions in reverse order (end-to-start)
+        actions.reverse()
+
+        rebased, token_index = cls._apply_actions(actions, out_of_date, token_index)
+
+        parent = None
+        parent_index = token_index
+        level = 0
+        while parent_index > 0:
+            parent_index -= 1
+            if rebased[parent_index].type == "group_start":
+                level += 1
+            elif rebased[parent_index].type == "group_end":
+                level -= 1
+
+            if level > 0:
+                parent = rebased[parent_index]
+                break
+
+        sibbling = None
+        sibbling_index = token_index + 1
+
+        if sibbling_index < len(rebased) and rebased[sibbling_index].type != "group_end":
+            sibbling = rebased[sibbling_index]
+
+        return rebased, parent, sibbling
+
+    @staticmethod
+    def _apply_actions(actions: list["FlatTokenAction"], tokens: list[FlatLayerToken], token_index: int) -> tuple[list[FlatLayerToken], int]:
+        tokens = list(tokens)
+
+        # 2. Track the cumulative shift caused by insertions/deletions
+        shift = 0
+
+        for action in actions:
+            # The index where this action WOULD happen in the current list
+            # (ignoring the existence of the target token for a moment)
+            current_action_index = action.index + shift
+
+            # CASE 1: Action happens BEFORE the target
+            if current_action_index < token_index:
+                if action.type == "create":
+                    tokens.insert(current_action_index, action.token)
+                    token_index += 1  # Target pushed right
+                    shift += 1  # List grew
+                elif action.type == "delete":
+                    tokens.pop(current_action_index)
+                    token_index -= 1  # Target shifts left
+                    shift -= 1  # List shrank
+
+            # CASE 2: Action happens AFTER (or at) the target position
+            else:
+                # We must +1 to hop over the target token
+                actual_insertion_point = current_action_index + 1
+
+                if action.type == "create":
+                    tokens.insert(actual_insertion_point, action.token)
+                    # Target index does not change
+                    shift += 1
+                elif action.type == "delete":
+                    tokens.pop(actual_insertion_point)
+                    # Target index does not change
+                    shift -= 1
+
+        return tokens, token_index
+
+
+class FlatTokenAction(BaseModel):
+    type: Literal["create", "delete"]
+    token: FlatLayerToken
+    index: int

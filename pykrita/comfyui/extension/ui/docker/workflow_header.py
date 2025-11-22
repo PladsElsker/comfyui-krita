@@ -5,7 +5,7 @@ class WorkflowHeader(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.main_layout = QHBoxLayout(self)
-        self.main_layout.setContentsMargins(4, 12, 4, 4)
+        self.main_layout.setContentsMargins(4, 4, 4, 4)
 
         self.container = QHBoxLayout()
         self.row1 = QVBoxLayout()

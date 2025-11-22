@@ -5,7 +5,7 @@ from PyQt5.QtGui import QColor, QIcon
 from PyQt5.QtWidgets import QComboBox, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
 from ....layers_manager import PersistentLayerManager
-from ....models import Node
+from ....models import Node, PersistentLayer
 from ...icons import SAVE_ICON, TARGET_ICON, render_svg_to_pixmap
 from .comfyui_node import ComfyUiNode
 from .miniature import Miniature
@@ -22,7 +22,7 @@ class SaveImageNode(ComfyUiNode):
     def __init__(self, node: Node, layers_manager: PersistentLayerManager) -> None:
         super().__init__(node, layers_manager)
         self.node_name = node.name
-        self.linked_layer = None
+        self.linked_layer: PersistentLayer | None = None
 
         self.main_layout = QHBoxLayout(self)
         self.main_layout.setContentsMargins(2, 2, 0, 0)
@@ -71,24 +71,28 @@ class SaveImageNode(ComfyUiNode):
         self._create_layer()
 
     def cleanup(self) -> None:
+        if self.linked_layer is None:
+            return
+
         self.layers_manager.delete(self.linked_layer)
 
     def _locate_layer(self) -> None:
-        if self.layers_manager.exists(self.linked_layer):
+        if self.linked_layer is not None and self.layers_manager.exists(self.linked_layer):
             self.layers_manager.select(self.linked_layer)
         else:
             self._create_layer()
+            assert self.linked_layer is not None  # noqa: S101
             self.layers_manager.select(self.linked_layer)
 
     def _create_layer(self) -> None:
-        if self.layers_manager.exists(self.linked_layer):
+        if self.linked_layer is not None and self.layers_manager.exists(self.linked_layer):
             return
 
         name = self._generate_layer_name()
         self.linked_layer = self.layers_manager.create(name)
 
     def _update_layer_name(self) -> None:
-        if self.layers_manager.exists(self.linked_layer):
+        if self.linked_layer is not None and self.layers_manager.exists(self.linked_layer):
             name = self._generate_layer_name()
             self.layers_manager.rename(self.linked_layer, name)
         else:
