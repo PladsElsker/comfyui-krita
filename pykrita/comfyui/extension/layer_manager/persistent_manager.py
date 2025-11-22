@@ -188,8 +188,14 @@ class PersistentLayerManager(LayerManager):
             layer.path = saved_path
 
     def _modify(self, uuid: "PersistentId", _from: "PersistentLayerInternalState", _to: "PersistentLayerInternalState") -> None:
-        assert _from.linked_uuid is not None  # noqa: S101
         assert _to.linked_uuid is not None  # noqa: S101
+
+        _to.path = _from.path
+
+        if _from.linked_uuid is None:
+            _to.rendered = False
+            _to.linked_uuid = None
+            return
 
         match = self._validate_uuid(_to.linked_uuid)
 
@@ -202,8 +208,6 @@ class PersistentLayerManager(LayerManager):
         match.setAlphaLocked(True)
         match.setVisible(False)
         match.setOpacity(0)
-
-        _to.path = _from.path
 
     def _schedule_step_slow(self) -> None:
         self._timer.start(self.refresh_ms)
@@ -240,14 +244,6 @@ class PersistentLayerManager(LayerManager):
         return rebased, LayerRelativePath(parent=parent, sibling=sibling)
 
 
-class PersistentId(QUuid):
-    pass
-
-
-class VolatileId(QUuid):
-    pass
-
-
 class PersistentLayerInternalState(BaseModel):
     name: str
     linked_uuid: Any | None = None
@@ -260,39 +256,40 @@ class PersistentLayerInternalState(BaseModel):
     path: list[FlatLayerToken]
     rendered: bool = False
 
-    def should_be_deleted(self) -> bool:
+    def should_be_deleted(self, actual: "PersistentLayerInternalState") -> bool:  # noqa: ARG002
         if not self.rendered and self.linked_uuid is not None:
             return True
 
         return self.scheduled_for_deletion
 
-    def should_be_created(self, actual: "dict[PersistentId, PersistentLayerInternalState]") -> bool:
+    def should_be_created(self, actual: "PersistentLayerInternalState") -> bool:
+        if actual.linked_uuid is None and self.linked_uuid is not None:
+            return False
+
         if not self.rendered:
             return False
 
         if self.scheduled_for_deletion:
             return False
 
-        return self.linked_uuid is None or self.linked_uuid not in [layer.linked_uuid for layer in actual.values()]
+        return self.linked_uuid is None or actual.linked_uuid != self.linked_uuid
 
-    def should_be_updated(self, actual: "dict[PersistentId, PersistentLayerInternalState]", uuid: "PersistentId") -> bool:
+    def should_be_updated(self, actual: "PersistentLayerInternalState") -> bool:
+        if actual.linked_uuid is None and self.linked_uuid is not None:
+            return True
+
         if not self.rendered:
             return False
 
         if self.linked_uuid is None:
             return False
 
-        if uuid not in actual:
-            return False
-
-        other = actual[uuid]
-
         return (
-            self.name != other.name
-            or self.locked != other.locked
-            or self.visible != other.visible
-            or self.opacity != other.opacity
-            or not self.same_path(other.path)
+            self.name != actual.name
+            or self.locked != actual.locked
+            or self.visible != actual.visible
+            or self.opacity != actual.opacity
+            or not self.same_path(actual.path)
         )
 
     def same_path(self, path: list[FlatLayerToken]) -> bool:
@@ -309,9 +306,14 @@ class PersistentLayerInternalState(BaseModel):
             if existing.linked_uuid is not None and existing.linked_uuid in manager.reverse_lookup
         }
 
-        additions = {uuid: layer for uuid, layer in manager.registered_layers.items() if layer.should_be_created(actual)}
-        modifications = {uuid: layer for uuid, layer in manager.registered_layers.items() if layer.should_be_updated(actual, uuid)}
-        deletions = {uuid: layer for uuid, layer in manager.registered_layers.items() if layer.should_be_deleted()}
+        for uuid, layer in manager.registered_layers.items():
+            if uuid not in actual:
+                actual[uuid] = PersistentLayerInternalState.model_validate(layer.model_dump())
+                actual[uuid].linked_uuid = None
+
+        additions = {uuid: layer for uuid, layer in manager.registered_layers.items() if layer.should_be_created(actual[uuid])}
+        modifications = {uuid: layer for uuid, layer in manager.registered_layers.items() if layer.should_be_updated(actual[uuid])}
+        deletions = {uuid: layer for uuid, layer in manager.registered_layers.items() if layer.should_be_deleted(actual[uuid])}
 
         return additions, modifications, deletions, actual
 
@@ -333,3 +335,11 @@ class PersistentLayerInternalState(BaseModel):
             path=path,
             rendered=True,
         )
+
+
+class PersistentId(QUuid):
+    pass
+
+
+class VolatileId(QUuid):
+    pass
