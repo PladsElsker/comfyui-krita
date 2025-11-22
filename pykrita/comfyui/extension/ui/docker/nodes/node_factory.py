@@ -1,4 +1,4 @@
-from ....layers_manager import PersistentLayerManager
+from ....layer_manager import LayerManager
 from ....models import Node
 from .comfyui_node import ComfyUiNode
 from .save_image_node import SaveImageNode
@@ -6,10 +6,10 @@ from .save_image_node import SaveImageNode
 
 class NodeFactory:
     @staticmethod
-    def create(node: Node, layers_manager: PersistentLayerManager) -> ComfyUiNode:
+    def create(node: Node, layer_manager: LayerManager) -> ComfyUiNode:
         match node.type:
             case SaveImageNode.type:
-                return SaveImageNode(node, layers_manager)
+                return SaveImageNode(node, layer_manager)
 
         message = f"Unknown node type {node.type}"
         raise ValueError(message)

@@ -31,11 +31,28 @@ class DocumentMappingResponse(BaseModel):
 
 
 class FlatLayerToken(BaseModel):
-    quuid: str
+    quuid: Any | None
     type: Literal["layer", "group_start", "group_end", "target"]
+
+    def __hash__(self) -> int:
+        q = str(self.quuid if self.quuid is not None else "")
+        return hash(q + self.type)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, FlatLayerToken):
+            return False
+
+        return str(self.quuid) == str(other.quuid)
 
 
 class SaveImageState(BaseModel):
     id: int
     insert_direction: Literal["above", "below"]
-    flat_layer_path: list[FlatLayerToken]
+    path: list[FlatLayerToken]
+    visible: bool
+
+
+class PersistentLayer(BaseModel):
+    quuid: Any
+    path: list[FlatLayerToken] | None = None
+    visible: bool = True
