@@ -1,3 +1,4 @@
+import contextlib
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal, cast
 
@@ -145,7 +146,8 @@ class PersistentLayerManager:
         parent = self.document.rootNode() if parent is None else parent
 
         if isinstance(parent, Node):
-            parent.removeChildNode(match)
+            with contextlib.suppress(Exception):
+                parent.removeChildNode(match)
 
         _remove_id()
 
@@ -216,6 +218,7 @@ class PersistentLayerManager:
     def _rebase(self, to: "PersistentLayerInternalState") -> "tuple[list[FlatLayerToken], LayerRelativePath] | None":
         roots = self.document.topLevelNodes()
         tokens = LayerUtils.to_flat_tokens(roots)
+        tokens = [token for token in tokens if token.quuid != to.linked_uuid]
         rebased, parent_token, sibbling_token = LayerUtils.rebase(to.path, tokens)
         all_layers = LayerUtils.flatten_tree(roots)
 
@@ -401,7 +404,6 @@ class LayerUtils:
             message = "The up to date branch must not contain any target"
             raise ValueError(message)
 
-        up_to_date = [token for token in up_to_date if token.quuid != target.quuid]
         out_of_date_no_token = [token for token in out_of_date if token.type != "target"]
 
         m = len(out_of_date_no_token)
