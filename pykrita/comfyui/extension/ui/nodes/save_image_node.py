@@ -79,10 +79,12 @@ class SaveImageNode(ComfyUiNode):
     def _show_linked_layer(self) -> None:
         assert self.linked_layer is not None  # noqa: S101
         self.layer_manager.show(self.linked_layer)
+        self.visibility_button.set_visibility_on_visual()
 
     def _hide_linked_layer(self) -> None:
         assert self.linked_layer is not None  # noqa: S101
         self.layer_manager.hide(self.linked_layer)
+        self.visibility_button.set_visibility_off_visual()
 
     def _update_layer_name(self, name: str) -> None:
         self.layer_name = name
