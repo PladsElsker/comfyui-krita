@@ -90,4 +90,4 @@ class ComfyKritaBridge:
                 return
 
             docker.update_title(workflows_request.name, found_document_id)
-            docker.update_node_list(found_nodes, active_document)
+            docker.update_node_list(found_nodes, window, active_document)

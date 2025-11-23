@@ -1,6 +1,6 @@
 from typing import ClassVar
 
-from krita import Document
+from krita import Document, Window
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPalette
 from PyQt5.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
@@ -26,13 +26,13 @@ class NodeListWidget(QScrollArea):
         self.setFrameShape(QScrollArea.Shape.NoFrame)
         self.setFrameShadow(QScrollArea.Shadow.Plain)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setWidgetResizable(True)
         self.setWidget(self.container)
 
         self.node_widgets: list[ComfyUiNode] = []
 
-    def rebuild(self, nodes: list[Node], document: Document) -> None:  # noqa: C901
+    def rebuild(self, nodes: list[Node], window: Window, document: Document) -> None:  # noqa: C901
         while self.main_layout.count() > 0:
             item = self.main_layout.takeAt(0)
 
@@ -47,7 +47,7 @@ class NodeListWidget(QScrollArea):
         self.node_widgets.clear()
 
         for node in nodes:
-            node_widget = NodeFactory.create(node, NodeListWidget.LayerManager.get_by_document(document))
+            node_widget = NodeFactory.create(self, node, NodeListWidget.LayerManager.get_by_window_and_document(window, document))
             self.node_widgets.append(node_widget)
 
         input_mode: NodeDirection = "input"

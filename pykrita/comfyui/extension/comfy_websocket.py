@@ -67,7 +67,9 @@ class ComfyWebsocket(QObject):
             on_reconnect=self._on_reconnect,
             on_close=self._on_close,
         )
-        self._listener_thread = threading.Thread(target=self.ws.run_forever, daemon=True)
+
+        ws_temp = self.ws
+        self._listener_thread = threading.Thread(target=lambda: ws_temp.run_forever(ping_timeout=3, ping_interval=5), daemon=True)
         self._listener_thread.start()
 
     def close(self) -> None:

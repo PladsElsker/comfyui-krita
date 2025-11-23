@@ -62,6 +62,8 @@ class ComfyUIExtension(Extension):
         dialog.exec_()
 
     def broadcast_active_document_changed_to_comfy_dockers(self) -> None:
+        self.bridge.update_documents()
+
         for docker, window in ComfyUIExtension.get_comfyui_window_docker_pairs():
             active_view = window.activeView()
 
@@ -73,4 +75,4 @@ class ComfyUIExtension(Extension):
             if active_document is None:
                 continue
 
-            docker.set_active_document(active_document)
+            docker.set_active_document(window, active_document)

@@ -1,5 +1,6 @@
 from typing import ClassVar
 
+from krita import DockWidget
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout
 
 from comfyui.extension.layer_manager import LayerManager, PersistentLayerNotifier
@@ -15,7 +16,7 @@ from .miniature import Miniature
 class SaveImageNode(ComfyUiNode):
     type: ClassVar[str | None] = "KritaSaveImage-15347"
 
-    def __init__(self, node: Node, layer_manager: LayerManager) -> None:
+    def __init__(self, docker: DockWidget, node: Node, layer_manager: LayerManager) -> None:
         super().__init__(node, layer_manager)
         self.node_name = node.name
         self.layer_name: str = "Layer: "
@@ -48,6 +49,18 @@ class SaveImageNode(ComfyUiNode):
         self.main_layout.addLayout(self.middle_rack)
         self.main_layout.addStretch(1)
         self.main_layout.addLayout(self.action_buttons_container)
+
+        def elided_width_fun() -> int:
+            self.main_layout.activate()
+            w0 = self.main_layout.itemAt(0).widget().width()  # type: ignore
+            w1 = self.main_layout.itemAt(1).layout().geometry().width()  # type: ignore
+            w3 = self.main_layout.itemAt(3).layout().geometry().width()  # type: ignore
+            wt = docker.width()
+            w2 = wt - (w0 + w1 + w3)
+            return w1 + w2 - 24
+
+        self.node_name_label.set_elided_width_producer(elided_width_fun)
+        self.layer_info_text.set_elided_width_producer(elided_width_fun)
 
         self._update_layer_name("Generator Position")
         self._create_layer()

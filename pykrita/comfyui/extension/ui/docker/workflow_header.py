@@ -1,20 +1,23 @@
+from krita import DockWidget
 from PyQt5.QtGui import QPalette
-from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
+
+from comfyui.extension.ui.micro.labels import ElidedLabel
 
 
 class WorkflowHeader(QFrame):
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
+    def __init__(self, docker: DockWidget) -> None:
+        super().__init__()
 
         self.workflow_title = QLabel("Workflow: ")
 
         self.document_title = QLabel("Document: ")
 
-        self.workflow_label = QLabel("—")
+        self.document_label = ElidedLabel("—")
         document_label_accent = self.document_label.palette().color(QPalette.ColorRole.HighlightedText)
         self.document_label.setStyleSheet(f"color: {document_label_accent.name()};")
 
-        self.document_label = QLabel("—")
+        self.workflow_label = ElidedLabel("—")
         workflow_label_accent = self.workflow_label.palette().color(QPalette.ColorRole.HighlightedText)
         self.workflow_label.setStyleSheet(f"color: {workflow_label_accent.name()};")
 
@@ -34,6 +37,18 @@ class WorkflowHeader(QFrame):
         self.main_layout = QHBoxLayout(self)
         self.main_layout.setContentsMargins(4, 4, 4, 4)
         self.main_layout.addLayout(self.container)
+
+        def get_width_fun() -> int:
+            self.main_layout.activate()
+
+            w0 = self.row1.geometry().width()
+            w1 = self.row2.geometry().width()
+            wt = docker.width()
+            w2 = wt - (w0 + w1)
+            return w1 + w2 - 24
+
+        self.document_label.set_elided_width_producer(get_width_fun)
+        self.workflow_label.set_elided_width_producer(get_width_fun)
 
     def set_workflow_name(self, name: str) -> None:
         display = name if name else "—"
