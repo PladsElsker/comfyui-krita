@@ -1,10 +1,10 @@
 from typing import ClassVar
 
 from PyQt5.QtCore import QEvent, QObject, QSize, Qt
-from PyQt5.QtGui import QColor, QIcon
+from PyQt5.QtGui import QIcon, QPalette
 from PyQt5.QtWidgets import QComboBox, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
-from ....layer_manager import LayerManager
+from ....layer_manager import LayerManager, PersistentLayerNotifier
 from ....models import FlatLayerToken, Node, PersistentLayer
 from ...icons import NO_VISIBILITY_ICON, SAVE_ICON, VISIBILITY_ICON, render_svg_to_pixmap
 from .comfyui_node import ComfyUiNode
@@ -23,6 +23,7 @@ class SaveImageNode(ComfyUiNode):
         super().__init__(node, layer_manager)
         self.node_name = node.name
         self.linked_layer: PersistentLayer | None = None
+        self.layer_notifier: PersistentLayerNotifier | None = None
 
         self.main_layout = QHBoxLayout(self)
         self.main_layout.setContentsMargins(2, 2, 0, 0)
@@ -31,18 +32,18 @@ class SaveImageNode(ComfyUiNode):
         self.main_layout.addWidget(self.miniature)
 
         self.middle_rack = QVBoxLayout()
-        label = QLabel(node.name)
-        font = label.font()
+        self.node_name_label = QLabel(node.name)
+        font = self.node_name_label.font()
         font.setBold(True)
-        label.setFont(font)
-        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
-        label.setWordWrap(False)
-        label.setMinimumWidth(0)
-        label.setMaximumWidth(144)
+        self.node_name_label.setFont(font)
+        self.node_name_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        self.node_name_label.setWordWrap(False)
+        self.node_name_label.setMinimumWidth(0)
+        self.node_name_label.setMaximumWidth(144)
         metrics = self.fontMetrics()
         elided = metrics.elidedText(node.name, Qt.TextElideMode.ElideRight, self.width())
-        label.setText(elided)
-        self.middle_rack.addWidget(label)
+        self.node_name_label.setText(elided)
+        self.middle_rack.addWidget(self.node_name_label)
 
         self.combo_box = QComboBox()
         self.combo_box.addItems([COMBO_BELOW_TEXT, COMBO_ABOVE_TEXT])
@@ -53,23 +54,42 @@ class SaveImageNode(ComfyUiNode):
 
         self.main_layout.addLayout(self.middle_rack)
 
+        self.insert_below = True
+        self.direction_button = QToolButton()
+        self.direction_button.setAutoRaise(True)
+        self.direction_button.clicked.connect(self._toggle_layer_direction)
+        self._set_button_direction_below()
+        self.action_buttons_container.addWidget(self.direction_button)
+
         self.show_linked_layer = True
         self.action_buttons_container = QHBoxLayout()
         self.visibility_button = QToolButton()
         self.visibility_button.setAutoRaise(True)
+        self.visibility_button.clicked.connect(self._toggle_layer_visibility)
         self._set_button_visibility_on()
         self.action_buttons_container.addWidget(self.visibility_button)
-        self.visibility_button.clicked.connect(self._toggle_layer_visibility)
 
         self.main_layout.addLayout(self.action_buttons_container)
 
         self._create_layer()
+        assert self.linked_layer is not None  # noqa: S101
+
+        self.layer_notifier = self.layer_manager.notifier(self.linked_layer)
+        self.layer_notifier.user_unrendered.connect(self._set_button_visibility_off)
 
     def cleanup(self) -> None:
         if self.linked_layer is None:
             return
 
         self.layer_manager.delete(self.linked_layer)
+
+    def _toggle_layer_direction(self) -> None:
+        self.insert_below = not self.insert_below
+
+        if self.insert_below:
+            self._set_button_direction_below()
+        else:
+            self._set_button_direction_above()
 
     def _toggle_layer_visibility(self) -> None:
         self.show_linked_layer = not self.show_linked_layer
@@ -87,8 +107,11 @@ class SaveImageNode(ComfyUiNode):
             self.layer_manager.hide(self.linked_layer)
 
     def _set_button_visibility_on(self) -> None:
+        self.show_linked_layer = True
         self.visibility_button.setToolTip("Hide linked layer")
-        pixmap = render_svg_to_pixmap(VISIBILITY_ICON, size=QSize(20, 20), color=QColor(192, 192, 192))
+        palette = self.visibility_button.palette()
+        color = palette.color(QPalette.ColorRole.ButtonText)
+        pixmap = render_svg_to_pixmap(VISIBILITY_ICON, size=QSize(20, 20), color=color)
 
         if pixmap is not None:
             self.visibility_button.setIconSize(pixmap.size())
@@ -96,8 +119,11 @@ class SaveImageNode(ComfyUiNode):
         self.visibility_button.setIcon(QIcon(pixmap))
 
     def _set_button_visibility_off(self) -> None:
+        self.show_linked_layer = False
         self.visibility_button.setToolTip("Show linked layer")
-        pixmap = render_svg_to_pixmap(NO_VISIBILITY_ICON, size=QSize(20, 20), color=QColor(192, 192, 192))
+        palette = self.visibility_button.palette()
+        color = palette.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText)
+        pixmap = render_svg_to_pixmap(NO_VISIBILITY_ICON, size=QSize(20, 20), color=color)
 
         if pixmap is not None:
             self.visibility_button.setIconSize(pixmap.size())
@@ -121,7 +147,7 @@ class SaveImageNode(ComfyUiNode):
 
     def _generate_layer_name(self) -> str:
         arrow = ARROW_DOWN if self.combo_box.currentText() == COMBO_BELOW_TEXT else ARROW_UP
-        return f"{self.node_name} {arrow}"
+        return f"ComfyUI: {self.node_name} {arrow}"
 
     def _generate_layer_path(self) -> list[FlatLayerToken] | None:
         return None
