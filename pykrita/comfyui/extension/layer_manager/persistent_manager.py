@@ -18,7 +18,6 @@ class PersistentLayerManager(LayerManager):
         self.default_layer_type = default_layer_type
         self.registered_layers: dict[PersistentId, PersistentLayerInternalState] = {}
         self.reverse_lookup: dict[VolatileId, PersistentId] = {}
-        self._last_active_document = window.activeView().document()
         self._timer = QTimer()
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._step)
