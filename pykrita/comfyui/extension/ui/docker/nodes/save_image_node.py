@@ -49,12 +49,16 @@ class SaveImageNode(ComfyUiNode):
         metrics = self.fontMetrics()
         elided = metrics.elidedText(node.name, Qt.TextElideMode.ElideRight, self.width())
         self.layer_info_text.setText(elided)
+        palette = self.layer_info_text.palette()
+        disabled_color = palette.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText)
+        self.layer_info_text.setStyleSheet(f"color: {disabled_color.name()};")
         self.middle_rack.addWidget(self.layer_info_text)
 
         self.main_layout.addLayout(self.middle_rack)
         self.main_layout.addStretch(1)
 
         self.action_buttons_container = QHBoxLayout()
+        self.action_buttons_container.setSpacing(1)
 
         self.insert_below = True
         self.direction_button = QToolButton()
