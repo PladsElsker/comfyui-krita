@@ -24,7 +24,7 @@ class PersistentLayerManager(LayerManager):
         self._schedule_step_slow()
         self.layer_notifiers: dict[PersistentId, PersistentLayerNotifier] = {}
 
-    def create(self, name: str, path: list[FlatLayerToken] | None = None) -> PersistentLayer:
+    def create(self, name: str, path: list[FlatLayerToken] | None = None, rendered: bool = True) -> PersistentLayer:  # noqa: FBT002
         uuid = QUuid.createUuid()
 
         if path is None:
@@ -33,7 +33,7 @@ class PersistentLayerManager(LayerManager):
             tokens.append(FlatLayerToken(quuid=None, type="target"))
             path = tokens
 
-        layer = PersistentLayerInternalState(name=name, path=path, rendered=True)
+        layer = PersistentLayerInternalState(name=name, path=path, rendered=rendered)
         self.registered_layers[uuid] = layer
         return PersistentLayer(quuid=uuid)
 
