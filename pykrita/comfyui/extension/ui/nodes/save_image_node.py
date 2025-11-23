@@ -68,6 +68,7 @@ class SaveImageNode(ComfyUiNode):
 
         self.layer_notifier = self.layer_manager.notifier(self.linked_layer)
         self.layer_notifier.user_unrendered.connect(self._hide_linked_layer)
+        self.layer_notifier.user_rendered.connect(self._show_linked_layer)
         self.layer_notifier.name_changed.connect(self._update_layer_name)
 
     def cleanup(self) -> None:

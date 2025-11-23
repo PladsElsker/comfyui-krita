@@ -88,8 +88,18 @@ class PersistentLayerManager(LayerManager):
         self.registered_layers[persistent_layer.quuid].rendered = False
 
     def _step(self) -> None:
+        active_view = self.window.activeView()
+
+        if active_view is None:
+            return
+
+        active_document = active_view.document()
+
+        if active_document is None:
+            return
+
         # Krita will crash if we try to modify the layer tree in an inactive document.
-        if self.document != self.window.activeView().document():
+        if self.document != active_document:
             self._schedule_step_slow()
             return
 
@@ -119,11 +129,11 @@ class PersistentLayerManager(LayerManager):
             linked_uuid = self.registered_layers[uuid].linked_uuid
             self.registered_layers[uuid].linked_uuid = None
 
-            if linked_uuid is not None:
-                self.reverse_lookup.pop(linked_uuid, None)
-
             if self.registered_layers[uuid].scheduled_for_deletion:
                 self.registered_layers.pop(uuid, None)
+
+                if linked_uuid is not None:
+                    self.reverse_lookup.pop(linked_uuid, None)
 
         if layer.linked_uuid is None:
             _remove_id()
@@ -153,6 +163,7 @@ class PersistentLayerManager(LayerManager):
 
         node_id = new_layer.uniqueId()
         layer.linked_uuid = node_id
+        layer.last_linked_uuid = node_id
         self.reverse_lookup[node_id] = uuid
 
         for token in layer.path:
@@ -180,8 +191,6 @@ class PersistentLayerManager(LayerManager):
             layer.path = saved_path
 
     def _modify(self, uuid: "PersistentId", _from: "PersistentLayerInternalState", _to: "PersistentLayerInternalState") -> None:
-        assert _to.linked_uuid is not None  # noqa: S101
-
         notifier = self._ensure_notifier(uuid)
 
         _to.path = _from.path
@@ -190,11 +199,17 @@ class PersistentLayerManager(LayerManager):
             _to.name = _from.name
             notifier.name_changed.emit(_to.name)
 
-        if _from.linked_uuid is None:
+        if _to.linked_uuid is None and _to.last_linked_uuid == _from.linked_uuid:
+            _to.linked_uuid = _to.last_linked_uuid
+            _to.rendered = True
+            notifier.user_rendered.emit()
+        elif _from.linked_uuid is None:
             _to.rendered = False
             _to.linked_uuid = None
             notifier.user_unrendered.emit()
             return
+
+        assert _to.linked_uuid is not None  # noqa: S101
 
         match = self._validate_uuid(_to.linked_uuid)
 
@@ -251,6 +266,7 @@ class PersistentLayerManager(LayerManager):
 class PersistentLayerInternalState(BaseModel):
     name: str
     linked_uuid: Any | None = None
+    last_linked_uuid: Any | None = None
     scheduled_for_deletion: bool = False
     locked: bool = False
     alpha_locked: bool = True
@@ -276,9 +292,15 @@ class PersistentLayerInternalState(BaseModel):
         if self.scheduled_for_deletion:
             return False
 
+        if self.last_linked_uuid is not None and actual.linked_uuid == self.last_linked_uuid:
+            return False
+
         return self.linked_uuid is None or actual.linked_uuid != self.linked_uuid
 
     def should_be_updated(self, actual: "PersistentLayerInternalState") -> bool:
+        if self.linked_uuid is None and self.last_linked_uuid is not None and actual.linked_uuid == self.last_linked_uuid:
+            return True
+
         if actual.linked_uuid is None and self.linked_uuid is not None:
             return True
 
