@@ -1,7 +1,7 @@
 import contextlib
 from typing import Any
 
-from krita import Document, Node
+from krita import Document, Node, Window
 from pydantic import BaseModel
 from PyQt5.QtCore import QTimer, QUuid
 
@@ -12,8 +12,8 @@ from .utils import LayerRelativePath, LayerUtils
 
 
 class PersistentLayerManager(LayerManager):
-    def __init__(self, document: Document, refresh_ms: int = 300, default_layer_type: str = "vectorlayer") -> None:
-        self.document = document
+    def __init__(self, window: Window, document: Document, refresh_ms: int = 300, default_layer_type: str = "vectorlayer") -> None:
+        super().__init__(window, document)
         self.refresh_ms = refresh_ms
         self.default_layer_type = default_layer_type
         self.registered_layers: dict[PersistentId, PersistentLayerInternalState] = {}
@@ -88,6 +88,11 @@ class PersistentLayerManager(LayerManager):
         self.registered_layers[persistent_layer.quuid].rendered = False
 
     def _step(self) -> None:
+        # Krita will crash if we try to modify the layer tree in an inactive document.
+        if self.document != self.window.activeView().document():
+            self._schedule_step_slow()
+            return
+
         additions, modifications, deletions, actual_state = PersistentLayerInternalState.compute_diffs(self)
 
         if len(deletions) > 0:

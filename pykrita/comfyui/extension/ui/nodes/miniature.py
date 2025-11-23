@@ -3,7 +3,7 @@ from PyQt5.QtGui import QPalette, QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import QApplication, QLabel
 
-from ...icons import render_svg_to_pixmap
+from comfyui.extension.ui.icons import render_svg_to_pixmap
 
 
 class Miniature(QLabel):
