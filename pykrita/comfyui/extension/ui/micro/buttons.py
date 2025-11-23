@@ -77,7 +77,8 @@ class VisibilityButton(QToolButton):
         else:
             self._set_visibility_off()
 
-    def _set_visibility_on(self) -> None:
+    def set_visibility_on_visual(self) -> None:
+        self._show_layer = True
         self.setToolTip("Hide linked layer")
         color = self.palette().color(QPalette.ColorRole.ButtonText)
         pixmap = render_svg_to_pixmap(VISIBILITY_ICON, QSize(20, 20), color=color)
@@ -86,9 +87,8 @@ class VisibilityButton(QToolButton):
             self.setIconSize(pixmap.size())
             self.setIcon(QIcon(pixmap))
 
-        self.changed_to_visible.emit()
-
-    def _set_visibility_off(self) -> None:
+    def set_visibility_off_visual(self) -> None:
+        self._show_layer = False
         self.setToolTip("Show linked layer")
         color = self.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText)
         pixmap = render_svg_to_pixmap(NO_VISIBILITY_ICON, QSize(20, 20), color=color)
@@ -97,4 +97,10 @@ class VisibilityButton(QToolButton):
             self.setIconSize(pixmap.size())
             self.setIcon(QIcon(pixmap))
 
+    def _set_visibility_on(self) -> None:
+        self.set_visibility_on_visual()
+        self.changed_to_visible.emit()
+
+    def _set_visibility_off(self) -> None:
+        self.set_visibility_off_visual()
         self.changed_to_hidden.emit()

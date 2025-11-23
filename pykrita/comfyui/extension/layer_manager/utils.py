@@ -16,6 +16,10 @@ class LayerUtils:
 
         while len(remaining) > 0:
             node = remaining.pop()
+
+            if node is None:
+                continue
+
             flat_list.append(node)
             children = [n for n in reversed(node.childNodes()) if isinstance(n, Node)]
             remaining += children
@@ -27,6 +31,9 @@ class LayerUtils:
         result: list[FlatLayerToken] = []
 
         for node in roots:
+            if node is None:
+                continue
+
             node_children = node.childNodes()
             is_parent = len(node_children) > 0
             if is_parent:
