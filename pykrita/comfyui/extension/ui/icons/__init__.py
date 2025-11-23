@@ -12,6 +12,8 @@ SAVE_ICON = QSvgRenderer(str(current_file.parent / "save.svg"))
 TARGET_ICON = QSvgRenderer(str(current_file.parent / "target.svg"))
 VISIBILITY_ICON = QSvgRenderer(str(current_file.parent / "visibility.svg"))
 NO_VISIBILITY_ICON = QSvgRenderer(str(current_file.parent / "visibility_off.svg"))
+ARROW_UP_ICON = QSvgRenderer(str(current_file.parent / "arrow_up.svg"))
+ARROW_DOWN_ICON = QSvgRenderer(str(current_file.parent / "arrow_down.svg"))
 
 
 def render_svg_to_pixmap(

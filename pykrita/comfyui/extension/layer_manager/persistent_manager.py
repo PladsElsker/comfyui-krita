@@ -49,13 +49,6 @@ class PersistentLayerManager(LayerManager):
 
         return not self.registered_layers[persistent_layer.quuid].scheduled_for_deletion
 
-    def rename(self, persistent_layer: PersistentLayer, name: str) -> None:
-        if persistent_layer.quuid not in self.registered_layers:
-            message = f"Layer {persistent_layer.quuid} has not been created"
-            raise ValueError(message)
-
-        self.registered_layers[persistent_layer.quuid].name = name
-
     def select(self, persistent_layer: PersistentLayer) -> None:
         if persistent_layer.quuid not in self.registered_layers:
             return
@@ -184,12 +177,17 @@ class PersistentLayerManager(LayerManager):
     def _modify(self, uuid: "PersistentId", _from: "PersistentLayerInternalState", _to: "PersistentLayerInternalState") -> None:
         assert _to.linked_uuid is not None  # noqa: S101
 
+        notifier = self._ensure_notifier(uuid)
+
         _to.path = _from.path
+
+        if _to.name != _from.name:
+            _to.name = _from.name
+            notifier.name_changed.emit(_to.name)
 
         if _from.linked_uuid is None:
             _to.rendered = False
             _to.linked_uuid = None
-            notifier = self._ensure_notifier(uuid)
             notifier.user_unrendered.emit()
             return
 
@@ -199,7 +197,6 @@ class PersistentLayerManager(LayerManager):
             self.registered_layers.pop(uuid, None)
             return
 
-        match.setName(_to.name)
         match.setLocked(False)
         match.setAlphaLocked(True)
         match.setVisible(False)

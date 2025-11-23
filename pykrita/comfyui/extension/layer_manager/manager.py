@@ -25,9 +25,6 @@ class LayerManager(ABC):
     def exists(self, persistent_layer: PersistentLayer) -> bool: ...
 
     @abstractmethod
-    def rename(self, persistent_layer: PersistentLayer, name: str) -> None: ...
-
-    @abstractmethod
     def select(self, persistent_layer: PersistentLayer) -> None: ...
 
     @abstractmethod
