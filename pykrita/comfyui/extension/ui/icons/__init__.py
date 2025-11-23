@@ -1,8 +1,9 @@
 from pathlib import Path
 
 from PyQt5.QtCore import QSize, Qt
-from PyQt5.QtGui import QColor, QPainter, QPixmap
+from PyQt5.QtGui import QColor, QPainter, QPalette, QPixmap
 from PyQt5.QtSvg import QSvgRenderer
+from PyQt5.QtWidgets import QApplication
 
 current_file = Path(__file__).resolve()
 icon_path = current_file.parent / "layers.svg"
@@ -10,6 +11,10 @@ icon_path = current_file.parent / "layers.svg"
 LAYERS_ICON = QSvgRenderer(str(current_file.parent / "layers.svg"))
 SAVE_ICON = QSvgRenderer(str(current_file.parent / "save.svg"))
 TARGET_ICON = QSvgRenderer(str(current_file.parent / "target.svg"))
+VISIBILITY_ICON = QSvgRenderer(str(current_file.parent / "visibility.svg"))
+NO_VISIBILITY_ICON = QSvgRenderer(str(current_file.parent / "visibility_off.svg"))
+ARROW_UP_ICON = QSvgRenderer(str(current_file.parent / "arrow_up.svg"))
+ARROW_DOWN_ICON = QSvgRenderer(str(current_file.parent / "arrow_down.svg"))
 
 
 def render_svg_to_pixmap(
@@ -30,7 +35,7 @@ def render_svg_to_pixmap(
     painter.end()
 
     if color is None:
-        color = QColor(150, 150, 150)
+        color = QApplication.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText)
 
     tinted = QPixmap(pixmap.size())
     tinted.fill(Qt.GlobalColor.transparent)

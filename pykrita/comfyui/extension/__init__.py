@@ -2,12 +2,12 @@ from typing import cast
 
 from krita import DockWidgetFactory, DockWidgetFactoryBase, Extension, Krita, Window
 
-from .comfy_krita_bridge import ComfyKritaBridge
-from .comfy_websocket import ComfyWebsocket
-from .config import Config
-from .document_monitor import DocumentMonitor
-from .ui.connection import ComfyUIWebsocketConnectionDialog
-from .ui.docker import COMFYUI_DOCKER_OBJECT_NAME, ComfyUIDocker
+from comfyui.extension.comfy_krita_bridge import ComfyKritaBridge
+from comfyui.extension.comfy_websocket import ComfyWebsocket
+from comfyui.extension.config import Config
+from comfyui.extension.document_monitor import DocumentMonitor
+from comfyui.extension.ui.connection import ComfyUIWebsocketConnectionDialog
+from comfyui.extension.ui.docker import COMFYUI_DOCKER_OBJECT_NAME, ComfyUIDocker
 
 
 class ComfyUIExtension(Extension):
@@ -62,6 +62,8 @@ class ComfyUIExtension(Extension):
         dialog.exec_()
 
     def broadcast_active_document_changed_to_comfy_dockers(self) -> None:
+        self.bridge.update_documents()
+
         for docker, window in ComfyUIExtension.get_comfyui_window_docker_pairs():
             active_view = window.activeView()
 
@@ -73,4 +75,4 @@ class ComfyUIExtension(Extension):
             if active_document is None:
                 continue
 
-            docker.set_active_document(active_document)
+            docker.set_active_document(window, active_document)

@@ -1,25 +1,21 @@
 from typing import ClassVar
 
-from krita import Document
+from krita import Document, Window
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QPalette
 from PyQt5.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
-from ...layers_manager import PersistentLayerManager
-from ...models import Node, NodeDirection
-from .nodes.comfyui_node import ComfyUiNode
-from .nodes.node_factory import NodeFactory
+from comfyui.extension.layer_manager import LayerManager, PersistentLayerManager
+from comfyui.extension.models import Node, NodeDirection
+from comfyui.extension.ui.nodes.comfyui_node import ComfyUiNode
+from comfyui.extension.ui.nodes.node_factory import NodeFactory
 
 
 class NodeListWidget(QScrollArea):
-    LayerManager: ClassVar[type[PersistentLayerManager]] = PersistentLayerManager
+    LayerManager: ClassVar[type["LayerManager"]] = PersistentLayerManager
 
     def __init__(self) -> None:
         super().__init__()
-        self.setFrameShape(QScrollArea.Shape.NoFrame)
-        self.setFrameShadow(QScrollArea.Shadow.Plain)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.setWidgetResizable(True)
 
         self.main_layout = QVBoxLayout()
         self.main_layout.setContentsMargins(4, 0, 4, 0)
@@ -27,11 +23,16 @@ class NodeListWidget(QScrollArea):
         self.container = QWidget()
         self.container.setLayout(self.main_layout)
 
+        self.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.setFrameShadow(QScrollArea.Shadow.Plain)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setWidgetResizable(True)
         self.setWidget(self.container)
 
         self.node_widgets: list[ComfyUiNode] = []
 
-    def rebuild(self, nodes: list[Node], document: Document) -> None:  # noqa: C901
+    def rebuild(self, nodes: list[Node], window: Window, document: Document) -> None:  # noqa: C901
         while self.main_layout.count() > 0:
             item = self.main_layout.takeAt(0)
 
@@ -46,7 +47,7 @@ class NodeListWidget(QScrollArea):
         self.node_widgets.clear()
 
         for node in nodes:
-            node_widget = NodeFactory.create(node, NodeListWidget.LayerManager.get_by_document(document))
+            node_widget = NodeFactory.create(self, node, NodeListWidget.LayerManager.get_by_window_and_document(window, document))
             self.node_widgets.append(node_widget)
 
         input_mode: NodeDirection = "input"
@@ -90,4 +91,6 @@ class GroupTitle(QLabel):
         font = self.font()
         font.setBold(True)
         self.setFont(font)
-        self.setStyleSheet("color: #909090;")
+        palette = self.palette()
+        disabled_color = palette.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText)
+        self.setStyleSheet(f"color: {disabled_color.name()};")

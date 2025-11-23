@@ -1,9 +1,9 @@
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtGui import QPalette, QPixmap
 from PyQt5.QtSvg import QSvgRenderer
-from PyQt5.QtWidgets import QLabel
+from PyQt5.QtWidgets import QApplication, QLabel
 
-from ...icons import render_svg_to_pixmap
+from comfyui.extension.ui.icons import render_svg_to_pixmap
 
 
 class Miniature(QLabel):
@@ -11,8 +11,19 @@ class Miniature(QLabel):
         super().__init__()
         self.setFixedSize(32, 32)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        palette = QApplication.palette()
+        bg_color = palette.color(QPalette.ColorRole.Window)
+        bg_color = bg_color.darker(120)
+        border_color = palette.color(QPalette.ColorRole.Dark)
+        text_color = palette.color(QPalette.ColorRole.Text)
         self.setStyleSheet(
-            "background-color: #303030; border: 1px solid #3a3a3a; border-radius: 2px; color: #666;",
+            f"""
+            background-color: {bg_color.name()};
+            border: 1px solid {border_color.name()};
+            border-radius: 2px;
+            color: {text_color.name()};
+            """,
         )
         self.svg_renderer = svg_renderer
         self.setPixmap(render_svg_to_pixmap(self.svg_renderer))

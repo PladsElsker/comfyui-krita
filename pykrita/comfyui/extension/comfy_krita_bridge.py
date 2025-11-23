@@ -1,8 +1,9 @@
+import contextlib
 import json
 
-from .comfy_websocket import ComfyWebsocket
-from .document_monitor import DocumentMonitor
-from .models import DocumentMappingResponse, StatusRequest, UpdateDocumentsRequest, UpdateWorkflowsRequest
+from comfyui.extension.comfy_websocket import ComfyWebsocket
+from comfyui.extension.document_monitor import DocumentMonitor
+from comfyui.extension.models import DocumentMappingResponse, StatusRequest, UpdateDocumentsRequest, UpdateWorkflowsRequest
 
 
 class ComfyKritaBridge:
@@ -14,8 +15,9 @@ class ComfyKritaBridge:
     def _define_commands(self) -> None:
         @self.comfy_ws.handler("status")
         def status_statement(data: dict) -> None:
-            status_request = StatusRequest.model_validate(data)
-            self.status_statement(status_request)
+            with contextlib.suppress(Exception):
+                status_request = StatusRequest.model_validate(data)
+                self.status_statement(status_request)
 
         @self.comfy_ws.handler("krita::workflows::update")
         def update_workflows(data: dict) -> None:
@@ -88,4 +90,4 @@ class ComfyKritaBridge:
                 return
 
             docker.update_title(workflows_request.name, found_document_id)
-            docker.update_node_list(found_nodes, active_document)
+            docker.update_node_list(found_nodes, window, active_document)
