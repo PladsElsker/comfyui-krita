@@ -16,11 +16,6 @@ class NodeListWidget(QScrollArea):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setFrameShape(QScrollArea.Shape.NoFrame)
-        self.setFrameShadow(QScrollArea.Shadow.Plain)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.setWidgetResizable(True)
 
         self.main_layout = QVBoxLayout()
         self.main_layout.setContentsMargins(4, 0, 4, 0)
@@ -28,6 +23,11 @@ class NodeListWidget(QScrollArea):
         self.container = QWidget()
         self.container.setLayout(self.main_layout)
 
+        self.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.setFrameShadow(QScrollArea.Shadow.Plain)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setWidgetResizable(True)
         self.setWidget(self.container)
 
         self.node_widgets: list[ComfyUiNode] = []

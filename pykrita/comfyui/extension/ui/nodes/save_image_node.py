@@ -22,33 +22,31 @@ class SaveImageNode(ComfyUiNode):
         self.linked_layer: PersistentLayer | None = None
         self.layer_notifier: PersistentLayerNotifier | None = None
 
-        self.main_layout = QHBoxLayout(self)
-        self.main_layout.setContentsMargins(2, 2, 0, 0)
-
         self.miniature = Miniature(SAVE_ICON)
-        self.main_layout.addWidget(self.miniature)
+
+        self.node_name_label = NodeTitleLabel(node.name)
+        self.layer_info_text = NodeDescriptionLabel(self.layer_name)
 
         self.middle_rack = QVBoxLayout()
-        self.node_name_label = NodeTitleLabel(node.name)
         self.middle_rack.addWidget(self.node_name_label)
-
-        self.layer_info_text = NodeDescriptionLabel(self.layer_name)
         self.middle_rack.addWidget(self.layer_info_text)
 
-        self.main_layout.addLayout(self.middle_rack)
-        self.main_layout.addStretch(1)
-
-        self.action_buttons_container = QHBoxLayout()
-        self.action_buttons_container.setSpacing(1)
-
         self.direction_button = DirectionButton()
-        self.action_buttons_container.addWidget(self.direction_button)
 
         self.visibility_button = VisibilityButton()
         self.visibility_button.changed_to_visible.connect(self._show_linked_layer)
         self.visibility_button.changed_to_hidden.connect(self._hide_linked_layer)
+
+        self.action_buttons_container = QHBoxLayout()
+        self.action_buttons_container.setSpacing(1)
+        self.action_buttons_container.addWidget(self.direction_button)
         self.action_buttons_container.addWidget(self.visibility_button)
 
+        self.main_layout = QHBoxLayout(self)
+        self.main_layout.setContentsMargins(2, 2, 0, 0)
+        self.main_layout.addWidget(self.miniature)
+        self.main_layout.addLayout(self.middle_rack)
+        self.main_layout.addStretch(1)
         self.main_layout.addLayout(self.action_buttons_container)
 
         self._update_layer_name("Generator Position")
