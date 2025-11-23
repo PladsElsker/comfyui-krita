@@ -1,12 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 
 from krita import Document
 
 from ..models import PersistentLayer
-
-if TYPE_CHECKING:
-    from .notifier import PersistentLayerNotifier
+from .notifier import PersistentLayerNotifier
 
 
 class LayerManager(ABC):
@@ -27,13 +25,10 @@ class LayerManager(ABC):
     def exists(self, persistent_layer: PersistentLayer) -> bool: ...
 
     @abstractmethod
-    def rename(self, persistent_layer: PersistentLayer, name: str) -> None: ...
-
-    @abstractmethod
     def select(self, persistent_layer: PersistentLayer) -> None: ...
 
     @abstractmethod
-    def notifier(self, persistent_layer: PersistentLayer) -> "PersistentLayerNotifier | None": ...
+    def notifier(self, persistent_layer: PersistentLayer) -> PersistentLayerNotifier: ...
 
     @abstractmethod
     def show(self, persistent_layer: PersistentLayer) -> None: ...

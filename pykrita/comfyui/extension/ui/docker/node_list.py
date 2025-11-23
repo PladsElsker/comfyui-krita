@@ -2,6 +2,7 @@ from typing import ClassVar
 
 from krita import Document
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QPalette
 from PyQt5.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from ...layer_manager import LayerManager, PersistentLayerManager
@@ -90,4 +91,6 @@ class GroupTitle(QLabel):
         font = self.font()
         font.setBold(True)
         self.setFont(font)
-        self.setStyleSheet("color: #909090;")
+        palette = self.palette()
+        disabled_color = palette.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText)
+        self.setStyleSheet(f"color: {disabled_color.name()};")

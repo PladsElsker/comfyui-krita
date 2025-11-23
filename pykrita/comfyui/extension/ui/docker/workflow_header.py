@@ -1,3 +1,4 @@
+from PyQt5.QtGui import QPalette
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 
@@ -18,8 +19,10 @@ class WorkflowHeader(QFrame):
 
         self.workflow_label = QLabel("—")
         self.document_label = QLabel("—")
-        self.document_label.setStyleSheet("color: #3b9df5;")
-
+        workflow_label_accent = self.workflow_label.palette().color(QPalette.ColorRole.HighlightedText)
+        document_label_accent = self.document_label.palette().color(QPalette.ColorRole.HighlightedText)
+        self.workflow_label.setStyleSheet(f"color: {workflow_label_accent.name()};")
+        self.document_label.setStyleSheet(f"color: {document_label_accent.name()};")
         self.row2.addWidget(self.workflow_label)
         self.row2.addWidget(self.document_label)
 

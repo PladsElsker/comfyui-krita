@@ -1,5 +1,5 @@
 import contextlib
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from krita import Document, Node
 from pydantic import BaseModel
@@ -9,9 +9,6 @@ from ..models import FlatLayerToken, PersistentLayer
 from .manager import LayerManager
 from .notifier import PersistentLayerNotifier
 from .utils import LayerRelativePath, LayerUtils
-
-if TYPE_CHECKING:
-    from .persistent_manager import PersistentId
 
 
 class PersistentLayerManager(LayerManager):
@@ -52,13 +49,6 @@ class PersistentLayerManager(LayerManager):
 
         return not self.registered_layers[persistent_layer.quuid].scheduled_for_deletion
 
-    def rename(self, persistent_layer: PersistentLayer, name: str) -> None:
-        if persistent_layer.quuid not in self.registered_layers:
-            message = f"Layer {persistent_layer.quuid} has not been created"
-            raise ValueError(message)
-
-        self.registered_layers[persistent_layer.quuid].name = name
-
     def select(self, persistent_layer: PersistentLayer) -> None:
         if persistent_layer.quuid not in self.registered_layers:
             return
@@ -78,15 +68,12 @@ class PersistentLayerManager(LayerManager):
 
         self.document.setActiveNode(match)
 
-    def notifier(self, persistent_layer: PersistentLayer) -> "PersistentLayerNotifier | None":
+    def notifier(self, persistent_layer: PersistentLayer) -> PersistentLayerNotifier:
         if not self.exists(persistent_layer):
             message = f"Layer {persistent_layer.model_dump()} does not exist"
             raise ValueError(message)
 
-        if persistent_layer.quuid not in self.layer_notifiers:
-            self.layer_notifiers[persistent_layer.quuid] = PersistentLayerNotifier()
-
-        return self.layer_notifiers[persistent_layer.quuid]
+        return self._ensure_notifier(persistent_layer.quuid)
 
     def show(self, persistent_layer: PersistentLayer) -> None:
         if persistent_layer.quuid not in self.registered_layers:
@@ -190,11 +177,18 @@ class PersistentLayerManager(LayerManager):
     def _modify(self, uuid: "PersistentId", _from: "PersistentLayerInternalState", _to: "PersistentLayerInternalState") -> None:
         assert _to.linked_uuid is not None  # noqa: S101
 
+        notifier = self._ensure_notifier(uuid)
+
         _to.path = _from.path
+
+        if _to.name != _from.name:
+            _to.name = _from.name
+            notifier.name_changed.emit(_to.name)
 
         if _from.linked_uuid is None:
             _to.rendered = False
             _to.linked_uuid = None
+            notifier.user_unrendered.emit()
             return
 
         match = self._validate_uuid(_to.linked_uuid)
@@ -203,7 +197,6 @@ class PersistentLayerManager(LayerManager):
             self.registered_layers.pop(uuid, None)
             return
 
-        match.setName(_to.name)
         match.setLocked(False)
         match.setAlphaLocked(True)
         match.setVisible(False)
@@ -220,6 +213,12 @@ class PersistentLayerManager(LayerManager):
         all_layers = LayerUtils.flatten_tree(roots)
 
         return next((existing_layer for existing_layer in all_layers if existing_layer.uniqueId() == uuid), None)
+
+    def _ensure_notifier(self, uuid: "PersistentId") -> PersistentLayerNotifier:
+        if uuid is not None and uuid not in self.layer_notifiers:
+            self.layer_notifiers[uuid] = PersistentLayerNotifier()
+
+        return self.layer_notifiers[uuid]
 
     def _rebase(self, to: "PersistentLayerInternalState") -> "tuple[list[FlatLayerToken], LayerRelativePath] | None":
         roots = self.document.topLevelNodes()
