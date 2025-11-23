@@ -2,8 +2,8 @@ from typing import ClassVar
 
 from PyQt5.QtWidgets import QWidget
 
-from ....layer_manager import LayerManager
-from ....models import Node, NodeDirection
+from comfyui.extension.layer_manager import LayerManager
+from comfyui.extension.models import Node, NodeDirection
 
 
 class ComfyUiNode(QWidget):

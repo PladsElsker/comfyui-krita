@@ -1,9 +1,9 @@
 import contextlib
 import json
 
-from .comfy_websocket import ComfyWebsocket
-from .document_monitor import DocumentMonitor
-from .models import DocumentMappingResponse, StatusRequest, UpdateDocumentsRequest, UpdateWorkflowsRequest
+from comfyui.extension.comfy_websocket import ComfyWebsocket
+from comfyui.extension.document_monitor import DocumentMonitor
+from comfyui.extension.models import DocumentMappingResponse, StatusRequest, UpdateDocumentsRequest, UpdateWorkflowsRequest
 
 
 class ComfyKritaBridge:

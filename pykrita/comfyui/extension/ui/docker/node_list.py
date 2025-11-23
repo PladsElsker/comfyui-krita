@@ -5,10 +5,10 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPalette
 from PyQt5.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
-from ...layer_manager import LayerManager, PersistentLayerManager
-from ...models import Node, NodeDirection
-from .nodes.comfyui_node import ComfyUiNode
-from .nodes.node_factory import NodeFactory
+from comfyui.extension.layer_manager import LayerManager, PersistentLayerManager
+from comfyui.extension.models import Node, NodeDirection
+from comfyui.extension.ui.nodes.comfyui_node import ComfyUiNode
+from comfyui.extension.ui.nodes.node_factory import NodeFactory
 
 
 class NodeListWidget(QScrollArea):

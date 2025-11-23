@@ -1,5 +1,6 @@
-from ....layer_manager import LayerManager
-from ....models import Node
+from comfyui.extension.layer_manager import LayerManager
+from comfyui.extension.models import Node
+
 from .comfyui_node import ComfyUiNode
 from .save_image_node import SaveImageNode
 

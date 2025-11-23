@@ -2,12 +2,12 @@ from typing import cast
 
 from krita import DockWidgetFactory, DockWidgetFactoryBase, Extension, Krita, Window
 
-from .comfy_krita_bridge import ComfyKritaBridge
-from .comfy_websocket import ComfyWebsocket
-from .config import Config
-from .document_monitor import DocumentMonitor
-from .ui.connection import ComfyUIWebsocketConnectionDialog
-from .ui.docker import COMFYUI_DOCKER_OBJECT_NAME, ComfyUIDocker
+from comfyui.extension.comfy_krita_bridge import ComfyKritaBridge
+from comfyui.extension.comfy_websocket import ComfyWebsocket
+from comfyui.extension.config import Config
+from comfyui.extension.document_monitor import DocumentMonitor
+from comfyui.extension.ui.connection import ComfyUIWebsocketConnectionDialog
+from comfyui.extension.ui.docker import COMFYUI_DOCKER_OBJECT_NAME, ComfyUIDocker
 
 
 class ComfyUIExtension(Extension):
