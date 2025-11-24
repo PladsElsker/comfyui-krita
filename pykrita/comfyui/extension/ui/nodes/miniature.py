@@ -13,8 +13,7 @@ class Miniature(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         palette = QApplication.palette()
-        bg_color = palette.color(QPalette.ColorRole.Window)
-        bg_color = bg_color.darker(120)
+        bg_color = palette.color(QPalette.ColorRole.Base)
         border_color = palette.color(QPalette.ColorRole.Dark)
         text_color = palette.color(QPalette.ColorRole.Text)
         self.setStyleSheet(

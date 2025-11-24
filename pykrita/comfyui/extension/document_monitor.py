@@ -1,6 +1,6 @@
-from typing import cast
+from typing import Any, cast
 
-from krita import Document, Krita, View
+from krita import Document, Krita
 from PyQt5.QtCore import QObject, QTimer, pyqtBoundSignal, pyqtSignal
 
 
@@ -20,6 +20,8 @@ class DocumentMonitor(QObject):
         self._notifier.setActive(True)
         self._notifier.viewCreated.connect(self._view_event)  # type: ignore
         self._notifier.viewClosed.connect(self._view_event)  # type: ignore
+        self._notifier.imageCreated.connect(self._view_event)  # type: ignore
+        self._notifier.imageClosed.connect(self._view_event)  # type: ignore
         self.mapping: dict[str, Document] = {}
 
     def test_mappings(self, mappings: dict[str, str]) -> bool:
@@ -66,7 +68,7 @@ class DocumentMonitor(QObject):
     def _current_doc_names(self) -> tuple[str, ...]:
         return tuple(doc.name() for doc in self._krita.documents())
 
-    def _view_event(self, view: View) -> None:  # noqa: ARG002
+    def _view_event(self, *args: Any, **kwargs: Any) -> None:  # noqa: ANN401, ARG002
         self._check_for_changes()
 
     def _check_for_changes(self) -> None:
