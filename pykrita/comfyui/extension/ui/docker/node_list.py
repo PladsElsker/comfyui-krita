@@ -1,19 +1,14 @@
-from typing import ClassVar
-
 from krita import Document, Window
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPalette
 from PyQt5.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
-from comfyui.extension.layer_manager import LayerManager, PersistentLayerManager
 from comfyui.extension.models import Node, NodeDirection
 from comfyui.extension.ui.nodes.comfyui_node import ComfyUiNode
 from comfyui.extension.ui.nodes.node_factory import NodeFactory
 
 
 class NodeListWidget(QScrollArea):
-    LayerManager: ClassVar[type["LayerManager"]] = PersistentLayerManager
-
     def __init__(self) -> None:
         super().__init__()
 
@@ -47,7 +42,7 @@ class NodeListWidget(QScrollArea):
         self.node_widgets.clear()
 
         for node in nodes:
-            node_widget = NodeFactory.create(self, node, NodeListWidget.LayerManager.get_by_window_and_document(window, document))
+            node_widget = NodeFactory.create(self, node, window, document)
             self.node_widgets.append(node_widget)
 
         input_mode: NodeDirection = "input"

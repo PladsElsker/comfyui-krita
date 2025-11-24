@@ -14,11 +14,11 @@ class WorkflowHeader(QFrame):
         self.document_title = QLabel("Document: ")
 
         self.document_label = ElidedLabel("—")
-        document_label_accent = self.document_label.palette().color(QPalette.ColorRole.HighlightedText)
+        document_label_accent = self.document_label.palette().color(QPalette.ColorRole.BrightText)
         self.document_label.setStyleSheet(f"color: {document_label_accent.name()};")
 
         self.workflow_label = ElidedLabel("—")
-        workflow_label_accent = self.workflow_label.palette().color(QPalette.ColorRole.HighlightedText)
+        workflow_label_accent = self.workflow_label.palette().color(QPalette.ColorRole.BrightText)
         self.workflow_label.setStyleSheet(f"color: {workflow_label_accent.name()};")
 
         self.row1 = QVBoxLayout()

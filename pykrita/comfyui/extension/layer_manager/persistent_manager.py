@@ -5,14 +5,15 @@ from krita import Document, Node, Window
 from pydantic import BaseModel
 from PyQt5.QtCore import QTimer, QUuid
 
-from ..models import FlatLayerToken, PersistentLayer
+from comfyui.extension.models import FlatLayerToken, KritaLayerType, PersistentLayer
+
 from .manager import LayerManager
 from .notifier import PersistentLayerNotifier
 from .utils import LayerRelativePath, LayerUtils
 
 
 class PersistentLayerManager(LayerManager):
-    def __init__(self, window: Window, document: Document, refresh_ms: int = 300, default_layer_type: str = "vectorlayer") -> None:
+    def __init__(self, window: Window, document: Document, refresh_ms: int = 300, default_layer_type: KritaLayerType = "vectorlayer") -> None:
         super().__init__(window, document)
         self.refresh_ms = refresh_ms
         self.default_layer_type = default_layer_type

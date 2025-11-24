@@ -56,3 +56,20 @@ class PersistentLayer(BaseModel):
     quuid: Any
     path: list[FlatLayerToken] | None = None
     visible: bool = True
+
+
+KritaLayerType = Literal[
+    "paintlayer",
+    "vectorlayer",
+    "grouplayer",
+    "filelayer",
+    "filterlayer",
+    "filllayer",
+    "clonelayer",
+    "transformmask",
+    "referenceimageslayer",
+    "transparencymask",
+    "filtermask",
+    "selectionmask",
+    "colorizemask",
+]

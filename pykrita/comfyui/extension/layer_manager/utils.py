@@ -1,11 +1,11 @@
 import difflib
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 from krita import Node
 from pydantic import BaseModel
 
-from ..models import FlatLayerToken
+from ..models import FlatLayerToken, KritaLayerType
 
 
 class LayerUtils:
@@ -21,8 +21,10 @@ class LayerUtils:
                 continue
 
             flat_list.append(node)
-            children = [n for n in reversed(node.childNodes()) if isinstance(n, Node)]
-            remaining += children
+            node_type = cast("KritaLayerType", node.type())
+            if node_type == "grouplayer":
+                children = [n for n in reversed(node.childNodes()) if isinstance(n, Node)]
+                remaining += children
 
         return flat_list
 
@@ -35,7 +37,7 @@ class LayerUtils:
                 continue
 
             node_children = node.childNodes()
-            is_parent = len(node_children) > 0
+            is_parent = len(node_children) > 0 and cast("KritaLayerType", node.type()) == "grouplayer"
             if is_parent:
                 result.append(FlatLayerToken(quuid=node.uniqueId(), type="group_start"))
                 result += cls.to_flat_tokens(node_children)
