@@ -75,4 +75,9 @@ class ComfyUIExtension(Extension):
             if active_document is None:
                 continue
 
-            docker.set_active_document(window, active_document)
+            document_id = self.document_monitor.document_to_id(active_document)
+
+            if document_id is None:
+                continue
+
+            docker.set_active_document(window, active_document, document_id)

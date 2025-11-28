@@ -46,7 +46,7 @@ class ComfyUIDocker(DockWidget):
         self.workflow_header.set_workflow_name(name)
         self.workflow_header.set_document_name(document_id)
 
-    def update_node_list(self, nodes: list[Node], window: Window, document: Document) -> None:
+    def update_node_list(self, nodes: list[Node], window: Window, document: Document, document_id: str) -> None:
         document_index = -1
 
         if document not in self._registered_documents:
@@ -56,9 +56,9 @@ class ComfyUIDocker(DockWidget):
             document_index = self._registered_documents.index(document)
 
         self._workflows[document_index] = nodes
-        self.set_active_document(window, self._active_document)
+        self.set_active_document(window, self._active_document, document_id)
 
-    def set_active_document(self, window: Window, document: Document | None) -> None:
+    def set_active_document(self, window: Window, document: Document | None, document_id: str) -> None:
         self._active_document = document
 
         if document is None:
@@ -69,7 +69,7 @@ class ComfyUIDocker(DockWidget):
 
         document_index = self._registered_documents.index(document)
         nodes = self._workflows[document_index]
-        self.node_list.rebuild(nodes, window, document)
+        self.node_list.update_from_comyui(nodes, window, document, document_id)
 
     def canvasChanged(self, canvas: Canvas) -> None:  # noqa: N802
         pass

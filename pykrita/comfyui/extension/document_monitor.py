@@ -23,6 +23,7 @@ class DocumentMonitor(QObject):
         self._notifier.imageCreated.connect(self._view_event)  # type: ignore
         self._notifier.imageClosed.connect(self._view_event)  # type: ignore
         self.mapping: dict[str, Document] = {}
+        self.document_id_mapping: dict[str, str] = {}
 
     def test_mappings(self, mappings: dict[str, str]) -> bool:
         return self._resolve_mapping(mappings) is not None
@@ -34,6 +35,7 @@ class DocumentMonitor(QObject):
             message = "Unable to retrieve valid unique document id mappings"
             raise ValueError(message)
 
+        self.document_id_mapping = dict(mappings)
         self.mapping.clear()
         self.mapping.update(resolved)
 
@@ -42,6 +44,13 @@ class DocumentMonitor(QObject):
 
     def get_active_document(self) -> Document | None:
         return next((document for document in self._last_documents if self._last_active_document == document), None)
+
+    def document_to_id(self, document: Document) -> str | None:
+        for document_id, mapped_document in self.mapping.items():
+            if mapped_document == document:
+                return document_id
+
+        return None
 
     def _resolve_mapping(self, mappings: dict[str, str]) -> dict[str, Document] | None:
         if len(mappings) != len(self._last_documents):

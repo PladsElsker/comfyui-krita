@@ -3,7 +3,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPalette
 from PyQt5.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
-from comfyui.extension.models import Node, NodeDirection
+from comfyui.extension.models import Node, NodeDirection, UiNodeState
 from comfyui.extension.ui.nodes.comfyui_node import ComfyUiNode
 from comfyui.extension.ui.nodes.node_factory import NodeFactory
 
@@ -26,25 +26,52 @@ class NodeListWidget(QScrollArea):
         self.setWidget(self.container)
 
         self.node_widgets: list[ComfyUiNode] = []
+        self.prevous_node_states: dict[tuple[int, str, str], UiNodeState] = {}
 
-    def rebuild(self, nodes: list[Node], window: Window, document: Document) -> None:  # noqa: C901
+    def update_from_comyui(self, nodes: list[Node], window: Window, document: Document, document_id: str) -> None:
+        def _nid(node: Node) -> tuple:
+            return (node.id, node.type, document_id)
+
+        comfyui_node_mapping = {_nid(node): node for node in nodes}
+        current_node_mapping = {_nid(node_widget): node_widget for node_widget in self.node_widgets}
+
+        nodes_to_delete = [
+            current_node_mapping[_nid(node_widget)] for node_widget in self.node_widgets if _nid(node_widget) not in comfyui_node_mapping
+        ]
+        nodes_to_create = [node for node in nodes if _nid(node) not in current_node_mapping]
+
         while self.main_layout.count() > 0:
             item = self.main_layout.takeAt(0)
 
             if item is not None:
-                widget = item.widget()
-                if widget is not None:
-                    if isinstance(widget, ComfyUiNode):
-                        widget.cleanup()
+                layout_widget: QWidget = item.widget()
 
-                    widget.deleteLater()
+                if layout_widget is not None and not isinstance(layout_widget, ComfyUiNode):
+                    layout_widget.deleteLater()
 
-        self.node_widgets.clear()
+        for to_delete in nodes_to_delete:
+            node_id = _nid(to_delete)
+            widget: ComfyUiNode = current_node_mapping[node_id]
 
-        for node in nodes:
-            node_widget = NodeFactory.create(self, node, window, document)
+            if isinstance(widget, ComfyUiNode):
+                widget.cleanup()
+                widget.deleteLater()
+                self.node_widgets.remove(widget)
+
+        for to_create in nodes_to_create:
+            node_widget = NodeFactory.create(self, to_create, window, document, document_id)
+            node_id = _nid(to_create)
+
+            if node_id in self.prevous_node_states:
+                previous_node_state = self.prevous_node_states[node_id]
+                node_widget.apply(previous_node_state)
+
+            node_widget.state_changed.connect(self._register_node_state)
             self.node_widgets.append(node_widget)
 
+        self._refresh_ui()
+
+    def _refresh_ui(self) -> None:
         input_mode: NodeDirection = "input"
         output_mode: NodeDirection = "output"
 
@@ -76,6 +103,9 @@ class NodeListWidget(QScrollArea):
         line.setFixedHeight(1)
         line.setStyleSheet("background-color: rgba(0, 0, 0, 20); border: none;")
         self.main_layout.addWidget(line)
+
+    def _register_node_state(self, state: UiNodeState) -> None:
+        self.prevous_node_states[(state.id, state.type, state.document_id)] = state
 
 
 class GroupTitle(QLabel):

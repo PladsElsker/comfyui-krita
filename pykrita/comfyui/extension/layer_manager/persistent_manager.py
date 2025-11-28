@@ -5,10 +5,11 @@ from krita import Document, Node, Window
 from pydantic import BaseModel
 from PyQt5.QtCore import QTimer, QUuid
 
-from comfyui.extension.models import FlatLayerToken, KritaLayerType, PersistentLayer
+from comfyui.extension.models import FlatLayerToken, KritaLayerType
 
 from .manager import LayerManager
 from .notifier import PersistentLayerNotifier
+from .persistent_layer import PersistentLayer
 from .utils import LayerRelativePath, LayerUtils
 
 
@@ -88,6 +89,12 @@ class PersistentLayerManager(LayerManager):
 
         self.registered_layers[persistent_layer.quuid].rendered = False
 
+    def move(self, persistent_layer: PersistentLayer, path: list[FlatLayerToken]) -> None:
+        if persistent_layer.quuid not in self.registered_layers:
+            return
+
+        self.registered_layers[persistent_layer.quuid].path = path
+
     def _step(self) -> None:
         active_view = self.window.activeView()
 
@@ -157,6 +164,7 @@ class PersistentLayerManager(LayerManager):
         _remove_id()
 
     def _create(self, uuid: "PersistentId", layer: "PersistentLayerInternalState") -> None:
+        notifier = self._ensure_notifier(uuid)
         new_layer = self.document.createNode(layer.name, self.default_layer_type)
 
         if new_layer is None:
@@ -187,6 +195,7 @@ class PersistentLayerManager(LayerManager):
         saved_path = layer.path
         try:
             layer.path = rebased
+            notifier.user_moved.emit(layer.path)
             rel_path.parent.addChildNode(new_layer, rel_path.sibling)  # type: ignore
         except Exception:  # noqa: BLE001
             layer.path = saved_path
@@ -194,11 +203,13 @@ class PersistentLayerManager(LayerManager):
     def _modify(self, uuid: "PersistentId", _from: "PersistentLayerInternalState", _to: "PersistentLayerInternalState") -> None:
         notifier = self._ensure_notifier(uuid)
 
-        _to.path = _from.path
+        if not _to.same_path(_from.path):
+            _to.path = _from.path
+            notifier.user_moved.emit(_from.path)
 
         if _to.name != _from.name:
             _to.name = _from.name
-            notifier.name_changed.emit(_to.name)
+            notifier.user_renamed.emit(_to.name)
 
         if _to.linked_uuid is None and _to.last_linked_uuid == _from.linked_uuid:
             _to.linked_uuid = _to.last_linked_uuid

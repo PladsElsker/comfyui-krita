@@ -3,8 +3,10 @@ from typing import ClassVar
 
 from krita import Document, Window
 
-from ..models import PersistentLayer
+from comfyui.extension.models import FlatLayerToken
+
 from .notifier import PersistentLayerNotifier
+from .persistent_layer import PersistentLayer
 
 
 class LayerManager(ABC):
@@ -17,7 +19,7 @@ class LayerManager(ABC):
         self.document = document
 
     @abstractmethod
-    def create(self, name: str, path: list | None = None) -> PersistentLayer: ...
+    def create(self, name: str, path: list[FlatLayerToken] | None = None) -> PersistentLayer: ...
 
     @abstractmethod
     def delete(self, persistent_layer: PersistentLayer) -> None: ...
@@ -36,6 +38,9 @@ class LayerManager(ABC):
 
     @abstractmethod
     def hide(self, persistent_layer: PersistentLayer) -> None: ...
+
+    @abstractmethod
+    def move(self, persistent_layer: PersistentLayer, path: list[FlatLayerToken]) -> None: ...
 
     @classmethod
     def get_by_window_and_document(cls, window: Window, document: Document) -> "LayerManager":
