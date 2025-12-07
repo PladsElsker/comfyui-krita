@@ -43,7 +43,7 @@ class ComfyKritaBridge:
 
         self.document_monitor.assign_name_mappings(mappings)
         self.request_workflows()
-        # self.send_krita_state()
+        # self.send_krita_state()  # noqa: ERA001
 
     def request_workflows(self) -> None:
         if self.comfy_ws.sid is None:
