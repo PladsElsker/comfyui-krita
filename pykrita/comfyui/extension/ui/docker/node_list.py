@@ -7,7 +7,6 @@ from comfyui.extension.models import Node, NodeDirection, UiNodeState
 from comfyui.extension.ui.nodes.comfyui_node import ComfyUiNode
 from comfyui.extension.ui.nodes.node_factory import NodeFactory
 
-
 NodeKey = tuple[int, str, str | None]
 
 
@@ -107,7 +106,11 @@ class NodeListWidget(QScrollArea):
         self.previous_node_states[self._get_node_key(state)] = state
 
     def _get_node_key(self, node: Node | ComfyUiNode | UiNodeState, document_id: str | None = None) -> NodeKey:
-        return (node.id, node.type, document_id if document_id is not None else node.document_id)
+        if document_id is None and not hasattr(node, "document_id"):
+            message = "Unable to create a valid node key without a document id"
+            raise ValueError(message)
+
+        return (node.id, node.type, document_id if document_id is not None else getattr(node, "document_id", None))
 
 
 class GroupTitle(QLabel):
