@@ -62,7 +62,7 @@ class NodeListWidget(QScrollArea):
             node_widget.state_changed.connect(self._register_node_state)
             self.node_widgets.append(node_widget)
 
-        self._refresh_ui()
+        self._fill_main_layout()
 
     def _clear_main_layout(self) -> None:
         while self.main_layout.count() > 0:
@@ -74,7 +74,7 @@ class NodeListWidget(QScrollArea):
                 if layout_widget is not None and not isinstance(layout_widget, ComfyUiNode):
                     layout_widget.deleteLater()
 
-    def _refresh_ui(self) -> None:
+    def _fill_main_layout(self) -> None:
         input_mode: NodeDirection = "input"
         output_mode: NodeDirection = "output"
 

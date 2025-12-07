@@ -1,4 +1,4 @@
-import difflib
+from difflib import SequenceMatcher
 from dataclasses import dataclass
 from typing import Literal, cast
 
@@ -66,7 +66,7 @@ class LayerUtils:
 
         out_of_date_no_token = [token for token in out_of_date if token.type != "target"]
 
-        matcher = difflib.SequenceMatcher(None, out_of_date_no_token, up_to_date)
+        matcher = SequenceMatcher(None, out_of_date_no_token, up_to_date)
         actions: list[FlatTokenAction] = []
 
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
