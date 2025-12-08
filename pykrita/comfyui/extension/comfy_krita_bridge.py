@@ -43,7 +43,7 @@ class ComfyKritaBridge:
 
         self.document_monitor.assign_name_mappings(mappings)
         self.request_workflows()
-        # self.send_krita_state()  # noqa: ERA001
+        self.send_krita_state()
 
     def request_workflows(self) -> None:
         if self.comfy_ws.sid is None:
@@ -96,3 +96,6 @@ class ComfyKritaBridge:
 
             docker.update_title(workflows_request.name, found_document_id)
             docker.update_node_list(found_nodes, window, active_document, found_document_id)
+
+    def send_krita_state(self) -> None:
+        pass
