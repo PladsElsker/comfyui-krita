@@ -24,6 +24,10 @@ class ComfyKritaBridge:
             workflows_request = UpdateWorkflowsRequest.model_validate(data)
             self.update_workflows(workflows_request)
 
+        @self.comfy_ws.handler("krita::layers::create")
+        def create_layer(data: dict) -> None:
+            pass
+
     def status_statement(self, status_request: StatusRequest) -> None:
         self.comfy_ws.sid = status_request.sid
         self.update_documents()
@@ -39,6 +43,7 @@ class ComfyKritaBridge:
 
         self.document_monitor.assign_name_mappings(mappings)
         self.request_workflows()
+        self.send_krita_state()
 
     def request_workflows(self) -> None:
         if self.comfy_ws.sid is None:
@@ -61,7 +66,7 @@ class ComfyKritaBridge:
 
         sid = self.comfy_ws.sid
         documents = [doc.name() for doc in self.document_monitor.get_opened_documents()]
-        update_request = UpdateDocumentsRequest(documents=documents)
+        update_request = UpdateDocumentsRequest(documents=documents, previous_mappings=self.document_monitor.document_id_mapping)
         response = self.comfy_ws.put(f"/krita/{sid}/documents", update_request.model_dump())
         return DocumentMappingResponse.model_validate_json(response).mapping
 
@@ -90,4 +95,7 @@ class ComfyKritaBridge:
                 return
 
             docker.update_title(workflows_request.name, found_document_id)
-            docker.update_node_list(found_nodes, window, active_document)
+            docker.update_node_list(found_nodes, window, active_document, found_document_id)
+
+    def send_krita_state(self) -> None:
+        pass

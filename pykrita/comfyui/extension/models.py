@@ -24,6 +24,7 @@ class UpdateWorkflowsRequest(BaseModel):
 
 class UpdateDocumentsRequest(BaseModel):
     documents: list[str]
+    previous_mappings: dict[str, str]
 
 
 class DocumentMappingResponse(BaseModel):
@@ -45,17 +46,17 @@ class FlatLayerToken(BaseModel):
         return str(self.quuid) == str(other.quuid)
 
 
-class SaveImageState(BaseModel):
+class UiNodeState(BaseModel):
     id: int
+    type: str
+    document_id: str
+
+
+class SaveImageState(UiNodeState):
     insert_direction: Literal["above", "below"]
     path: list[FlatLayerToken]
     visible: bool
-
-
-class PersistentLayer(BaseModel):
-    quuid: Any
-    path: list[FlatLayerToken] | None = None
-    visible: bool = True
+    layer_name: str
 
 
 KritaLayerType = Literal[

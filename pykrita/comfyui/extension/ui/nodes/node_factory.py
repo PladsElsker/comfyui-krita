@@ -16,11 +16,11 @@ class NodeFactory:
     LayerManager: ClassVar[type["LayerManager"]] = PersistentLayerManager
 
     @classmethod
-    def create(cls, docker: DockWidget, node: Node, window: Window, document: Document) -> ComfyUiNode:
+    def create(cls, docker: DockWidget, node: Node, window: Window, document: Document, document_id: str) -> ComfyUiNode:
         match node.type:
             case SaveImageNode.type:
                 layer_manager = cls.LayerManager.get_by_window_and_document(window, document)
-                return SaveImageNode(docker, node, layer_manager)
+                return SaveImageNode(docker, node, layer_manager, document_id)
 
         message = f"Unknown node type {node.type}"
         raise ValueError(message)

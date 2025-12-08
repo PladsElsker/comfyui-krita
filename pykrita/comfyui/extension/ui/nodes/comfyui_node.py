@@ -1,23 +1,29 @@
-from typing import ClassVar
+from typing import ClassVar, cast
 
 from krita import DockWidget
+from PyQt5.QtCore import pyqtBoundSignal, pyqtSignal
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import QHBoxLayout, QToolButton, QVBoxLayout, QWidget
 
-from comfyui.extension.models import Node, NodeDirection
+from comfyui.extension.models import Node, NodeDirection, UiNodeState
 from comfyui.extension.ui.micro.labels import NodeDescriptionLabel, NodeTitleLabel
 
 from .miniature import Miniature
 
 
 class ComfyUiNode(QWidget):
-    type: ClassVar[str | None] = None
+    state_changed = cast("pyqtBoundSignal", pyqtSignal(object))
+    type: ClassVar[str]
     direction: NodeDirection
+    id: int
 
-    def __init__(self, docker: DockWidget, node: Node, default_icon: QSvgRenderer) -> None:
+    def __init__(self, docker: DockWidget, node: Node, default_icon: QSvgRenderer, document_id: str) -> None:
         super().__init__()
         self.direction = node.direction
         self.miniature = Miniature(default_icon)
+        self.id = node.id
+        self.name = node.name
+        self.document_id = document_id
 
         self.node_name_label = NodeTitleLabel()
         self.layer_info_text = NodeDescriptionLabel()
@@ -61,4 +67,8 @@ class ComfyUiNode(QWidget):
         for button in buttons:
             self.action_buttons_container.addWidget(button)
 
+    def update_node_data(self, node: Node) -> None: ...
+
     def cleanup(self) -> None: ...
+
+    def apply(self, node_state: UiNodeState) -> None: ...

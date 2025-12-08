@@ -23,6 +23,12 @@ class DirectionButton(QToolButton):
         else:
             self._set_above_icon()
 
+    def is_inserting_below(self) -> bool:
+        return self._insert_below
+
+    def toggle_state(self) -> None:
+        self._toggle()
+
     def _toggle(self) -> None:
         self._insert_below = not self._insert_below
 
@@ -68,6 +74,12 @@ class VisibilityButton(QToolButton):
             self._set_visibility_on()
         else:
             self._set_visibility_off()
+
+    def is_visible(self) -> bool:
+        return self._show_layer
+
+    def toggle_state(self) -> None:
+        self._toggle()
 
     def _toggle(self) -> None:
         self._show_layer = not self._show_layer
