@@ -31,7 +31,8 @@ def default_page() -> Generator[Page]:
         page.wait_for_function(
             """
             () => !!window.ComfyKritaExtension;
-            """
+            """,
+            timeout=10000,
         )
         yield page
         browser.close()
