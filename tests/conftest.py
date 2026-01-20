@@ -30,7 +30,7 @@ def default_page() -> Generator[Page]:
         page = browser.new_page()
         page.goto(COMFY_URL)
 
-        with contextlib.suppress(TimeoutError):
+        with contextlib.suppress(Exception):
             page.wait_for_function(
                 """
                 () => !!window.ComfyKritaExtension;
