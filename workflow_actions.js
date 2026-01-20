@@ -1,4 +1,4 @@
-import { app } from "../../../scripts/app.js";
+import { app } from "../../scripts/app.js";
 
 
 const KRITA_SAVE_IMAGE_NODE_TYPE = "KritaSaveImage-15347";
@@ -67,6 +67,9 @@ export const extension = {
     async nodeCreated(node) {
         fixKritaNodeUi(node);
     },
+    async setup() { 
+        window.ComfyKritaExtension = true;
+	},
 };
 
 

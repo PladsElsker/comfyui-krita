@@ -1,4 +1,3 @@
-import contextlib
 import json
 import os
 from collections.abc import Callable, Generator
@@ -29,10 +28,11 @@ def default_page() -> Generator[Page]:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         page.goto(COMFY_URL)
-
-        with contextlib.suppress(Exception):
-            page.wait_for_selector(".side-toolbar-container", timeout=10)
-
+        page.wait_for_function(
+            """
+            () => !!window.ComfyKritaExtension;
+            """
+        )
         yield page
         browser.close()
 
