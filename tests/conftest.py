@@ -1,3 +1,4 @@
+import contextlib
 import json
 import os
 from collections.abc import Callable, Generator
@@ -27,8 +28,11 @@ def default_page() -> Generator[Page]:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
-        page.goto(COMFY_URL, wait_until="load")
-        page.wait_for_selector(".side-toolbar-container")
+        page.goto(COMFY_URL)
+
+        with contextlib.suppress(Exception):
+            page.wait_for_selector(".side-toolbar-container", timeout=10)
+
         yield page
         browser.close()
 
