@@ -27,7 +27,8 @@ def default_page() -> Generator[Page]:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
-        page.goto(COMFY_URL, wait_until="networkidle")
+        page.goto(COMFY_URL, wait_until="load")
+        page.wait_for_selector(".side-toolbar-container")
         yield page
         browser.close()
 
