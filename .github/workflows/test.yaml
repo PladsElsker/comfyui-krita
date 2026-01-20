@@ -44,7 +44,7 @@ jobs:
             - name: Create ComfyUI venv
               run: |
                   python -m venv "${{ github.workspace }}/ComfyUI/venv"
-                  
+
                   "${{ github.workspace }}/ComfyUI/venv/bin/python" -m pip install --upgrade pip
                   "${{ github.workspace }}/ComfyUI/venv/bin/python" -m pip install --no-cache-dir \
                       --extra-index-url https://download.pytorch.org/whl/cpu \
