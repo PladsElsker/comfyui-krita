@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Node(BaseModel):
@@ -22,6 +22,7 @@ class UpdateWorkflowsRequest(BaseModel):
 class UpdateKritaDocumentsRequest(BaseModel):
     sid: str
     documents: list[str]
+    previous_mappings: dict[str, str] = Field(default_factory=dict)
 
 
 class DocumentMappingResponse(BaseModel):
