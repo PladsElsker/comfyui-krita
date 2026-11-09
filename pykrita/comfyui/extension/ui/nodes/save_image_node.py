@@ -155,11 +155,11 @@ class SaveImageNode(ComfyUiNode):
     def _update_layer_name(self, name: str, *, is_set: bool = True) -> None:
         self.layer_name = name
         if is_set:
-            disabled_color = self.layer_info_text.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText)
+            disabled_color = self.layer_info_text.palette().color(QPalette.ColorGroup.Normal, QPalette.ColorRole.Highlight)
             self.layer_info_text.setStyleSheet(f"color: {disabled_color.name()};")
             self.set_info_text(f'Layer: "{name}"')
         else:
-            highlight = self.palette().color(QPalette.ColorRole.Highlight)
+            highlight = self.palette().color(QPalette.ColorRole.BrightText)
             self.layer_info_text.setStyleSheet(f"color: {highlight.name()}; font-weight: bold;")
             self.set_info_text("Layer: Not set")
 
