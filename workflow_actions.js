@@ -184,15 +184,7 @@ export function applyCachedKritaNodeStates() {
         }
 
         if(metaWidget.value) {
-            try {
-                const currentState = JSON.parse(metaWidget.value);
-                if(currentState.document_id !== documentId) {
-                    setNodeMetadataValue(node, metaWidget, "");
-                }
-            }
-            catch {
-                setNodeMetadataValue(node, metaWidget, "");
-            }
+            setNodeMetadataValue(node, metaWidget, "");
         }
     }
 }
