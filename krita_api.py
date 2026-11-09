@@ -1,5 +1,6 @@
 import inspect
 import io
+import logging
 import re
 import secrets
 import time
@@ -8,6 +9,8 @@ from dataclasses import dataclass
 
 from PIL.Image import Image
 from server import PromptServer
+
+LOGGER = logging.getLogger(__name__)
 
 from .models import (
     KritaDocuments,
@@ -26,12 +29,11 @@ MAX_STAGED_IMAGES = 128
 
 @dataclass
 class StagedImage:
-    sid: str | None
     document_id: str
     data: bytes
     notification: LayerCreateNotification
     expires_at: float
-    notification_sent: bool = False
+    notified_sid: str | None = None
 
 
 def prune_sids(f: Callable) -> Callable:
@@ -72,11 +74,6 @@ class KritaApi:
             message = "The Save Image node metadata does not match its selected Krita document"
             raise ValueError(message)
 
-        sid = self._document_id_to_sid(document_id)
-        if sid is None:
-            message = f"Krita document {document_id!r} is not registered to a Krita session"
-            raise LookupError(message)
-
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
         image_data = buffer.getvalue()
@@ -104,7 +101,6 @@ class KritaApi:
             batch_size=batch_size,
         )
         self._staged_images[transfer_id] = StagedImage(
-            sid=sid,
             document_id=document_id,
             data=image_data,
             notification=notification,
@@ -118,49 +114,41 @@ class KritaApi:
         return transfer_id
 
     async def _send_layer_notification(self, notification: LayerCreateNotification) -> None:
-        staged = self._staged_images.get(notification.transfer_id)
-        if staged is None:
-            return
-
         self._prune_staged_images()
         staged = self._staged_images.get(notification.transfer_id)
         if staged is None:
             return
 
-        # Resolve the session at dispatch time. A prompt can finish after a
-        # Krita websocket reconnect, so the SID captured when the image was
-        # encoded may no longer be the active PromptServer socket for the
-        # target document.
+        # The execution may finish while Krita is disconnected or in the
+        # middle of reconnecting. Resolve the current SID only when dispatching
+        # and leave the staged image available until Krita actually downloads it.
         sid = self._document_id_to_sid(staged.document_id)
         if sid is None or sid not in PromptServer.instance.sockets:
-            staged.sid = None
-            staged.notification_sent = False
+            staged.notified_sid = None
             LOGGER.warning(
                 "Keeping generated image %s staged for Krita document %s; "
-                "there is no active PromptServer socket yet",
+                "waiting for an active PromptServer session",
                 notification.transfer_id,
                 staged.document_id,
             )
             return
 
-        staged.sid = sid
-        try:
-            await PromptServer.instance.send(
-                "krita::layers::create",
-                notification.model_dump(),
-                sid,
-            )
-        except Exception:  # noqa: BLE001
-            staged.sid = None
-            staged.notification_sent = False
-            LOGGER.exception(
-                "Could not send generated image notification %s to Krita SID %s",
-                notification.transfer_id,
-                sid,
-            )
+        if staged.notified_sid == sid:
             return
 
-        staged.notification_sent = True
+        await PromptServer.instance.send(
+            "krita::layers::create",
+            notification.model_dump(),
+            sid,
+        )
+
+        # PromptServer.send_json silently skips unknown SIDs. Recheck the
+        # socket after sending so a disconnect racing with dispatch does not
+        # mark the notification as delivered.
+        if sid in PromptServer.instance.sockets and self._document_id_to_sid(staged.document_id) == sid:
+            staged.notified_sid = sid
+        else:
+            staged.notified_sid = None
 
     async def _send_pending_layer_notifications(self, sid: str) -> None:
         if sid not in PromptServer.instance.sockets:
@@ -170,19 +158,18 @@ class KritaApi:
         pending = [
             staged.notification
             for staged in self._staged_images.values()
-            if staged.document_id in registered_documents and not staged.notification_sent
+            if staged.document_id in registered_documents and staged.notified_sid != sid
         ]
         for notification in pending:
             await self._send_layer_notification(notification)
 
-    def get_staged_image(self, sid: str, transfer_id: str) -> bytes | None:
+    def get_staged_image(self, transfer_id: str) -> bytes | None:
+        # The transfer ID is a cryptographically random, single-use capability
+        # token. It is more reliable than binding retrieval to a websocket SID,
+        # which can change between notification delivery and the HTTP download.
         self._prune_staged_images()
-        staged = self._staged_images.get(transfer_id)
-        if staged is None or staged.sid != sid:
-            return None
-
-        self._staged_images.pop(transfer_id, None)
-        return staged.data
+        staged = self._staged_images.pop(transfer_id, None)
+        return staged.data if staged is not None else None
 
     def _prune_staged_images(self) -> None:
         now = time.monotonic()
@@ -313,9 +300,8 @@ class KritaApi:
         for sid in list(self.registered_documents.keys()):
             if sid not in PromptServer.instance.sockets:
                 for staged in self._staged_images.values():
-                    if staged.sid == sid:
-                        staged.sid = None
-                        staged.notification_sent = False
+                    if staged.notified_sid == sid:
+                        staged.notified_sid = None
                 del self.registered_documents[sid]
                 self.document_mappings.pop(sid, None)
                 for state in self.node_states.pop(sid, {}).values():
@@ -373,9 +359,8 @@ class KritaApi:
     async def _unregister_documents_by_sid_async(self, sid: str) -> None:
         if sid in self.registered_documents:
             for staged in self._staged_images.values():
-                if staged.sid == sid:
-                    staged.sid = None
-                    staged.notification_sent = False
+                if staged.notified_sid == sid:
+                    staged.notified_sid = None
             del self.registered_documents[sid]
             self.document_mappings.pop(sid, None)
             for state in self.node_states.pop(sid, {}).values():
