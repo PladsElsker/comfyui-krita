@@ -161,9 +161,7 @@ class KritaApi:
                 (
                     candidate_id
                     for candidate_id, previous_name in previous_mappings.items()
-                    if previous_name == document_name
-                    and candidate_id not in occupied_ids
-                    and candidate_id not in document_mapping
+                    if previous_name == document_name and candidate_id not in occupied_ids and candidate_id not in document_mapping
                 ),
                 None,
             )
@@ -231,11 +229,7 @@ class KritaApi:
         )
 
     def get_node_states(self) -> list[SaveImageState]:
-        return [
-            state
-            for sid_states in self.node_states.values()
-            for state in sid_states.values()
-        ]
+        return [state for sid_states in self.node_states.values() for state in sid_states.values()]
 
     @prune_sids
     async def update_workflows(self, workflows_request: UpdateWorkflowsRequest) -> None:
