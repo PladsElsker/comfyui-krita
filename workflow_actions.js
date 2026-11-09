@@ -6,7 +6,7 @@ const DOCUMENT_WIDGET_LABEL = "document";
 const META_WIDGET_LABEL = "_meta-15347";
 const KRITA_DOCUMENT_GRAPH_USAGE_REFRESH_RATE = 300;
 export const COMFY_TABS_CONTAINER_SELECTOR = ".workflow-tabs-container";
-export const COMFY_ACTIVE_TAB_SELECTOR = ".p-togglebutton.p-component.p-togglebutton-checked .workflow-label";
+export const COMFY_ACTIVE_TAB_SELECTOR = '[role="tab"][aria-selected="true"] .workflow-label';
 const KRITA_CUSTOM_IO_NODE_TYPES = [
     KRITA_SAVE_IMAGE_NODE_TYPE
 ];
