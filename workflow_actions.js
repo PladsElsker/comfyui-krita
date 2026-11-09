@@ -108,19 +108,11 @@ function hideKritaMetadataWidget(node) {
     const widget = findKritaWidget(node, META_WIDGET_LABEL);
     if(!widget) return;
 
-    // Keep the widget in the workflow serialization, but hide it on both
-    // canvas and newer widget surfaces. String widgets may own a DOM input,
-    // so hide those elements and collapse the widget's layout size as well.
-    widget.hidden = true;
+    // V3 schema-level hidden flag is authoritative; keep matching widget flags
+    // here for workflows loaded from older node definitions.
     widget.options = widget.options ?? {};
+    widget.hidden = true;
     widget.options.hidden = true;
-    widget.computeSize = () => [0, -4];
-
-    for(const elementName of ["element", "inputEl"]) {
-        const element = widget[elementName];
-        if(element?.style) element.style.display = "none";
-    }
-
     node.setDirtyCanvas?.(true, true);
 }
 
