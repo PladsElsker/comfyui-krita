@@ -20,6 +20,7 @@ from .models import (
 STALE_SIDS_PRUNING_REFRESH_RATE = 3
 STAGED_IMAGE_TTL_SECONDS = 180
 MAX_STAGED_IMAGE_BYTES = 64 * 1024 * 1024
+MAX_STAGED_TOTAL_BYTES = 256 * 1024 * 1024
 MAX_STAGED_IMAGES = 128
 
 
@@ -79,8 +80,15 @@ class KritaApi:
             message = f"Generated PNG exceeds the {MAX_STAGED_IMAGE_BYTES}-byte transfer limit"
             raise ValueError(message)
 
+        if len(image_data) > MAX_STAGED_TOTAL_BYTES:
+            message = f"Generated PNG exceeds the {MAX_STAGED_TOTAL_BYTES}-byte staging budget"
+            raise ValueError(message)
+
         self._prune_staged_images()
-        if len(self._staged_images) >= MAX_STAGED_IMAGES:
+        while self._staged_images and (
+            len(self._staged_images) >= MAX_STAGED_IMAGES
+            or sum(len(staged.data) for staged in self._staged_images.values()) + len(image_data) > MAX_STAGED_TOTAL_BYTES
+        ):
             oldest_transfer = min(self._staged_images, key=lambda key: self._staged_images[key].expires_at)
             self._staged_images.pop(oldest_transfer, None)
 
