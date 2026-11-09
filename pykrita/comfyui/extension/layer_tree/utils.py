@@ -125,8 +125,21 @@ class LayerUtils:
 
     @classmethod
     def rebase_path(cls, document: "Document", path: list[FlatLayerToken]) -> "LayerRelativePath | None":
+        target_markers = [token for token in path if token.type == "target"]
+        if len(target_markers) != 1:
+            message = f"Expected one target marker, found {len(target_markers)}"
+            raise ValueError(message)
+
         roots = document.topLevelNodes()
         tokens = cls.to_flat_tokens(roots)
+        target_id = target_markers[0].quuid
+
+        # A deleted or explicitly cleared target means ordinary insertion at
+        # the document root. Keep the prompt path intact; do not reuse its old gap.
+        target_exists = target_id is not None and any(str(token.quuid) == str(target_id) for token in tokens)
+        if not target_exists:
+            return LayerRelativePath(parent=document.rootNode(), sibling=None)
+
         _rebased, parent_token, sibling_token = cls.rebase(path, tokens)
         all_layers = cls.flatten_tree(roots)
 
