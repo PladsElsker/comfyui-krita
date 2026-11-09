@@ -82,19 +82,46 @@ export function fixKritaNodeUi(node, visitedNodes=new Set()) {
 
     if(KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)) {
         const inputs = node.inputs ?? [];
-        const metaWidget = node.widgets?.find(w => w.label === META_WIDGET_LABEL);
         const metaSlot = inputs.find(i => i.name === META_WIDGET_LABEL);
         const documentSlot = inputs.find(i => i.name === DOCUMENT_WIDGET_LABEL);
 
         if(documentSlot) inputs.splice(inputs.indexOf(documentSlot), 1);
         if(metaSlot) inputs.splice(inputs.indexOf(metaSlot), 1);
-        if(metaWidget) metaWidget.hidden = true;
+        hideKritaMetadataWidget(node);
     }
 
     // Ordinary ComfyUI nodes can own subgraphs that contain Krita nodes.
     for(const subnode of (node.subgraph?.nodes ?? [])) {
         fixKritaNodeUi(subnode, visitedNodes);
     }
+}
+
+
+function findKritaWidget(node, name) {
+    return node.widgets?.find(widget =>
+        widget.name === name || widget.label === name
+    ) ?? null;
+}
+
+
+function hideKritaMetadataWidget(node) {
+    const widget = findKritaWidget(node, META_WIDGET_LABEL);
+    if(!widget) return;
+
+    // Keep the widget in the workflow serialization, but hide it on both
+    // canvas and newer widget surfaces. String widgets may own a DOM input,
+    // so hide those elements and collapse the widget's layout size as well.
+    widget.hidden = true;
+    widget.options = widget.options ?? {};
+    widget.options.hidden = true;
+    widget.computeSize = () => [0, -4];
+
+    for(const elementName of ["element", "inputEl"]) {
+        const element = widget[elementName];
+        if(element?.style) element.style.display = "none";
+    }
+
+    node.setDirtyCanvas?.(true, true);
 }
 
 
@@ -176,8 +203,9 @@ export async function loadKritaNodeStates() {
 
 export function applyCachedKritaNodeStates() {
     for(const node of getInternalKritaNodes()) {
-        const documentWidget = node.widgets?.find(w => w.label === DOCUMENT_WIDGET_LABEL);
-        const metaWidget = node.widgets?.find(w => w.label === META_WIDGET_LABEL);
+        const documentWidget = findKritaWidget(node, DOCUMENT_WIDGET_LABEL);
+        const metaWidget = findKritaWidget(node, META_WIDGET_LABEL);
+        hideKritaMetadataWidget(node);
         if(!metaWidget) continue;
 
         const documentId = documentWidget?.value;
@@ -218,13 +246,14 @@ export async function updateDocumentWidgetValues(documentNames=null) {
     if(documentNames === null) documentNames = (await api.get('/krita/documents')).documents;
 
     for(const node of internalKritaNodes) {
-        const dropdownWidget = node.widgets.find(w => w.label === DOCUMENT_WIDGET_LABEL);
+        const dropdownWidget = findKritaWidget(node, DOCUMENT_WIDGET_LABEL);
         if(!dropdownWidget) {
             console.warn(`Could not find document widget in krita node: ${node}.`);
             continue;
         }
 
-        const array = dropdownWidget.options.values;
+        dropdownWidget.options = dropdownWidget.options ?? {};
+        const array = dropdownWidget.options.values ?? (dropdownWidget.options.values = []);
         array.splice(0, array.length);
         documentNames.forEach(d => array.push(d));
         if(!documentNames.includes(dropdownWidget.value)) {
