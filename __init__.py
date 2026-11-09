@@ -6,6 +6,7 @@ from torch import Tensor
 from torchvision.transforms.functional import to_pil_image
 
 from .constants import (
+    DEFAULT_KRITA_NODE_STATE,
     KRITA_DOCUMENT_DROPDOWN_LABEL,
     KRITA_SAVE_IMAGE_NODE_TYPE,
     META_WIDGET_LABEL,
@@ -55,7 +56,7 @@ class KritaSaveImage(io.ComfyNode):
                 io.String.Input(
                     id=META_WIDGET_LABEL,
                     display_name=META_WIDGET_LABEL,
-                    default="",
+                    default=DEFAULT_KRITA_NODE_STATE,
                     optional=True,
                     tooltip="Internal Krita output-node state.",
                 ),
