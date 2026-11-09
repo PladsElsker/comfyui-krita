@@ -1,8 +1,9 @@
 import contextlib
 import json
 import logging
+import threading
 
-from PyQt5.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, pyqtSignal, pyqtSlot
 
 from comfyui.extension.comfy_websocket import ComfyWebsocket
 from comfyui.extension.document_monitor import DocumentMonitor
@@ -17,6 +18,15 @@ from comfyui.extension.models import (
 )
 
 LOGGER = logging.getLogger(__name__)
+
+
+class _NodeStateUploadTask(QRunnable):
+    def __init__(self, bridge: "ComfyKritaBridge") -> None:
+        super().__init__()
+        self.bridge = bridge
+
+    def run(self) -> None:
+        self.bridge._drain_node_state_updates()
 
 
 class _ImageDownloadSignals(QObject):
@@ -44,6 +54,8 @@ class _ImageDownloadTask(QRunnable):
 
 
 class ComfyKritaBridge(QObject):
+    _state_upload_retry_requested = pyqtSignal()
+
     def __init__(self, comfy_ws: ComfyWebsocket, document_monitor: DocumentMonitor) -> None:
         super().__init__()
         self.comfy_ws = comfy_ws
@@ -52,6 +64,19 @@ class ComfyKritaBridge(QObject):
         self._image_downloads: dict[str, _ImageDownloadTask] = {}
         self._download_pool = QThreadPool(self)
         self._download_pool.setMaxThreadCount(1)
+
+        # Node-state HTTP writes are serialized on one worker. Coalescing by
+        # document/node/type means only the newest pending value is sent.
+        self._state_upload_pool = QThreadPool(self)
+        self._state_upload_pool.setMaxThreadCount(1)
+        self._pending_node_state_updates: dict[tuple[str, int, str], dict] = {}
+        self._node_state_upload_running = False
+        self._node_state_upload_lock = threading.Lock()
+        self._node_state_upload_attempts: dict[tuple[str, int, str], int] = {}
+        self._state_upload_retry_requested.connect(
+            self._schedule_node_state_upload_retry,
+            Qt.ConnectionType.QueuedConnection,
+        )
         self._define_commands()
 
     def _define_commands(self) -> None:
@@ -170,27 +195,91 @@ class ComfyKritaBridge(QObject):
                 if isinstance(state, SaveImageState):
                     self._send_save_image_state(state)
 
-    def _publish_node_state(self, update: dict) -> None:
-        if self.comfy_ws.sid is None or not self.comfy_ws.is_connected:
-            return
+        # Also flush tombstones/updates that accumulated while disconnected.
+        self._start_pending_node_state_upload()
 
+    def _publish_node_state(self, update: dict) -> None:
         if update.get("deleted", False):
+            document_id = update.get("document_id")
+            node_id = update.get("id")
+            node_type = update.get("type")
+            if not isinstance(document_id, str) or not isinstance(node_id, int) or not isinstance(node_type, str):
+                LOGGER.warning("Ignoring an incomplete deleted Krita node-state update")
+                return
+            key = (document_id, node_id, node_type)
             payload = {
                 "deleted": True,
-                "document_id": update["document_id"],
-                "id": update["id"],
-                "type": update["type"],
+                "document_id": document_id,
+                "id": node_id,
+                "type": node_type,
             }
         else:
             state = update.get("state")
             if not isinstance(state, SaveImageState):
                 return
+            key = (state.document_id, state.id, state.type)
             payload = {"deleted": False, "state": self._serialize_save_image_state(state)}
 
-        try:
-            self.comfy_ws.put(f"/krita/{self.comfy_ws.sid}/nodes/state", payload)
-        except Exception:  # noqa: BLE001
-            LOGGER.exception("Could not synchronize Krita output-node state with ComfyUI")
+        # Keep updates even while disconnected. On reconnect the status flow
+        # refreshes the document mapping and calls send_krita_state().
+        with self._node_state_upload_lock:
+            self._pending_node_state_updates[key] = payload
+            self._node_state_upload_attempts.pop(key, None)
+
+        self._start_pending_node_state_upload()
+
+    def _start_pending_node_state_upload(self) -> None:
+        with self._node_state_upload_lock:
+            if self._node_state_upload_running or not self._pending_node_state_updates:
+                return
+            if self.comfy_ws.sid is None or not self.comfy_ws.is_connected:
+                return
+            self._node_state_upload_running = True
+
+        self._state_upload_pool.start(_NodeStateUploadTask(self))
+
+    def _drain_node_state_updates(self) -> None:
+        while True:
+            with self._node_state_upload_lock:
+                if not self._pending_node_state_updates:
+                    self._node_state_upload_running = False
+                    return
+                batch = list(self._pending_node_state_updates.items())
+                self._pending_node_state_updates.clear()
+
+            for index, (key, payload) in enumerate(batch):
+                sid = self.comfy_ws.sid
+                if sid is None or not self.comfy_ws.is_connected:
+                    with self._node_state_upload_lock:
+                        for pending_key, pending_payload in batch[index:]:
+                            self._pending_node_state_updates.setdefault(pending_key, pending_payload)
+                        self._node_state_upload_running = False
+                    return
+
+                try:
+                    self.comfy_ws.put(f"/krita/{sid}/nodes/state", payload)
+                except Exception:  # noqa: BLE001
+                    LOGGER.exception("Could not synchronize Krita output-node state with ComfyUI")
+                    with self._node_state_upload_lock:
+                        for pending_key, pending_payload in batch[index:]:
+                            if pending_key in self._pending_node_state_updates:
+                                continue
+                            attempts = self._node_state_upload_attempts.get(pending_key, 0) + 1
+                            self._node_state_upload_attempts[pending_key] = attempts
+                            if attempts <= 3:
+                                self._pending_node_state_updates[pending_key] = pending_payload
+                        self._node_state_upload_running = False
+                        should_retry = bool(self._pending_node_state_updates)
+                    if should_retry:
+                        self._state_upload_retry_requested.emit()
+                    return
+                else:
+                    with self._node_state_upload_lock:
+                        self._node_state_upload_attempts.pop(key, None)
+
+    @pyqtSlot()
+    def _schedule_node_state_upload_retry(self) -> None:
+        QTimer.singleShot(500, self._start_pending_node_state_upload)
 
     def _send_save_image_state(self, state: SaveImageState) -> None:
         self._publish_node_state({"deleted": False, "state": state})
@@ -223,8 +312,8 @@ class ComfyKritaBridge(QObject):
             return
 
         task = _ImageDownloadTask(self.comfy_ws, sid, notification)
-        task.signals.completed.connect(self._on_image_downloaded)
-        task.signals.failed.connect(self._on_image_download_failed)
+        task.signals.completed.connect(self._on_image_downloaded, Qt.ConnectionType.QueuedConnection)
+        task.signals.failed.connect(self._on_image_download_failed, Qt.ConnectionType.QueuedConnection)
         self._image_downloads[notification.transfer_id] = task
         self._download_pool.start(task)
 
