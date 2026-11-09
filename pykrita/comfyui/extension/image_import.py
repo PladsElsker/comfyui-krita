@@ -21,7 +21,7 @@ def insert_png_image(
     image = image.convertToFormat(QImage.Format_ARGB32)
     pixel_data = bytes(image.bits().asstring(image.byteCount()))
 
-    node = document.createNode(layer_name, "paintlayer")
+    node = document.createNode(layer_name, "paintLayer")
     if node is None:
         message = "Krita could not create a paint layer for the generated image"
         raise RuntimeError(message)
