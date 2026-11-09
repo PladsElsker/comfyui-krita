@@ -337,10 +337,7 @@ class ComfyKritaBridge(QObject):
         }
 
     def _download_layer_image(self, notification: LayerCreateNotification) -> None:
-        if (
-            notification.transfer_id in self._image_downloads
-            or notification.transfer_id in self._pending_image_insertions
-        ):
+        if notification.transfer_id in self._image_downloads or notification.transfer_id in self._pending_image_insertions:
             LOGGER.warning("Ignoring duplicate generated image transfer %s", notification.transfer_id)
             return
 
