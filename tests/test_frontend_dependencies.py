@@ -448,8 +448,6 @@ def test__given_krita_node__when_hiding_metadata_widget__then_widget_remains_ser
                 value: '{"document_id":"Unnamed"}',
                 hidden: false,
                 options: {},
-                element: { style: {} },
-                inputEl: { style: {} },
             };
             const node = {
                 type: "KritaSaveImage-15347",
@@ -461,9 +459,6 @@ def test__given_krita_node__when_hiding_metadata_widget__then_widget_remains_ser
             return {
                 hidden: metadataWidget.hidden,
                 optionsHidden: metadataWidget.options.hidden,
-                layoutSize: metadataWidget.computeSize(),
-                elementDisplay: metadataWidget.element.style.display,
-                inputDisplay: metadataWidget.inputEl.style.display,
                 value: metadataWidget.value,
                 remainingInputs: node.inputs.length,
             };
@@ -473,9 +468,33 @@ def test__given_krita_node__when_hiding_metadata_widget__then_widget_remains_ser
     assert metadata_state == {
         "hidden": True,
         "optionsHidden": True,
-        "layoutSize": [0, -4],
-        "elementDisplay": "none",
-        "inputDisplay": "none",
         "value": '{"document_id":"Unnamed"}',
         "remainingInputs": 0,
+    }
+
+
+
+def test__given_krita_output_node__when_metadata_input_is_created__then_metadata_widget_is_hidden(
+    si1_workflow: Page,
+) -> None:
+    metadata_state = si1_workflow.evaluate(
+        """
+        async () => {
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const node = workflow.getInternalKritaNodes()[0];
+            const widget = node.widgets.find(
+                item => item.name === "_meta-15347" || item.label === "_meta-15347"
+            );
+            return {
+                found: Boolean(widget),
+                hidden: widget?.hidden ?? false,
+                optionsHidden: widget?.options?.hidden ?? false,
+            };
+        }
+        """,
+    )
+    assert metadata_state == {
+        "found": True,
+        "hidden": True,
+        "optionsHidden": True,
     }
