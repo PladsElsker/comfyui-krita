@@ -45,7 +45,7 @@ class _ImageDownloadTask(QRunnable):
         transfer_id = self.notification.transfer_id
         state = self.notification.state
         route = f"/krita/images/{transfer_id}"
-        qInfo(
+        qWarning(
             f"[ComfyUI Krita Image] HTTP download starting: transfer={transfer_id}, "
             f"document_id={state.document_id}, node_id={state.id}, route={route}"
         )
@@ -57,7 +57,7 @@ class _ImageDownloadTask(QRunnable):
             return
 
         is_png = image_data.startswith(bytes((137, 80, 78, 71, 13, 10, 26, 10)))
-        qInfo(f"[ComfyUI Krita Image] HTTP download complete: transfer={transfer_id}, " f"bytes={len(image_data)}, png_signature={is_png}")
+        qWarning(f"[ComfyUI Krita Image] HTTP download complete: transfer={transfer_id}, " f"bytes={len(image_data)}, png_signature={is_png}")
         self.signals.completed.emit(self.notification, image_data)
 
 
@@ -68,6 +68,10 @@ class ComfyKritaBridge(QObject):
         super().__init__()
         self.comfy_ws = comfy_ws
         self.document_monitor = document_monitor
+        qWarning(
+            "[ComfyUI Krita Image] Diagnostic instrumentation active; "
+            "warning-level messages are enabled"
+        )
         self._connected_node_lists: set[int] = set()
         self._image_downloads: dict[str, _ImageDownloadTask] = {}
 
@@ -104,11 +108,11 @@ class ComfyKritaBridge(QObject):
 
         @self.comfy_ws.handler("krita::layers::create")
         def create_layer(data: dict) -> None:
-            qInfo(f"[ComfyUI Krita Image] WebSocket notification received: keys={sorted(data.keys())}")
+            qWarning(f"[ComfyUI Krita Image] WebSocket notification received: keys={sorted(data.keys())}")
             try:
                 notification = LayerCreateNotification.model_validate(data)
                 state = notification.state
-                qInfo(
+                qWarning(
                     f"[ComfyUI Krita Image] Notification validated: transfer={notification.transfer_id}, "
                     f"document_id={state.document_id}, node_id={state.id}, node_type={state.type}, "
                     f"path_tokens={len(state.path)}, batch={notification.batch_index + 1}/{notification.batch_size}"
@@ -351,7 +355,7 @@ class ComfyKritaBridge(QObject):
             LOGGER.warning("Ignoring duplicate generated image transfer %s", notification.transfer_id)
             return
 
-        qInfo(
+        qWarning(
             f"[ComfyUI Krita Image] Queueing HTTP download: transfer={notification.transfer_id}, "
             f"sid={self.comfy_ws.sid}, connected={self.comfy_ws.is_connected}, "
             f"document_id={state.document_id}"
@@ -367,14 +371,14 @@ class ComfyKritaBridge(QObject):
         self._image_downloads.pop(notification.transfer_id, None)
         state = notification.state
         is_ui_thread = QThread.currentThread() == self.thread()
-        qInfo(
+        qWarning(
             f"[ComfyUI Krita Image] Download completion delivered to bridge: transfer={notification.transfer_id}, "
             f"bytes={len(image_data)}, ui_thread={is_ui_thread}, "
             f"document_id={state.document_id}, node_id={state.id}"
         )
 
         opened_documents = self.document_monitor.get_opened_documents()
-        qInfo(
+        qWarning(
             f"[ComfyUI Krita Image] Document lookup: requested_id={state.document_id}, "
             f"mapped_ids={list(self.document_monitor.mapping.keys())}, "
             f"open_documents={[doc.name() for doc in opened_documents]}"
@@ -410,7 +414,7 @@ class ComfyKritaBridge(QObject):
         if notification.batch_size > 1:
             layer_name += f" ({notification.batch_index + 1}/{notification.batch_size})"
 
-        qInfo(
+        qWarning(
             f"[ComfyUI Krita Image] Starting insertion: transfer={notification.transfer_id}, "
             f"document={document.name()}, document_id={state.document_id}, node_id={state.id}, "
             f"layer_name={layer_name!r}, direction={state.insert_direction}, "
@@ -440,7 +444,7 @@ class ComfyKritaBridge(QObject):
 
         parent = node.parentNode()
         top_level_nodes = document.topLevelNodes()
-        qInfo(
+        qWarning(
             f"[ComfyUI Krita Image] INSERTION COMPLETE: transfer={notification.transfer_id}, "
             f"layer={node.name()!r}, node_type={node.type()}, visible={node.visible()}, "
             f"parent={parent.name() if parent is not None else None!r}, "
