@@ -50,7 +50,8 @@ class ComfyKritaBridge(QObject):
         self.document_monitor = document_monitor
         self._connected_node_lists: set[int] = set()
         self._image_downloads: dict[str, _ImageDownloadTask] = {}
-        self._download_pool = QThreadPool.globalInstance()
+        self._download_pool = QThreadPool(self)
+        self._download_pool.setMaxThreadCount(1)
         self._define_commands()
 
     def _define_commands(self) -> None:
