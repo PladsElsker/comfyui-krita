@@ -1,10 +1,10 @@
-
 from krita import DockWidget, Document, Window
 
 from comfyui.extension.models import Node
 
 from .comfyui_node import ComfyUiNode
 from .save_image_node import SaveImageNode
+
 
 class NodeFactory:
     @classmethod

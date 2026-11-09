@@ -68,8 +68,7 @@ class LayerUtils:
                     (
                         end_index
                         for end_index in range(index + 1, len(tokens))
-                        if tokens[end_index].type == "group_end"
-                        and str(tokens[end_index].quuid) == target_id
+                        if tokens[end_index].type == "group_end" and str(tokens[end_index].quuid) == target_id
                     ),
                     None,
                 )
