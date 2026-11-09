@@ -429,8 +429,7 @@ class ComfyKritaBridge(QObject):
             node = insert_png_image(document, image_data, state.path, layer_name)
         except Exception as error:  # noqa: BLE001
             qCritical(
-                f"[ComfyUI Krita Image] INSERTION FAILED: transfer={notification.transfer_id}, "
-                f"document_id={state.document_id}, error={error}"
+                f"[ComfyUI Krita Image] INSERTION FAILED: transfer={notification.transfer_id}, " f"document_id={state.document_id}, error={error}"
             )
             LOGGER.exception(
                 "Generated image %s was fetched but could not be inserted into document %s",
