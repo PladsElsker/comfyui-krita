@@ -26,9 +26,12 @@ MAX_STAGED_IMAGES = 128
 
 @dataclass
 class StagedImage:
-    sid: str
+    sid: str | None
+    document_id: str
     data: bytes
+    notification: LayerCreateNotification
     expires_at: float
+    notification_sent: bool = False
 
 
 def prune_sids(f: Callable) -> Callable:
@@ -70,8 +73,8 @@ class KritaApi:
             raise ValueError(message)
 
         sid = self._document_id_to_sid(document_id)
-        if sid is None or sid not in PromptServer.instance.sockets:
-            message = f"Krita document {document_id!r} is not connected"
+        if sid is None:
+            message = f"Krita document {document_id!r} is not registered to a Krita session"
             raise LookupError(message)
 
         buffer = io.BytesIO()
@@ -94,34 +97,83 @@ class KritaApi:
             self._staged_images.pop(oldest_transfer, None)
 
         transfer_id = secrets.token_urlsafe(24)
-        self._staged_images[transfer_id] = StagedImage(
-            sid=sid,
-            data=image_data,
-            expires_at=time.monotonic() + STAGED_IMAGE_TTL_SECONDS,
-        )
-
         notification = LayerCreateNotification(
             transfer_id=transfer_id,
             state=state,
             batch_index=batch_index,
             batch_size=batch_size,
         )
+        self._staged_images[transfer_id] = StagedImage(
+            sid=sid,
+            document_id=document_id,
+            data=image_data,
+            notification=notification,
+            expires_at=time.monotonic() + STAGED_IMAGE_TTL_SECONDS,
+        )
+
         loop = PromptServer.instance.loop
         loop.call_soon_threadsafe(
-            lambda: loop.create_task(self._send_layer_notification(sid, notification)),
+            lambda: loop.create_task(self._send_layer_notification(notification)),
         )
         return transfer_id
 
-    async def _send_layer_notification(self, sid: str, notification: LayerCreateNotification) -> None:
-        if sid not in PromptServer.instance.sockets:
-            self._staged_images.pop(notification.transfer_id, None)
+    async def _send_layer_notification(self, notification: LayerCreateNotification) -> None:
+        staged = self._staged_images.get(notification.transfer_id)
+        if staged is None:
             return
 
-        await PromptServer.instance.send(
-            "krita::layers::create",
-            notification.model_dump(),
-            sid,
-        )
+        self._prune_staged_images()
+        staged = self._staged_images.get(notification.transfer_id)
+        if staged is None:
+            return
+
+        # Resolve the session at dispatch time. A prompt can finish after a
+        # Krita websocket reconnect, so the SID captured when the image was
+        # encoded may no longer be the active PromptServer socket for the
+        # target document.
+        sid = self._document_id_to_sid(staged.document_id)
+        if sid is None or sid not in PromptServer.instance.sockets:
+            staged.sid = None
+            staged.notification_sent = False
+            LOGGER.warning(
+                "Keeping generated image %s staged for Krita document %s; "
+                "there is no active PromptServer socket yet",
+                notification.transfer_id,
+                staged.document_id,
+            )
+            return
+
+        staged.sid = sid
+        try:
+            await PromptServer.instance.send(
+                "krita::layers::create",
+                notification.model_dump(),
+                sid,
+            )
+        except Exception:  # noqa: BLE001
+            staged.sid = None
+            staged.notification_sent = False
+            LOGGER.exception(
+                "Could not send generated image notification %s to Krita SID %s",
+                notification.transfer_id,
+                sid,
+            )
+            return
+
+        staged.notification_sent = True
+
+    async def _send_pending_layer_notifications(self, sid: str) -> None:
+        if sid not in PromptServer.instance.sockets:
+            return
+
+        registered_documents = self.registered_documents.get(sid, set())
+        pending = [
+            staged.notification
+            for staged in self._staged_images.values()
+            if staged.document_id in registered_documents and not staged.notification_sent
+        ]
+        for notification in pending:
+            await self._send_layer_notification(notification)
 
     def get_staged_image(self, sid: str, transfer_id: str) -> bytes | None:
         self._prune_staged_images()
@@ -183,6 +235,7 @@ class KritaApi:
 
         krita_documents = self.get_registered_documents().model_dump()
         await PromptServer.instance.send("krita::documents::update", krita_documents)
+        await self._send_pending_layer_notifications(sid)
 
         return document_mapping
 
@@ -259,6 +312,10 @@ class KritaApi:
 
         for sid in list(self.registered_documents.keys()):
             if sid not in PromptServer.instance.sockets:
+                for staged in self._staged_images.values():
+                    if staged.sid == sid:
+                        staged.sid = None
+                        staged.notification_sent = False
                 del self.registered_documents[sid]
                 self.document_mappings.pop(sid, None)
                 for state in self.node_states.pop(sid, {}).values():
@@ -315,6 +372,10 @@ class KritaApi:
 
     async def _unregister_documents_by_sid_async(self, sid: str) -> None:
         if sid in self.registered_documents:
+            for staged in self._staged_images.values():
+                if staged.sid == sid:
+                    staged.sid = None
+                    staged.notification_sent = False
             del self.registered_documents[sid]
             self.document_mappings.pop(sid, None)
             for state in self.node_states.pop(sid, {}).values():
