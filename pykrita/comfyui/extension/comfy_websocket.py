@@ -144,6 +144,10 @@ class ComfyWebsocket(QObject):
 
     @pyqtSlot()
     def _emit_open(self) -> None:
+        # Every successful websocket handshake gets a server-issued SID.
+        # Clear the previous one until the initial status event supplies the
+        # new session identifier.
+        self.sid = None
         self.is_connected = True
         self.on_open.emit(self.ws_url)
 
