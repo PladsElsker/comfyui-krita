@@ -44,4 +44,4 @@ jobs:
                   pip install black
 
             - name: Run Black
-              run: black --diff .
+              run: black --check .
