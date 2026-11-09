@@ -473,9 +473,7 @@ def test__given_krita_node__when_hiding_metadata_widget__then_widget_remains_ser
     }
 
 
-def test__given_krita_output_node__when_metadata_input_is_created__then_metadata_widget_is_hidden(
-    si1_workflow: Page,
-) -> None:
+def test__given_krita_output_node__when_metadata_input_is_created__then_metadata_widget_is_hidden(si1_workflow: Page) -> None:
     metadata_state = si1_workflow.evaluate(
         """
         async () => {
