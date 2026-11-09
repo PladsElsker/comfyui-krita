@@ -105,7 +105,10 @@ class KritaApi:
             batch_index=batch_index,
             batch_size=batch_size,
         )
-        PromptServer.instance.loop.create_task(self._send_layer_notification(sid, notification))
+        loop = PromptServer.instance.loop
+        loop.call_soon_threadsafe(
+            lambda: loop.create_task(self._send_layer_notification(sid, notification)),
+        )
         return transfer_id
 
     async def _send_layer_notification(self, sid: str, notification: LayerCreateNotification) -> None:
