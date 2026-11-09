@@ -17,6 +17,7 @@ let previousTabName = null;
 let previousDocumentIdLists = {};
 let websocketRoutesSetup = false;
 const kritaNodeStateCache = new Map();
+const kritaNodeStateEventRevisions = new Map();
 
 
 export const api = (() => {
@@ -140,7 +141,9 @@ function kritaNodeStateKey(documentId, nodeId, nodeType=KRITA_SAVE_IMAGE_NODE_TY
 export function applyKritaNodeState(state) {
     if(!state || state.type !== KRITA_SAVE_IMAGE_NODE_TYPE || !state.document_id) return;
 
-    kritaNodeStateCache.set(kritaNodeStateKey(state.document_id, state.id, state.type), state);
+    const key = kritaNodeStateKey(state.document_id, state.id, state.type);
+    kritaNodeStateEventRevisions.set(key, (kritaNodeStateEventRevisions.get(key) ?? 0) + 1);
+    kritaNodeStateCache.set(key, state);
     applyCachedKritaNodeStates();
 }
 
@@ -148,18 +151,24 @@ export function applyKritaNodeState(state) {
 function removeKritaNodeState(deleted) {
     if(!deleted?.document_id || deleted.id === undefined || !deleted.type) return;
 
-    kritaNodeStateCache.delete(kritaNodeStateKey(deleted.document_id, deleted.id, deleted.type));
+    const key = kritaNodeStateKey(deleted.document_id, deleted.id, deleted.type);
+    kritaNodeStateEventRevisions.set(key, (kritaNodeStateEventRevisions.get(key) ?? 0) + 1);
+    kritaNodeStateCache.delete(key);
     applyCachedKritaNodeStates();
 }
 
 
 export async function loadKritaNodeStates() {
+    const revisionsAtRequest = new Map(kritaNodeStateEventRevisions);
     try {
         const response = await api.get('/krita/nodes/states');
         for(const state of (response.states ?? [])) {
-            if(state.type === KRITA_SAVE_IMAGE_NODE_TYPE && state.document_id) {
-                kritaNodeStateCache.set(kritaNodeStateKey(state.document_id, state.id, state.type), state);
-            }
+            if(state.type !== KRITA_SAVE_IMAGE_NODE_TYPE || !state.document_id) continue;
+
+            const key = kritaNodeStateKey(state.document_id, state.id, state.type);
+            if((kritaNodeStateEventRevisions.get(key) ?? 0) !== (revisionsAtRequest.get(key) ?? 0)) continue;
+
+            kritaNodeStateCache.set(key, state);
         }
         applyCachedKritaNodeStates();
     }
