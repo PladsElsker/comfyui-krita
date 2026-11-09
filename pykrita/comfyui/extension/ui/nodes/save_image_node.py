@@ -102,7 +102,7 @@ class SaveImageNode(ComfyUiNode):
         try:
             path = LayerUtils.capture_target(self.document, target, direction)
         finally:
-            self._set_target_editing_feedback(False)
+            self._set_target_editing_feedback(editing=False)
 
         self.layer_path = path
         self.target_picker.watch_target(str(target.uniqueId()), target.name())
@@ -129,7 +129,7 @@ class SaveImageNode(ComfyUiNode):
         background = QColor(highlight)
         background.setAlpha(24)
         self.setStyleSheet(
-            "QWidget#SaveImageNode[targetEditing=\"true\"] {"
+            'QWidget#SaveImageNode[targetEditing="true"] {'
             f"border: 1px solid {highlight.name()};"
             "border-radius: 5px;"
             f"background-color: rgba({background.red()}, {background.green()}, {background.blue()}, {background.alpha()});"
