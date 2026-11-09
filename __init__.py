@@ -15,13 +15,16 @@ from .krita_api import api
 from .routes import define_routes
 
 WEB_DIRECTORY = "."
+IMAGE_BATCH_DIMENSIONS = 4
+IMAGE_DIMENSIONS = 3
+SUPPORTED_IMAGE_CHANNEL_COUNTS = (1, 3, 4)
 define_routes()
 
 
 def _to_pil_images(image: Tensor) -> list:
-    if image.ndim == 4:
+    if image.ndim == IMAGE_BATCH_DIMENSIONS:
         images = image
-    elif image.ndim == 3:
+    elif image.ndim == IMAGE_DIMENSIONS:
         images = image.unsqueeze(0)
     else:
         message = f"Expected a 3D or 4D ComfyUI image tensor, received {image.ndim} dimensions"
@@ -29,9 +32,10 @@ def _to_pil_images(image: Tensor) -> list:
 
     result = []
     for item in images:
-        if item.shape[-1] in (1, 3, 4):
-            item = item.permute(2, 0, 1)
-        result.append(to_pil_image(item.detach().cpu()))
+        image_tensor = item
+        if image_tensor.shape[-1] in SUPPORTED_IMAGE_CHANNEL_COUNTS:
+            image_tensor = image_tensor.permute(2, 0, 1)
+        result.append(to_pil_image(image_tensor.detach().cpu()))
     return result
 
 
