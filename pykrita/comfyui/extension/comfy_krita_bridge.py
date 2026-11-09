@@ -68,10 +68,7 @@ class ComfyKritaBridge(QObject):
         super().__init__()
         self.comfy_ws = comfy_ws
         self.document_monitor = document_monitor
-        qWarning(
-            "[ComfyUI Krita Image] Diagnostic instrumentation active; "
-            "warning-level messages are enabled"
-        )
+        qWarning("[ComfyUI Krita Image] Diagnostic instrumentation active; " "warning-level messages are enabled")
         self._connected_node_lists: set[int] = set()
         self._image_downloads: dict[str, _ImageDownloadTask] = {}
 
