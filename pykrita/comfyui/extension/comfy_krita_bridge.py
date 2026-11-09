@@ -150,6 +150,7 @@ class ComfyKritaBridge(QObject):
 
             docker.update_title(workflows_request.name, found_document_id)
             docker.update_node_list(found_nodes, window, active_document, found_document_id)
+            docker.set_active_document(window, active_document, found_document_id)
 
     def send_krita_state(self) -> None:
         if not self.comfy_ws.is_connected or self.comfy_ws.sid is None:
