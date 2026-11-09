@@ -2,6 +2,7 @@
 from typing import override
 
 from comfy_api.latest import ComfyExtension, io
+from pydantic import ValidationError
 from torch import Tensor
 from torchvision.transforms.functional import to_pil_image
 
@@ -12,6 +13,7 @@ from .constants import (
     META_WIDGET_LABEL,
 )
 from .krita_api import api
+from .models import SaveImageState
 from .routes import define_routes
 
 WEB_DIRECTORY = "."
@@ -54,8 +56,7 @@ class KritaSaveImage(io.ComfyNode):
                     options=[],
                     display_name=KRITA_DOCUMENT_DROPDOWN_LABEL,
                     optional=True,
-                    tooltip="Select a Krita document.",
-                    lazy=True,
+                    tooltip="Select a connected Krita document.",
                 ),
                 io.String.Input(
                     id=META_WIDGET_LABEL,
@@ -66,6 +67,41 @@ class KritaSaveImage(io.ComfyNode):
                 ),
             ],
         )
+
+    @classmethod
+    def validate_inputs(
+        cls,
+        image: Tensor,
+        **kwargs: dict | list | float | str | None,
+    ) -> bool | str:
+        # The dropdown values are supplied by the connected Krita session at
+        # runtime, so the schema's empty options list cannot validate them.
+        # ComfyUI's custom validator replaces the static Combo membership check;
+        # validate every value that this node relies on here instead.
+        if not isinstance(image, Tensor):
+            return "The Save Image node requires a ComfyUI image tensor."
+
+        document_value = kwargs.get(KRITA_DOCUMENT_DROPDOWN_LABEL)
+        if not isinstance(document_value, str) or not document_value:
+            return "Select a connected Krita document before running this node."
+
+        registered_documents = api.get_registered_documents().documents
+        if document_value not in registered_documents:
+            return f"The Krita document {document_value!r} is not currently connected."
+
+        meta = kwargs.get(META_WIDGET_LABEL)
+        if not isinstance(meta, str) or not meta:
+            return "Krita output-node state has not synchronized yet."
+
+        try:
+            state = SaveImageState.model_validate_json(meta)
+        except ValidationError:
+            return "Krita output-node metadata is invalid; reconnect Krita to synchronize it."
+
+        if state.document_id != document_value:
+            return "The selected Krita document does not match the synchronized output-node state."
+
+        return True
 
     @classmethod
     def execute(cls, image: Tensor, **kwargs: dict | list | float | str | None) -> io.NodeOutput:  # type: ignore
