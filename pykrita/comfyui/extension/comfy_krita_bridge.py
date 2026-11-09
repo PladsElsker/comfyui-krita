@@ -18,6 +18,7 @@ from comfyui.extension.models import (
 )
 
 LOGGER = logging.getLogger(__name__)
+MAX_NODE_STATE_UPLOAD_ATTEMPTS = 3
 
 
 class _NodeStateUploadTask(QRunnable):
@@ -26,7 +27,7 @@ class _NodeStateUploadTask(QRunnable):
         self.bridge = bridge
 
     def run(self) -> None:
-        self.bridge._drain_node_state_updates()
+        self.bridge.drain_node_state_updates()
 
 
 class _ImageDownloadSignals(QObject):
@@ -238,44 +239,68 @@ class ComfyKritaBridge(QObject):
 
         self._state_upload_pool.start(_NodeStateUploadTask(self))
 
-    def _drain_node_state_updates(self) -> None:
+    def drain_node_state_updates(self) -> None:
         while True:
-            with self._node_state_upload_lock:
-                if not self._pending_node_state_updates:
-                    self._node_state_upload_running = False
-                    return
-                batch = list(self._pending_node_state_updates.items())
-                self._pending_node_state_updates.clear()
+            batch = self._take_pending_node_state_batch()
+            if not batch:
+                return
 
             for index, (key, payload) in enumerate(batch):
                 sid = self.comfy_ws.sid
                 if sid is None or not self.comfy_ws.is_connected:
-                    with self._node_state_upload_lock:
-                        for pending_key, pending_payload in batch[index:]:
-                            self._pending_node_state_updates.setdefault(pending_key, pending_payload)
-                        self._node_state_upload_running = False
+                    self._requeue_unsent_node_state_updates(batch[index:])
                     return
 
-                try:
-                    self.comfy_ws.put(f"/krita/{sid}/nodes/state", payload)
-                except Exception:  # noqa: BLE001
-                    LOGGER.exception("Could not synchronize Krita output-node state with ComfyUI")
-                    with self._node_state_upload_lock:
-                        for pending_key, pending_payload in batch[index:]:
-                            if pending_key in self._pending_node_state_updates:
-                                continue
-                            attempts = self._node_state_upload_attempts.get(pending_key, 0) + 1
-                            self._node_state_upload_attempts[pending_key] = attempts
-                            if attempts <= 3:
-                                self._pending_node_state_updates[pending_key] = pending_payload
-                        self._node_state_upload_running = False
-                        should_retry = bool(self._pending_node_state_updates)
-                    if should_retry:
-                        self._state_upload_retry_requested.emit()
+                if not self._upload_node_state(sid, payload):
+                    self._retry_unsent_node_state_updates(batch[index:])
                     return
-                else:
-                    with self._node_state_upload_lock:
-                        self._node_state_upload_attempts.pop(key, None)
+
+                with self._node_state_upload_lock:
+                    self._node_state_upload_attempts.pop(key, None)
+
+    def _take_pending_node_state_batch(self) -> list[tuple[tuple[str, int, str], dict]]:
+        with self._node_state_upload_lock:
+            if not self._pending_node_state_updates:
+                self._node_state_upload_running = False
+                return []
+            batch = list(self._pending_node_state_updates.items())
+            self._pending_node_state_updates.clear()
+            return batch
+
+    def _requeue_unsent_node_state_updates(
+        self,
+        updates: list[tuple[tuple[str, int, str], dict]],
+    ) -> None:
+        with self._node_state_upload_lock:
+            for key, payload in updates:
+                self._pending_node_state_updates.setdefault(key, payload)
+            self._node_state_upload_running = False
+
+    def _upload_node_state(self, sid: str, payload: dict) -> bool:
+        try:
+            self.comfy_ws.put(f"/krita/{sid}/nodes/state", payload)
+        except Exception:  # noqa: BLE001
+            LOGGER.exception("Could not synchronize Krita output-node state with ComfyUI")
+            return False
+        return True
+
+    def _retry_unsent_node_state_updates(
+        self,
+        updates: list[tuple[tuple[str, int, str], dict]],
+    ) -> None:
+        with self._node_state_upload_lock:
+            for key, payload in updates:
+                if key in self._pending_node_state_updates:
+                    continue
+                attempts = self._node_state_upload_attempts.get(key, 0) + 1
+                self._node_state_upload_attempts[key] = attempts
+                if attempts <= MAX_NODE_STATE_UPLOAD_ATTEMPTS:
+                    self._pending_node_state_updates[key] = payload
+            self._node_state_upload_running = False
+            should_retry = bool(self._pending_node_state_updates)
+
+        if should_retry:
+            self._state_upload_retry_requested.emit()
 
     @pyqtSlot()
     def _schedule_node_state_upload_retry(self) -> None:
