@@ -51,6 +51,7 @@ def prune_sids(f: Callable) -> Callable:
 class KritaApi:
     def __init__(self) -> None:
         self.registered_documents: dict[str, set[str]] = {}
+        self.document_mappings: dict[str, dict[str, str]] = {}
         self.node_states: dict[str, dict[tuple[str, int, str], SaveImageState]] = {}
         self._staged_images: dict[str, StagedImage] = {}
         self._last_workflows_request: UpdateWorkflowsRequest = UpdateWorkflowsRequest.default()
@@ -138,19 +139,42 @@ class KritaApi:
             self._staged_images.pop(transfer_id, None)
 
     @prune_sids
-    async def update_documents(self, sid: str, documents: list[str]) -> dict[str, str]:
-        self.registered_documents.setdefault(sid, set())
-        self.registered_documents[sid].clear()
+    async def update_documents(
+        self,
+        sid: str,
+        documents: list[str],
+        previous_mappings: dict[str, str] | None = None,
+    ) -> dict[str, str]:
+        # Reuse prior IDs for documents that remain open so node-state keys
+        # survive document-list refreshes. IDs used by other sessions stay reserved.
+        occupied_ids = {
+            document_id
+            for registered_sid, registered_ids in self.registered_documents.items()
+            if registered_sid != sid
+            for document_id in registered_ids
+        }
+        previous_mappings = previous_mappings or self.document_mappings.get(sid, {})
+        document_mapping: dict[str, str] = {}
 
-        document_mapping = {}
-
-        for document_id in documents:
-            unique_document_id = _ensure_unique_id(
-                document_id,
-                self.get_registered_documents().documents,
+        for document_name in documents:
+            previous_id = next(
+                (
+                    candidate_id
+                    for candidate_id, previous_name in previous_mappings.items()
+                    if previous_name == document_name
+                    and candidate_id not in occupied_ids
+                    and candidate_id not in document_mapping
+                ),
+                None,
             )
-            document_mapping[unique_document_id] = document_id
-            self.registered_documents[sid].add(unique_document_id)
+            unique_document_id = previous_id or _ensure_unique_id(
+                document_name,
+                list(occupied_ids | set(document_mapping)),
+            )
+            document_mapping[unique_document_id] = document_name
+
+        self.registered_documents[sid] = set(document_mapping)
+        self.document_mappings[sid] = dict(document_mapping)
 
         registered_ids = set(document_mapping)
         sid_states = self.node_states.setdefault(sid, {})
@@ -242,6 +266,7 @@ class KritaApi:
         for sid in list(self.registered_documents.keys()):
             if sid not in PromptServer.instance.sockets:
                 del self.registered_documents[sid]
+                self.document_mappings.pop(sid, None)
                 for state in self.node_states.pop(sid, {}).values():
                     await self._broadcast_deleted_node_state(state)
                 has_changed = True
@@ -297,6 +322,7 @@ class KritaApi:
     async def _unregister_documents_by_sid_async(self, sid: str) -> None:
         if sid in self.registered_documents:
             del self.registered_documents[sid]
+            self.document_mappings.pop(sid, None)
             for state in self.node_states.pop(sid, {}).values():
                 await self._broadcast_deleted_node_state(state)
 
