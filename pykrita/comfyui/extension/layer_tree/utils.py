@@ -106,6 +106,9 @@ class LayerUtils:
             raise ValueError(message)
 
         marker = path[marker_indices[0]]
+        if marker.quuid is None:
+            return list(path)
+
         tokens = [token for token in path if token.type != "target"]
         marker_index = cls._target_insertion_index(tokens, str(marker.quuid), direction)
         tokens.insert(marker_index, marker)
@@ -114,7 +117,7 @@ class LayerUtils:
     @classmethod
     def find_target_node(cls, document: "Document", path: list[FlatLayerToken]) -> Node | None:
         marker = next((token for token in path if token.type == "target"), None)
-        if marker is None:
+        if marker is None or marker.quuid is None:
             return None
 
         target_id = str(marker.quuid)

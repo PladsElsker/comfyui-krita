@@ -39,6 +39,7 @@ class SaveImageNode(ComfyUiNode):
 
         self.target_picker = LayerTargetPicker(window, document, self)
         self.target_picker.target_selected.connect(self._set_target)
+        self.target_picker.target_removed.connect(self._clear_deleted_target)
         self.target_picker.cancelled.connect(self._reset_target_button)
 
     def cleanup(self) -> None:
@@ -52,6 +53,9 @@ class SaveImageNode(ComfyUiNode):
             self.layer_path = list(state.path)
             self.layer_name = state.layer_name
             self._update_layer_name(self.layer_name)
+            marker = next((token for token in self.layer_path if token.type == "target"), None)
+            target_id = str(marker.quuid) if marker is not None and marker.quuid is not None else None
+            self.target_picker.watch_target(target_id)
 
             should_insert_below = state.insert_direction == "below"
             if self.direction_button.is_inserting_below() != should_insert_below:
@@ -83,7 +87,19 @@ class SaveImageNode(ComfyUiNode):
             self.target_button.set_editing(False)
 
         self.layer_path = path
+        self.target_picker.watch_target(str(target.uniqueId()))
         self._update_layer_name(target.name())
+        self._consolidate_state()
+
+    def _clear_deleted_target(self, target_id: str) -> None:
+        marker = next((token for token in self.layer_path if token.type == "target"), None)
+        if marker is None or marker.quuid is None or str(marker.quuid) != target_id:
+            return
+
+        # Persist a null target for future prompts. In-flight prompts keep
+        # their own path snapshot and resolve deletion during result insertion.
+        self.layer_path = [FlatLayerToken(quuid=None, type="target")]
+        self._update_layer_name("Not set")
         self._consolidate_state()
 
     def _set_above_direction(self) -> None:

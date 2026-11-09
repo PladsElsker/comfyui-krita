@@ -1,7 +1,8 @@
 import logging
+from contextlib import suppress
 
 from krita import Document, Node, View, Window
-from PyQt5.QtCore import QItemSelectionModel, QModelIndex, QObject, QTimer, pyqtSignal
+from PyQt5.QtCore import QAbstractItemModel, QItemSelectionModel, QModelIndex, QObject, QTimer, pyqtSignal
 from PyQt5.QtWidgets import QTreeView
 
 from .utils import LayerUtils
@@ -22,6 +23,7 @@ class LayerTargetPicker(QObject):
     """
 
     target_selected = pyqtSignal(object)
+    target_removed = pyqtSignal(str)
     cancelled = pyqtSignal()
 
     def __init__(self, window: Window, document: Document, parent: QObject | None = None) -> None:
@@ -38,10 +40,85 @@ class LayerTargetPicker(QObject):
         self._previous_selection_ids: list[str] = []
         self._previous_active_node_id: str | None = None
         self._initial_target_id: str | None = None
+        self._watched_model: QAbstractItemModel | None = None
+        self._watched_target_id: str | None = None
+        self._suppress_selection_commit = False
 
     @property
     def is_editing(self) -> bool:
         return self._editing
+
+    def watch_target(self, target_id: str | None) -> None:
+        self._watched_target_id = target_id
+        self._ensure_model_watch()
+        if target_id is not None:
+            QTimer.singleShot(0, self._check_watched_target)
+
+    def _ensure_model_watch(self) -> None:
+        layer_view = self._find_layer_view()
+        if layer_view is None:
+            return
+
+        model = layer_view.model()
+        if model is None or model is self._watched_model:
+            return
+
+        self._disconnect_model_watch()
+        self._watched_model = model
+        model.rowsAboutToBeRemoved.connect(self._on_model_structure_about_to_change)
+        model.rowsRemoved.connect(self._on_model_structure_changed)
+        model.modelAboutToBeReset.connect(self._on_model_structure_about_to_change)
+        model.modelReset.connect(self._on_model_structure_changed)
+
+    def _disconnect_model_watch(self) -> None:
+        if self._watched_model is None:
+            return
+
+        model = self._watched_model
+        for signal, callback in (
+            (model.rowsAboutToBeRemoved, self._on_model_structure_about_to_change),
+            (model.rowsRemoved, self._on_model_structure_changed),
+            (model.modelAboutToBeReset, self._on_model_structure_about_to_change),
+            (model.modelReset, self._on_model_structure_changed),
+        ):
+            with suppress(TypeError, RuntimeError):
+                signal.disconnect(callback)
+
+        self._watched_model = None
+
+    def _on_model_structure_about_to_change(self, *_args: object) -> None:
+        self._suppress_selection_commit = True
+
+    def _on_model_structure_changed(self, *_args: object) -> None:
+        QTimer.singleShot(0, self._finish_model_structure_change)
+
+    def _finish_model_structure_change(self) -> None:
+        self._suppress_selection_commit = False
+        self._check_watched_target()
+
+    def _check_watched_target(self) -> None:
+        target_id = self._watched_target_id
+        if target_id is None:
+            return
+
+        target_exists = any(
+            str(node.uniqueId()) == target_id
+            for node in LayerUtils.flatten_tree(self.document.topLevelNodes())
+        )
+        if target_exists:
+            return
+
+        self._watched_target_id = None
+        if self._editing and self._selection_model is not None:
+            self._suppress_selection_commit = True
+            self._selection_model.clearSelection()
+            self._selection_model.setCurrentIndex(QModelIndex(), QItemSelectionModel.NoUpdate)
+            QTimer.singleShot(0, self._release_selection_commit_suppression)
+
+        self.target_removed.emit(target_id)
+
+    def _release_selection_commit_suppression(self) -> None:
+        self._suppress_selection_commit = False
 
     def begin(self, target: Node | None) -> None:
         if self._editing:
@@ -63,6 +140,7 @@ class LayerTargetPicker(QObject):
             message = "Krita's Layers Docker has no selection model"
             raise TargetSelectionUnavailableError(message)
 
+        self._ensure_model_watch()
         self._view = view
         self._layer_view = layer_view
         self._selection_model = selection_model
@@ -78,6 +156,11 @@ class LayerTargetPicker(QObject):
                 target_index = self._index_for_node(target)
                 selection_model.setCurrentIndex(target_index, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
                 layer_view.scrollTo(target_index)
+            else:
+                # With no target, clear both selection and current index so the
+                # user can choose even the layer that was previously active.
+                selection_model.clearSelection()
+                selection_model.setCurrentIndex(QModelIndex(), QItemSelectionModel.NoUpdate)
 
             selection_model.currentChanged.connect(self._schedule_commit)
             self._selection_connected = True
@@ -118,7 +201,7 @@ class LayerTargetPicker(QObject):
                 self.cancelled.emit()
 
     def _schedule_commit(self, *_args: object) -> None:
-        if not self._editing or self._commit_scheduled:
+        if not self._editing or self._suppress_selection_commit or self._commit_scheduled:
             return
 
         self._commit_scheduled = True
@@ -127,7 +210,7 @@ class LayerTargetPicker(QObject):
 
     def _commit_current_target(self) -> None:
         self._commit_scheduled = False
-        if not self._editing:
+        if not self._editing or self._suppress_selection_commit:
             return
 
         if self.window.activeView() != self._view or self._view.document() != self.document:
