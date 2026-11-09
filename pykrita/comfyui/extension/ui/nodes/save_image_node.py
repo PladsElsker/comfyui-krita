@@ -34,8 +34,7 @@ class SaveImageNode(ComfyUiNode):
         self._update_layer_name(self.layer_name)
 
         self.target_edit_hint = QLabel(
-            "Target edit mode: click a layer in Krita's Layers Docker to set it as the output target. "
-            "Click the cancel icon to exit."
+            "Target edit mode: click a layer in Krita's Layers Docker to set it as the output target. Click the cancel icon to exit."
         )
         self.target_edit_hint.setWordWrap(True)
         self.target_edit_hint.setVisible(False)
@@ -161,7 +160,7 @@ class SaveImageNode(ComfyUiNode):
         self._consolidate_state()
 
     def _reset_target_button(self) -> None:
-        self._set_target_editing_feedback(False)
+        self._set_target_editing_feedback(editing=False)
 
     def _update_layer_name(self, name: str) -> None:
         self.layer_name = name
