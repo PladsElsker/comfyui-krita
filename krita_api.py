@@ -299,7 +299,7 @@ def _ensure_unique_id(document_id: str, registered_documents: list[str]) -> str:
     converted_id = document_id
 
     if document_id in registered_documents:
-        regex = rf"{re.escape(document_id)} \\((\\d+)\\)"
+        regex = rf"{re.escape(document_id)} \((\d+)\)"
         same_ids = [i for i in registered_documents if re.match(regex, i)]
         matches = [re.fullmatch(regex, i) for i in same_ids]
         used_deduplicate_ids = {int(m.group(1)) for m in matches if m is not None}
