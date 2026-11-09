@@ -18,8 +18,15 @@ def insert_png_image(
         message = "The generated image payload is not a valid PNG"
         raise ValueError(message)
 
-    image = image.convertToFormat(QImage.Format_ARGB32)
+    # Krita's "RGBA" U8 paint device expects byte-ordered RGBA pixels.
+    # ARGB32 is stored as BGRA on little-endian systems, so use Qt's explicit
+    # byte-ordered RGBA format before passing the buffer to Node.setPixelData.
+    image = image.convertToFormat(QImage.Format_RGBA8888)
     pixel_data = bytes(image.bits().asstring(image.byteCount()))
+    expected_bytes = image.width() * image.height() * 4
+    if len(pixel_data) < expected_bytes:
+        message = f"Decoded PNG pixel buffer is incomplete: expected {expected_bytes} bytes, got {len(pixel_data)}"
+        raise ValueError(message)
 
     node = document.createNode(layer_name, "paintLayer")
     if node is None:
