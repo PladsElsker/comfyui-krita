@@ -41,6 +41,20 @@ class NodeListWidget(QScrollArea):
         incoming_keys = comfyui_node_mapping.keys()
         existing_keys = current_node_mapping.keys()
 
+        for cached_key in list(self.previous_node_states):
+            if cached_key[2] != document_id or cached_key in incoming_keys:
+                continue
+
+            previous_state = self.previous_node_states.pop(cached_key)
+            self.node_state_changed.emit(
+                {
+                    "deleted": True,
+                    "document_id": previous_state.document_id,
+                    "id": previous_state.id,
+                    "type": previous_state.type,
+                }
+            )
+
         to_delete_keys = existing_keys - incoming_keys
         to_create_keys = incoming_keys - existing_keys
 
@@ -48,18 +62,6 @@ class NodeListWidget(QScrollArea):
 
         for to_delete_key in to_delete_keys:
             widget: ComfyUiNode = current_node_mapping[to_delete_key]
-
-            previous_state = self.previous_node_states.get(to_delete_key)
-            if previous_state is not None and to_delete_key[2] == document_id:
-                self.previous_node_states.pop(to_delete_key, None)
-                self.node_state_changed.emit(
-                    {
-                        "deleted": True,
-                        "document_id": previous_state.document_id,
-                        "id": previous_state.id,
-                        "type": previous_state.type,
-                    }
-                )
 
             if isinstance(widget, ComfyUiNode):
                 widget.cleanup()
