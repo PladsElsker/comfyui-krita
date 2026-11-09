@@ -4,7 +4,7 @@ from PyQt5.QtCore import QSize, pyqtBoundSignal, pyqtSignal
 from PyQt5.QtGui import QIcon, QPalette
 from PyQt5.QtWidgets import QStyle, QToolButton
 
-from comfyui.extension.ui.icons import ARROW_DOWN_ICON, ARROW_UP_ICON, TARGET_ICON, render_svg_to_pixmap
+from comfyui.extension.ui.icons import ARROW_DOWN_ICON, ARROW_UP_ICON, EDIT_ICON, render_svg_to_pixmap
 
 
 class DirectionButton(QToolButton):
@@ -77,7 +77,7 @@ class TargetEditButton(QToolButton):
 
         self.setToolTip("Edit target")
         color = self.palette().color(QPalette.ColorRole.ButtonText)
-        pixmap = render_svg_to_pixmap(TARGET_ICON, size=QSize(20, 20), color=color)
+        pixmap = render_svg_to_pixmap(EDIT_ICON, size=QSize(20, 20), color=color)
 
         if pixmap:
             self.setIconSize(pixmap.size())

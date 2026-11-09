@@ -2,6 +2,9 @@ import logging
 from typing import ClassVar, Literal, cast
 
 from krita import DockWidget, Document, Node as KritaNode, Window
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QColor, QPalette
+from PyQt5.QtWidgets import QLabel
 
 from comfyui.extension.layer_tree.target_picker import LayerTargetPicker, TargetSelectionUnavailableError
 from comfyui.extension.layer_tree.utils import LayerUtils
@@ -19,6 +22,8 @@ class SaveImageNode(ComfyUiNode):
 
     def __init__(self, docker: DockWidget, node: Node, window: Window, document: Document, document_id: str) -> None:
         super().__init__(docker, node, SAVE_ICON, document_id)
+        self.setObjectName("SaveImageNode")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.window = window
         self.document = document
         self.layer_name = "Not set"
@@ -27,6 +32,18 @@ class SaveImageNode(ComfyUiNode):
 
         self.set_title_text(node.name)
         self._update_layer_name(self.layer_name)
+
+        self.target_edit_hint = QLabel(
+            "Target edit mode: click a layer in Krita's Layers Docker to set it as the output target. "
+            "Click the cancel icon to exit."
+        )
+        self.target_edit_hint.setWordWrap(True)
+        self.target_edit_hint.setVisible(False)
+        hint_font = self.target_edit_hint.font()
+        hint_font.setPointSize(max(8, hint_font.pointSize() - 1))
+        self.target_edit_hint.setFont(hint_font)
+        self.middle_rack.addWidget(self.target_edit_hint)
+        self._configure_target_edit_style()
 
         self.direction_button = DirectionButton()
         self.direction_button.changed_to_above.connect(self._set_above_direction)
@@ -40,6 +57,7 @@ class SaveImageNode(ComfyUiNode):
         self.target_picker = LayerTargetPicker(window, document, self)
         self.target_picker.target_selected.connect(self._set_target)
         self.target_picker.target_removed.connect(self._clear_deleted_target)
+        self.target_picker.target_renamed.connect(self._update_target_name)
         self.target_picker.cancelled.connect(self._reset_target_button)
 
     def cleanup(self) -> None:
@@ -55,7 +73,7 @@ class SaveImageNode(ComfyUiNode):
             self._update_layer_name(self.layer_name)
             marker = next((token for token in self.layer_path if token.type == "target"), None)
             target_id = str(marker.quuid) if marker is not None and marker.quuid is not None else None
-            self.target_picker.watch_target(target_id)
+            self.target_picker.watch_target(target_id, state.layer_name if target_id is not None else None)
 
             should_insert_below = state.insert_direction == "below"
             if self.direction_button.is_inserting_below() != should_insert_below:
@@ -72,22 +90,22 @@ class SaveImageNode(ComfyUiNode):
         try:
             self.target_picker.begin(target)
         except TargetSelectionUnavailableError as error:
-            self.target_button.set_editing(False)
+            self._set_target_editing_feedback(False)
             self.layer_info_text.setToolTip(str(error))
             LOGGER.warning("Could not start Krita output target editing: %s", error)
             return
 
-        self.target_button.set_editing(True)
+        self._set_target_editing_feedback(True)
 
     def _set_target(self, target: KritaNode) -> None:
         direction = "below" if self.direction_button.is_inserting_below() else "above"
         try:
             path = LayerUtils.capture_target(self.document, target, direction)
         finally:
-            self.target_button.set_editing(False)
+            self._set_target_editing_feedback(False)
 
         self.layer_path = path
-        self.target_picker.watch_target(str(target.uniqueId()))
+        self.target_picker.watch_target(str(target.uniqueId()), target.name())
         self._update_layer_name(target.name())
         self._consolidate_state()
 
@@ -101,6 +119,31 @@ class SaveImageNode(ComfyUiNode):
         self.layer_path = [FlatLayerToken(quuid=None, type="target")]
         self._update_layer_name("Not set")
         self._consolidate_state()
+
+    def _update_target_name(self, name: str) -> None:
+        self._update_layer_name(name)
+        self._consolidate_state()
+
+    def _configure_target_edit_style(self) -> None:
+        highlight = self.palette().color(QPalette.ColorRole.Highlight)
+        background = QColor(highlight)
+        background.setAlpha(24)
+        self.setStyleSheet(
+            "QWidget#SaveImageNode[targetEditing=\"true\"] {"
+            f"border: 1px solid {highlight.name()};"
+            "border-radius: 5px;"
+            f"background-color: rgba({background.red()}, {background.green()}, {background.blue()}, {background.alpha()});"
+            "}"
+        )
+        self.setProperty("targetEditing", False)
+
+    def _set_target_editing_feedback(self, editing: bool) -> None:
+        self.target_button.set_editing(editing)
+        self.target_edit_hint.setVisible(editing)
+        self.setProperty("targetEditing", editing)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
 
     def _set_above_direction(self) -> None:
         self._set_direction("above")
@@ -118,7 +161,7 @@ class SaveImageNode(ComfyUiNode):
         self._consolidate_state()
 
     def _reset_target_button(self) -> None:
-        self.target_button.set_editing(False)
+        self._set_target_editing_feedback(False)
 
     def _update_layer_name(self, name: str) -> None:
         self.layer_name = name

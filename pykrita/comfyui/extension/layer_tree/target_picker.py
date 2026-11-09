@@ -24,6 +24,7 @@ class LayerTargetPicker(QObject):
 
     target_selected = pyqtSignal(object)
     target_removed = pyqtSignal(str)
+    target_renamed = pyqtSignal(str)
     cancelled = pyqtSignal()
 
     def __init__(self, window: Window, document: Document, parent: QObject | None = None) -> None:
@@ -42,14 +43,16 @@ class LayerTargetPicker(QObject):
         self._initial_target_id: str | None = None
         self._watched_model: QAbstractItemModel | None = None
         self._watched_target_id: str | None = None
+        self._watched_target_name: str | None = None
         self._suppress_selection_commit = False
 
     @property
     def is_editing(self) -> bool:
         return self._editing
 
-    def watch_target(self, target_id: str | None) -> None:
+    def watch_target(self, target_id: str | None, target_name: str | None = None) -> None:
         self._watched_target_id = target_id
+        self._watched_target_name = target_name
         self._ensure_model_watch()
         if target_id is not None:
             QTimer.singleShot(0, self._check_watched_target)
@@ -69,6 +72,7 @@ class LayerTargetPicker(QObject):
         model.rowsRemoved.connect(self._on_model_structure_changed)
         model.modelAboutToBeReset.connect(self._on_model_structure_about_to_change)
         model.modelReset.connect(self._on_model_structure_changed)
+        model.dataChanged.connect(self._on_model_data_changed)
 
     def _disconnect_model_watch(self) -> None:
         if self._watched_model is None:
@@ -80,6 +84,7 @@ class LayerTargetPicker(QObject):
             (model.rowsRemoved, self._on_model_structure_changed),
             (model.modelAboutToBeReset, self._on_model_structure_about_to_change),
             (model.modelReset, self._on_model_structure_changed),
+            (model.dataChanged, self._on_model_data_changed),
         ):
             with suppress(TypeError, RuntimeError):
                 signal.disconnect(callback)
@@ -96,23 +101,36 @@ class LayerTargetPicker(QObject):
         self._suppress_selection_commit = False
         self._check_watched_target()
 
+    def _on_model_data_changed(self, *_args: object) -> None:
+        QTimer.singleShot(0, self._check_watched_target)
+
     def _check_watched_target(self) -> None:
         target_id = self._watched_target_id
         if target_id is None:
             return
 
-        target_exists = any(str(node.uniqueId()) == target_id for node in LayerUtils.flatten_tree(self.document.topLevelNodes()))
-        if target_exists:
+        target = next(
+            (node for node in LayerUtils.flatten_tree(self.document.topLevelNodes()) if str(node.uniqueId()) == target_id),
+            None,
+        )
+        if target is None:
+            self._watched_target_id = None
+            self._watched_target_name = None
+            if self._editing and self._selection_model is not None:
+                self._suppress_selection_commit = True
+                self._selection_model.clearSelection()
+                self._selection_model.setCurrentIndex(QModelIndex(), QItemSelectionModel.NoUpdate)
+                QTimer.singleShot(0, self._release_selection_commit_suppression)
+
+            self.target_removed.emit(target_id)
             return
 
-        self._watched_target_id = None
-        if self._editing and self._selection_model is not None:
-            self._suppress_selection_commit = True
-            self._selection_model.clearSelection()
-            self._selection_model.setCurrentIndex(QModelIndex(), QItemSelectionModel.NoUpdate)
-            QTimer.singleShot(0, self._release_selection_commit_suppression)
-
-        self.target_removed.emit(target_id)
+        target_name = target.name()
+        if self._watched_target_name is None:
+            self._watched_target_name = target_name
+        elif target_name != self._watched_target_name:
+            self._watched_target_name = target_name
+            self.target_renamed.emit(target_name)
 
     def _release_selection_commit_suppression(self) -> None:
         self._suppress_selection_commit = False

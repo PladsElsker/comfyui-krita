@@ -11,6 +11,7 @@ icon_path = current_file.parent / "layers.svg"
 LAYERS_ICON = QSvgRenderer(str(current_file.parent / "layers.svg"))
 SAVE_ICON = QSvgRenderer(str(current_file.parent / "save.svg"))
 TARGET_ICON = QSvgRenderer(str(current_file.parent / "target.svg"))
+EDIT_ICON = QSvgRenderer(str(current_file.parent / "edit.svg"))
 VISIBILITY_ICON = QSvgRenderer(str(current_file.parent / "visibility.svg"))
 NO_VISIBILITY_ICON = QSvgRenderer(str(current_file.parent / "visibility_off.svg"))
 ARROW_UP_ICON = QSvgRenderer(str(current_file.parent / "arrow_up.svg"))
