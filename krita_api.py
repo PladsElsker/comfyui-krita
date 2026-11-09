@@ -237,7 +237,8 @@ class KritaApi:
         for sid in list(self.registered_documents.keys()):
             if sid not in PromptServer.instance.sockets:
                 del self.registered_documents[sid]
-                self.node_states.pop(sid, None)
+                for state in self.node_states.pop(sid, {}).values():
+                    await self._broadcast_deleted_node_state(state)
                 has_changed = True
 
         if not has_changed:
@@ -291,7 +292,8 @@ class KritaApi:
     async def _unregister_documents_by_sid_async(self, sid: str) -> None:
         if sid in self.registered_documents:
             del self.registered_documents[sid]
-            self.node_states.pop(sid, None)
+            for state in self.node_states.pop(sid, {}).values():
+                await self._broadcast_deleted_node_state(state)
 
     def _document_id_to_sid(self, document_id: str) -> str | None:
         return next(
