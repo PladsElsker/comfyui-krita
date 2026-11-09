@@ -33,7 +33,6 @@ class KritaDocuments(BaseModel):
     documents: list[str]
 
 
-
 class FlatLayerToken(BaseModel):
     quuid: str | None
     type: Literal["layer", "group_start", "group_end", "target"]
