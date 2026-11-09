@@ -23,7 +23,7 @@ class SaveImageNode(ComfyUiNode):
     def __init__(self, docker: DockWidget, node: Node, window: Window, document: Document, document_id: str) -> None:
         super().__init__(docker, node, SAVE_ICON, document_id)
         self.setObjectName("SaveImageNode")
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, on=True)
         self.window = window
         self.document = document
         self.layer_name = "Not set"
@@ -90,12 +90,12 @@ class SaveImageNode(ComfyUiNode):
         try:
             self.target_picker.begin(target)
         except TargetSelectionUnavailableError as error:
-            self._set_target_editing_feedback(False)
+            self._set_target_editing_feedback(editing=False)
             self.layer_info_text.setToolTip(str(error))
             LOGGER.warning("Could not start Krita output target editing: %s", error)
             return
 
-        self._set_target_editing_feedback(True)
+        self._set_target_editing_feedback(editing=True)
 
     def _set_target(self, target: KritaNode) -> None:
         direction = "below" if self.direction_button.is_inserting_below() else "above"
@@ -135,9 +135,9 @@ class SaveImageNode(ComfyUiNode):
             f"background-color: rgba({background.red()}, {background.green()}, {background.blue()}, {background.alpha()});"
             "}"
         )
-        self.setProperty("targetEditing", False)
+        self.setProperty("targetEditing", False)  # noqa: FBT003
 
-    def _set_target_editing_feedback(self, editing: bool) -> None:
+    def _set_target_editing_feedback(self, *, editing: bool) -> None:
         self.target_button.set_editing(editing)
         self.target_edit_hint.setVisible(editing)
         self.setProperty("targetEditing", editing)
