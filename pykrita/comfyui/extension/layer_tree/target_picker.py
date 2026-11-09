@@ -101,10 +101,7 @@ class LayerTargetPicker(QObject):
         if target_id is None:
             return
 
-        target_exists = any(
-            str(node.uniqueId()) == target_id
-            for node in LayerUtils.flatten_tree(self.document.topLevelNodes())
-        )
+        target_exists = any(str(node.uniqueId()) == target_id for node in LayerUtils.flatten_tree(self.document.topLevelNodes()))
         if target_exists:
             return
 
