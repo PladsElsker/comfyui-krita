@@ -470,8 +470,7 @@ def test__given_krita_node__when_hiding_metadata_widget__then_widget_remains_ser
         "optionsHidden": True,
         "value": '{"document_id":"Unnamed"}',
         "remainingInputs": 0,
-    }
-
+    )
 
 
 def test__given_krita_output_node__when_metadata_input_is_created__then_metadata_widget_is_hidden(
