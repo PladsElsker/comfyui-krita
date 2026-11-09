@@ -60,6 +60,10 @@ class SaveImageNode(ComfyUiNode):
             self._applying_state = False
 
     def _toggle_target_editing(self, _checked: bool) -> None:
+        if self.target_picker.is_editing:
+            self.target_picker.cancel()
+            return
+
         target = LayerUtils.find_target_node(self.document, self.layer_path)
         try:
             self.target_picker.begin(target)
@@ -73,9 +77,13 @@ class SaveImageNode(ComfyUiNode):
 
     def _set_target(self, target: KritaNode) -> None:
         direction = "below" if self.direction_button.is_inserting_below() else "above"
-        self.layer_path = LayerUtils.capture_target(self.document, target, direction)
+        try:
+            path = LayerUtils.capture_target(self.document, target, direction)
+        finally:
+            self.target_button.set_editing(False)
+
+        self.layer_path = path
         self._update_layer_name(target.name())
-        self.target_button.set_editing(False)
         self._consolidate_state()
 
     def _set_above_direction(self) -> None:
@@ -107,7 +115,9 @@ class SaveImageNode(ComfyUiNode):
             message = "The rebased output insertion parent no longer exists"
             raise ValueError(message)
 
-        relative_path.parent.addChildNode(image_node, relative_path.sibling)
+        if not relative_path.parent.addChildNode(image_node, relative_path.sibling):
+            message = "Krita rejected the generated layer insertion"
+            raise RuntimeError(message)
 
     def _consolidate_state(self) -> None:
         if not self.layer_path:
