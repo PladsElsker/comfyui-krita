@@ -332,7 +332,6 @@ def test__given_si5r_workflow__when_modify_documents__then_document_ids_are_modi
         pytest.fail("getDocumentIdsNodeMap() returned a bad model")
 
 
-
 def test__given_krita_output_node__when_krita_state_updates__then_metadata_widget_is_updated(si1_workflow: Page) -> None:
     updated_state = si1_workflow.evaluate(
         """
