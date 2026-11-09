@@ -330,3 +330,36 @@ def test__given_si5r_workflow__when_modify_documents__then_document_ids_are_modi
         assert all(document_id in document_map.root for document_id in ["candy"]), "expected document id 'candy' in the map"
     except ValidationError:
         pytest.fail("getDocumentIdsNodeMap() returned a bad model")
+
+
+
+def test__given_krita_output_node__when_krita_state_updates__then_metadata_widget_is_updated(si1_workflow: Page) -> None:
+    updated_state = si1_workflow.evaluate(
+        """
+        async () => {
+            const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const node = workflow_actions_module.getInternalKritaNodes()[0];
+            const document_widget = node.widgets.find(w => w.label === "document");
+            const metadata_widget = node.widgets.find(w => w.label === "_meta-15347");
+
+            document_widget.value = "krita-document-1";
+            const state = {
+                id: node.id,
+                type: "KritaSaveImage-15347",
+                document_id: "krita-document-1",
+                insert_direction: "above",
+                layer_name: "Background",
+                path: [
+                    { quuid: "layer-uuid", type: "target" }
+                ]
+            };
+
+            workflow_actions_module.applyKritaNodeState(state);
+            return JSON.parse(metadata_widget.value);
+        }
+        """,
+    )
+
+    assert updated_state["document_id"] == "krita-document-1"
+    assert updated_state["insert_direction"] == "above"
+    assert updated_state["path"] == [{"quuid": "layer-uuid", "type": "target"}]
