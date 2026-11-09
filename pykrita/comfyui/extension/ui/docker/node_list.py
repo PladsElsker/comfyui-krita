@@ -49,8 +49,9 @@ class NodeListWidget(QScrollArea):
         for to_delete_key in to_delete_keys:
             widget: ComfyUiNode = current_node_mapping[to_delete_key]
 
-            previous_state = self.previous_node_states.pop(to_delete_key, None)
-            if previous_state is not None:
+            previous_state = self.previous_node_states.get(to_delete_key)
+            if previous_state is not None and to_delete_key[2] == document_id:
+                self.previous_node_states.pop(to_delete_key, None)
                 self.node_state_changed.emit(
                     {
                         "deleted": True,
