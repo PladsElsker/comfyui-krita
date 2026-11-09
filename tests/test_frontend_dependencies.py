@@ -413,3 +413,69 @@ def test__given_nested_subgraph__when_fix_krita_node_ui__then_nested_metadata_wi
         """,
     )
     assert metadata_widget == {"hidden": True, "remainingInputs": 0}
+
+
+
+def test__given_krita_document_names__when_updating_document_widget_values__then_dynamic_combo_contains_selected_document(
+    si1_workflow: Page,
+) -> None:
+    dropdown_state = si1_workflow.evaluate(
+        """
+        async () => {
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const node = workflow.getInternalKritaNodes()[0];
+            await workflow.updateDocumentWidgetValues(["Unnamed"]);
+            const dropdown = node.widgets.find(widget => widget.label === "document");
+            return {
+                options: dropdown.options.values,
+                value: dropdown.value,
+            };
+        }
+        """,
+    )
+    assert dropdown_state == {"options": ["Unnamed"], "value": "Unnamed"}
+
+
+def test__given_krita_node__when_hiding_metadata_widget__then_widget_remains_serializable_but_not_visible(
+    default_page: Page,
+) -> None:
+    metadata_state = default_page.evaluate(
+        """
+        async () => {
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const metadataWidget = {
+                name: "_meta-15347",
+                value: '{"document_id":"Unnamed"}',
+                hidden: false,
+                options: {},
+                element: { style: {} },
+                inputEl: { style: {} },
+            };
+            const node = {
+                type: "KritaSaveImage-15347",
+                inputs: [{ name: "_meta-15347" }, { name: "document" }],
+                widgets: [metadataWidget],
+                setDirtyCanvas() {},
+            };
+            workflow.fixKritaNodeUi(node);
+            return {
+                hidden: metadataWidget.hidden,
+                optionsHidden: metadataWidget.options.hidden,
+                layoutSize: metadataWidget.computeSize(),
+                elementDisplay: metadataWidget.element.style.display,
+                inputDisplay: metadataWidget.inputEl.style.display,
+                value: metadataWidget.value,
+                remainingInputs: node.inputs.length,
+            };
+        }
+        """,
+    )
+    assert metadata_state == {
+        "hidden": True,
+        "optionsHidden": True,
+        "layoutSize": [0, -4],
+        "elementDisplay": "none",
+        "inputDisplay": "none",
+        "value": '{"document_id":"Unnamed"}',
+        "remainingInputs": 0,
+    }
