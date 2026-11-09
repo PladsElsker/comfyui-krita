@@ -2,9 +2,15 @@ from typing import cast
 
 from PyQt5.QtCore import QSize, pyqtBoundSignal, pyqtSignal
 from PyQt5.QtGui import QIcon, QPalette
-from PyQt5.QtWidgets import QStyle, QToolButton
+from PyQt5.QtWidgets import QToolButton
 
-from comfyui.extension.ui.icons import ARROW_DOWN_ICON, ARROW_UP_ICON, EDIT_ICON, render_svg_to_pixmap
+from comfyui.extension.ui.icons import (
+    ARROW_DOWN_ICON,
+    ARROW_UP_ICON,
+    CANCEL_ICON,
+    EDIT_ICON,
+    render_svg_to_pixmap,
+)
 
 
 class DirectionButton(QToolButton):
@@ -78,7 +84,12 @@ class TargetEditButton(QToolButton):
                 )
             )
             self.setToolTip(tooltip)
-            self.setIcon(self.style().standardIcon(QStyle.SP_DialogCancelButton))
+            color = self.palette().color(QPalette.ColorRole.ButtonText)
+            pixmap = render_svg_to_pixmap(CANCEL_ICON, size=QSize(20, 20), color=color)
+
+            if pixmap:
+                self.setIconSize(pixmap.size())
+                self.setIcon(QIcon(pixmap))
             return
 
         self.setToolTip("Edit target")
