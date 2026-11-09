@@ -178,11 +178,7 @@ class KritaApi:
 
         registered_ids = set(document_mapping)
         sid_states = self.node_states.setdefault(sid, {})
-        removed_keys = [
-            key
-            for key, state in sid_states.items()
-            if state.document_id not in registered_ids
-        ]
+        removed_keys = [key for key, state in sid_states.items() if state.document_id not in registered_ids]
         for key in removed_keys:
             state = sid_states.pop(key)
             await self._broadcast_deleted_node_state(state)
