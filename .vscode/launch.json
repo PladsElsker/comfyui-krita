@@ -12,7 +12,7 @@
             "pathMappings": [
                 {
                     "localRoot": "${workspaceFolder}/pykrita",
-                    "remoteRoot": "${env:APPDATA}/krita/pykrita"
+                    "remoteRoot": "~/.local/share/krita/pykrita"
                 }
             ],
             "justMyCode": false,
@@ -21,7 +21,7 @@
         {
             "name": "Export Extension: Zip",
             "type": "debugpy",
-            "python": "${cwd}/venv/Scripts/python",
+            "python": "${cwd}/venv/bin/python",
             "request": "launch",
             "program": "${cwd}/export.py",
             "console": "integratedTerminal",
