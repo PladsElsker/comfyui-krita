@@ -64,23 +64,16 @@ class KritaSaveImage(io.ComfyNode):
                     default=DEFAULT_KRITA_NODE_STATE,
                     optional=True,
                     tooltip="Internal Krita output-node state.",
+                    extra_dict={"hidden": True},
                 ),
             ],
         )
 
     @classmethod
-    def validate_inputs(
-        cls,
-        image: Tensor,
-        **kwargs: dict | list | float | str | None,
-    ) -> bool | str:
-        # The dropdown values are supplied by the connected Krita session at
-        # runtime, so the schema's empty options list cannot validate them.
-        # ComfyUI's custom validator replaces the static Combo membership check;
-        # validate every value that this node relies on here instead.
-        if not isinstance(image, Tensor):
-            return "The Save Image node requires a ComfyUI image tensor."
-
+    def validate_inputs(cls, **kwargs: object) -> bool | str:
+        # The dropdown values are supplied dynamically by Krita and cannot be
+        # checked against the empty schema-time options list. This custom
+        # validator intentionally replaces static Combo membership checks.
         document_value = kwargs.get(KRITA_DOCUMENT_DROPDOWN_LABEL)
         if not isinstance(document_value, str) or not document_value:
             return "Select a connected Krita document before running this node."
