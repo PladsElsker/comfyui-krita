@@ -73,3 +73,9 @@ KritaLayerType = Literal[
     "selectionmask",
     "colorizemask",
 ]
+
+
+
+class LayerCreateNotification(BaseModel):
+    transfer_id: str
+    state: SaveImageState
