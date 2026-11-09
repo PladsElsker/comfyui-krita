@@ -74,7 +74,9 @@ def _create_populated_layer(
         raise RuntimeError(message)
 
     pixel_write = node.setPixelData(pixel_data, 0, 0, width, height)
-    qWarning(f"[ComfyUI Krita Image] setPixelData returned {pixel_write}; " f"layer color={node.colorModel()}/{node.colorDepth()}/{node.colorProfile()}")
+    qWarning(
+        f"[ComfyUI Krita Image] setPixelData returned {pixel_write}; " f"layer color={node.colorModel()}/{node.colorDepth()}/{node.colorProfile()}"
+    )
     if not pixel_write:
         qCritical("[ComfyUI Krita Image] PIXEL WRITE FAILED: Node.setPixelData returned false")
         message = "Krita rejected the generated image pixel buffer"
