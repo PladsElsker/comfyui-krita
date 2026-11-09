@@ -14,8 +14,24 @@ from .krita_api import api
 from .routes import define_routes
 
 WEB_DIRECTORY = "."
-
 define_routes()
+
+
+def _to_pil_images(image: Tensor) -> list:
+    if image.ndim == 4:
+        images = image
+    elif image.ndim == 3:
+        images = image.unsqueeze(0)
+    else:
+        message = f"Expected a 3D or 4D ComfyUI image tensor, received {image.ndim} dimensions"
+        raise ValueError(message)
+
+    result = []
+    for item in images:
+        if item.shape[-1] in (1, 3, 4):
+            item = item.permute(2, 0, 1)
+        result.append(to_pil_image(item.detach().cpu()))
+    return result
 
 
 class KritaSaveImage(io.ComfyNode):
@@ -36,25 +52,32 @@ class KritaSaveImage(io.ComfyNode):
                     tooltip="Select a Krita document.",
                     lazy=True,
                 ),
-                io.Combo.Input(
+                io.String.Input(
                     id=META_WIDGET_LABEL,
-                    options=[],
                     display_name=META_WIDGET_LABEL,
+                    default="",
                     optional=True,
-                    lazy=True,
+                    tooltip="Internal Krita output-node state.",
                 ),
             ],
         )
 
     @classmethod
-    def execute(cls, image: Tensor, **kwargs: dict | list | float | None) -> io.NodeOutput:  # type: ignore
-        document = str(kwargs[KRITA_DOCUMENT_DROPDOWN_LABEL])
-        meta = {}
-        meta_arg = kwargs[META_WIDGET_LABEL]
-        if isinstance(meta_arg, dict):
-            meta = meta_arg
+    def execute(cls, image: Tensor, **kwargs: dict | list | float | str | None) -> io.NodeOutput:  # type: ignore
+        document_value = kwargs.get(KRITA_DOCUMENT_DROPDOWN_LABEL)
+        if not isinstance(document_value, str) or not document_value:
+            message = "Select a Krita document before running this output node"
+            raise ValueError(message)
 
-        api.create_layer(document, meta, to_pil_image(image))
+        meta = kwargs.get(META_WIDGET_LABEL)
+        if not isinstance(meta, str) or not meta:
+            message = "Krita output-node state has not synchronized yet; wait for the Krita connection"
+            raise ValueError(message)
+
+        images = _to_pil_images(image)
+        batch_size = len(images)
+        for index, pil_image in enumerate(images):
+            api.create_layer(document_value, meta, pil_image, batch_index=index, batch_size=batch_size)
 
         return io.NodeOutput()
 
