@@ -13,7 +13,7 @@ def _set_srgb_color_space(node: Node) -> bool:
 
 
 def _decode_png(image_data: bytes) -> tuple[int, int, bytes]:
-    qInfo(f"[ComfyUI Krita Image] PNG decode starting: bytes={len(image_data)}, " f"signature={image_data[:8].hex()}")
+    qWarning(f"[ComfyUI Krita Image] PNG decode starting: bytes={len(image_data)}, " f"signature={image_data[:8].hex()}")
     image = QImage.fromData(image_data, "PNG")
     if image.isNull():
         qCritical("[ComfyUI Krita Image] PNG DECODE FAILED: QImage.fromData returned a null image")
@@ -22,7 +22,7 @@ def _decode_png(image_data: bytes) -> tuple[int, int, bytes]:
 
     # Krita's paint-device buffer uses QImage's native ARGB32 byte layout.
     # This matches the conversion used by established Krita integrations.
-    qInfo(
+    qWarning(
         f"[ComfyUI Krita Image] PNG decoded: width={image.width()}, height={image.height()}, "
         f"original_format={image.format()}, bytes_per_line={image.bytesPerLine()}"
     )
@@ -31,7 +31,7 @@ def _decode_png(image_data: bytes) -> tuple[int, int, bytes]:
     height = image.height()
     pixel_data = bytes(image.bits().asstring(image.byteCount()))
     expected_bytes = width * height * 4
-    qInfo(
+    qWarning(
         f"[ComfyUI Krita Image] Pixel buffer prepared: format=ARGB32, width={width}, "
         f"height={height}, byte_count={len(pixel_data)}, expected={expected_bytes}, "
         f"contains_nonzero_data={any(pixel_data)}"
@@ -51,7 +51,7 @@ def _create_populated_layer(
     height: int,
     pixel_data: bytes,
 ) -> Node:
-    qInfo(
+    qWarning(
         f"[ComfyUI Krita Image] Creating paint layer: document={document.name()!r}, "
         f"layer_name={layer_name!r}, size={width}x{height}, "
         f"document_color={document.colorModel()}/{document.colorDepth()}/{document.colorProfile()}"
@@ -61,10 +61,10 @@ def _create_populated_layer(
         qCritical("[ComfyUI Krita Image] LAYER CREATION FAILED: Document.createNode returned None")
         message = "Krita could not create a paint layer for the generated image"
         raise RuntimeError(message)
-    qInfo(f"[ComfyUI Krita Image] Paint layer created: name={node.name()!r}, type={node.type()}")
+    qWarning(f"[ComfyUI Krita Image] Paint layer created: name={node.name()!r}, type={node.type()}")
 
     source_color_space = _set_srgb_color_space(node)
-    qInfo(
+    qWarning(
         f"[ComfyUI Krita Image] Source color-space setup: success={source_color_space}, "
         f"result={node.colorModel()}/{node.colorDepth()}/{node.colorProfile()}"
     )
@@ -74,7 +74,7 @@ def _create_populated_layer(
         raise RuntimeError(message)
 
     pixel_write = node.setPixelData(pixel_data, 0, 0, width, height)
-    qInfo(f"[ComfyUI Krita Image] setPixelData returned {pixel_write}; " f"layer color={node.colorModel()}/{node.colorDepth()}/{node.colorProfile()}")
+    qWarning(f"[ComfyUI Krita Image] setPixelData returned {pixel_write}; " f"layer color={node.colorModel()}/{node.colorDepth()}/{node.colorProfile()}")
     if not pixel_write:
         qCritical("[ComfyUI Krita Image] PIXEL WRITE FAILED: Node.setPixelData returned false")
         message = "Krita rejected the generated image pixel buffer"
@@ -82,7 +82,7 @@ def _create_populated_layer(
 
     written_pixels = node.pixelData(0, 0, width, height)
     expected_bytes = width * height * 4
-    qInfo(
+    qWarning(
         f"[ComfyUI Krita Image] Pixel readback: byte_count={len(written_pixels)}, "
         f"expected={expected_bytes}, contains_nonzero_data={any(written_pixels)}"
     )
@@ -100,20 +100,20 @@ def insert_png_image(
     path: list[FlatLayerToken],
     layer_name: str,
 ) -> Node:
-    qInfo(
+    qWarning(
         f"[ComfyUI Krita Image] Import routine entered: document={document.name()!r}, "
         f"document_id_is_resolved=True, path={[(token.type, str(token.quuid) if token.quuid is not None else None) for token in path]}"
     )
     width, height, pixel_data = _decode_png(image_data)
     node = _create_populated_layer(document, layer_name, width, height, pixel_data)
 
-    qInfo(f"[ComfyUI Krita Image] Target insertion resolution starting: layer={node.name()!r}")
+    qWarning(f"[ComfyUI Krita Image] Target insertion resolution starting: layer={node.name()!r}")
     relative_path = LayerUtils.rebase_path(document, path)
     if relative_path is None:
         qCritical("[ComfyUI Krita Image] TARGET RESOLUTION FAILED: rebase_path returned None")
         message = "The rebased output insertion parent no longer exists"
         raise ValueError(message)
-    qInfo(
+    qWarning(
         f"[ComfyUI Krita Image] Target insertion resolved: parent={relative_path.parent.name()!r} "
         f"({relative_path.parent.type()}), sibling="
         f"{relative_path.sibling.name() if relative_path.sibling is not None else None!r}"
@@ -126,18 +126,18 @@ def insert_png_image(
         qCritical("[ComfyUI Krita Image] NODE ATTACH FAILED: node.parentNode() is None after insert_node")
         message = "Krita did not attach the generated layer to the document"
         raise RuntimeError(message)
-    qInfo(
+    qWarning(
         f"[ComfyUI Krita Image] Node attached: actual_parent={parent.name()!r} ({parent.type()}), "
         f"child_names={[child.name() for child in parent.childNodes()]}"
     )
 
-    qInfo(
+    qWarning(
         f"[ComfyUI Krita Image] Document color conversion starting: "
         f"source={node.colorModel()}/{node.colorDepth()}/{node.colorProfile()}, "
         f"target={document.colorModel()}/{document.colorDepth()}/{document.colorProfile()}"
     )
     color_conversion = node.setColorSpace(document.colorModel(), document.colorDepth(), document.colorProfile())
-    qInfo(
+    qWarning(
         f"[ComfyUI Krita Image] Document color conversion result={color_conversion}, "
         f"result_color={node.colorModel()}/{node.colorDepth()}/{node.colorProfile()}"
     )
@@ -150,10 +150,10 @@ def insert_png_image(
         raise RuntimeError(message)
 
     node.setVisible(True)
-    qInfo(f"[ComfyUI Krita Image] Layer visibility after setVisible(True): {node.visible()}")
+    qWarning(f"[ComfyUI Krita Image] Layer visibility after setVisible(True): {node.visible()}")
     document.setActiveNode(node)
     active_node = document.activeNode()
-    qInfo(f"[ComfyUI Krita Image] Active layer after insertion: " f"{active_node.name() if active_node is not None else None!r}")
+    qWarning(f"[ComfyUI Krita Image] Active layer after insertion: " f"{active_node.name() if active_node is not None else None!r}")
     document.refreshProjection()
     document.setModified(True)
 
@@ -163,7 +163,7 @@ def insert_png_image(
         message = "The generated layer became detached during color conversion"
         raise RuntimeError(message)
 
-    qInfo(
+    qWarning(
         f"[ComfyUI Krita Image] Import routine complete: layer={node.name()!r}, "
         f"parent={final_parent.name()!r}, visible={node.visible()}, "
         f"pixel_size={width}x{height}, top_level_layers={[item.name() for item in document.topLevelNodes()]}"
