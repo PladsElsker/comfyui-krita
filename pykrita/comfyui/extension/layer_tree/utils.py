@@ -2,7 +2,7 @@ from difflib import SequenceMatcher
 from dataclasses import dataclass
 from typing import Literal, cast
 
-from krita import Node
+from krita import Document, Node
 from pydantic import BaseModel
 
 from ..models import FlatLayerToken, KritaLayerType
@@ -46,6 +46,126 @@ class LayerUtils:
                 result.append(FlatLayerToken(quuid=node.uniqueId(), type="layer"))
 
         return result
+
+    @staticmethod
+    def _target_insertion_index(
+        tokens: list[FlatLayerToken],
+        target_id: str,
+        direction: Literal["above", "below"],
+    ) -> int:
+        for index, token in enumerate(tokens):
+            if str(token.quuid) != target_id:
+                continue
+
+            if token.type == "layer":
+                return index if direction == "above" else index + 1
+
+            if token.type == "group_start":
+                if direction == "above":
+                    return index
+
+                group_end = next(
+                    (
+                        end_index
+                        for end_index in range(index + 1, len(tokens))
+                        if tokens[end_index].type == "group_end" and str(tokens[end_index].quuid) == target_id
+                    ),
+                    None,
+                )
+                if group_end is None:
+                    message = f"Could not find the closing token for group {target_id}"
+                    raise ValueError(message)
+
+                return group_end + 1
+
+        message = f"Target {target_id} is not present in the layer snapshot"
+        raise ValueError(message)
+
+    @classmethod
+    def capture_target(
+        cls,
+        document: Document,
+        target: Node,
+        direction: Literal["above", "below"],
+    ) -> list[FlatLayerToken]:
+        tokens = cls.to_flat_tokens(document.topLevelNodes())
+        target_id = str(target.uniqueId())
+        marker_index = cls._target_insertion_index(tokens, target_id, direction)
+        tokens.insert(marker_index, FlatLayerToken(quuid=target.uniqueId(), type="target"))
+        return tokens
+
+    @classmethod
+    def set_target_direction(
+        cls,
+        path: list[FlatLayerToken],
+        direction: Literal["above", "below"],
+    ) -> list[FlatLayerToken]:
+        marker_indices = [index for index, token in enumerate(path) if token.type == "target"]
+        if len(marker_indices) != 1:
+            message = f"Expected one target marker, found {len(marker_indices)}"
+            raise ValueError(message)
+
+        marker = path[marker_indices[0]]
+        if marker.quuid is None:
+            return list(path)
+
+        tokens = [token for token in path if token.type != "target"]
+        marker_index = cls._target_insertion_index(tokens, str(marker.quuid), direction)
+        tokens.insert(marker_index, marker)
+        return tokens
+
+    @classmethod
+    def find_target_node(cls, document: "Document", path: list[FlatLayerToken]) -> Node | None:
+        marker = next((token for token in path if token.type == "target"), None)
+        if marker is None or marker.quuid is None:
+            return None
+
+        target_id = str(marker.quuid)
+        return next(
+            (node for node in cls.flatten_tree(document.topLevelNodes()) if str(node.uniqueId()) == target_id),
+            None,
+        )
+
+    @classmethod
+    def rebase_path(cls, document: "Document", path: list[FlatLayerToken]) -> "LayerRelativePath | None":
+        target_markers = [token for token in path if token.type == "target"]
+        if len(target_markers) != 1:
+            message = f"Expected one target marker, found {len(target_markers)}"
+            raise ValueError(message)
+
+        roots = document.topLevelNodes()
+        tokens = cls.to_flat_tokens(roots)
+        target_id = target_markers[0].quuid
+
+        # A deleted or explicitly cleared target means ordinary insertion at
+        # the document root. Keep the prompt path intact; do not reuse its old gap.
+        target_exists = target_id is not None and any(str(token.quuid) == str(target_id) for token in tokens)
+        if not target_exists:
+            return LayerRelativePath(parent=document.rootNode(), sibling=None)
+
+        _rebased, parent_token, sibling_token = cls.rebase(path, tokens)
+        all_layers = cls.flatten_tree(roots)
+
+        if parent_token is None:
+            parent = document.rootNode()
+        else:
+            parent = next(
+                (layer for layer in all_layers if str(layer.uniqueId()) == str(parent_token.quuid)),
+                None,
+            )
+
+        if parent is None:
+            return None
+
+        if sibling_token is not None:
+            sibling = next(
+                (layer for layer in all_layers if str(layer.uniqueId()) == str(sibling_token.quuid)),
+                None,
+            )
+        else:
+            sibling = None
+
+        return LayerRelativePath(parent=parent, sibling=sibling)
 
     @classmethod
     def rebase(  # noqa: C901, PLR0912

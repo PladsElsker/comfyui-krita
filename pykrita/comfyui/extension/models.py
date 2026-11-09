@@ -55,7 +55,6 @@ class UiNodeState(BaseModel):
 class SaveImageState(UiNodeState):
     insert_direction: Literal["above", "below"]
     path: list[FlatLayerToken]
-    visible: bool
     layer_name: str
 
 
