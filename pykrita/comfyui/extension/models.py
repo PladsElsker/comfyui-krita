@@ -79,3 +79,5 @@ KritaLayerType = Literal[
 class LayerCreateNotification(BaseModel):
     transfer_id: str
     state: SaveImageState
+    batch_index: int = 0
+    batch_size: int = 1
