@@ -36,16 +36,15 @@ class _ImageDownloadSignals(QObject):
 
 
 class _ImageDownloadTask(QRunnable):
-    def __init__(self, comfy_ws: ComfyWebsocket, sid: str, notification: LayerCreateNotification) -> None:
+    def __init__(self, comfy_ws: ComfyWebsocket, notification: LayerCreateNotification) -> None:
         super().__init__()
         self.comfy_ws = comfy_ws
-        self.sid = sid
         self.notification = notification
         self.signals = _ImageDownloadSignals()
 
     def run(self) -> None:
         try:
-            route = f"/krita/{self.sid}/images/{self.notification.transfer_id}"
+            route = f"/krita/images/{self.notification.transfer_id}"
             image_data = self.comfy_ws.get_bytes(route)
         except Exception as error:  # noqa: BLE001
             self.signals.failed.emit(self.notification, str(error))
@@ -327,16 +326,11 @@ class ComfyKritaBridge(QObject):
         }
 
     def _download_layer_image(self, notification: LayerCreateNotification) -> None:
-        sid = self.comfy_ws.sid
-        if sid is None:
-            LOGGER.warning("Ignoring generated image notification because the Krita session is not registered")
-            return
-
         if notification.transfer_id in self._image_downloads:
             LOGGER.warning("Ignoring duplicate generated image transfer %s", notification.transfer_id)
             return
 
-        task = _ImageDownloadTask(self.comfy_ws, sid, notification)
+        task = _ImageDownloadTask(self.comfy_ws, notification)
         task.signals.completed.connect(self._on_image_downloaded, Qt.ConnectionType.QueuedConnection)
         task.signals.failed.connect(self._on_image_download_failed, Qt.ConnectionType.QueuedConnection)
         self._image_downloads[notification.transfer_id] = task
