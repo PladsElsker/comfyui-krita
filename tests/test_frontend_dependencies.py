@@ -365,8 +365,9 @@ def test__given_krita_output_node__when_krita_state_updates__then_metadata_widge
     assert updated_state["path"] == [{"quuid": "layer-uuid", "type": "target"}]
 
 
-
-def test__given_nested_subgraph__when_get_internal_krita_nodes__then_nested_node_is_found(default_page: Page) -> None:
+def test__given_nested_subgraph__when_get_internal_krita_nodes__then_nested_node_is_found(
+    default_page: Page,
+) -> None:
     node_ids = default_page.evaluate(
         """
         async () => {
@@ -388,7 +389,9 @@ def test__given_nested_subgraph__when_get_internal_krita_nodes__then_nested_node
     assert node_ids == [42], "nested Krita nodes should be found exactly once"
 
 
-def test__given_nested_subgraph__when_fix_krita_node_ui__then_nested_metadata_widget_is_hidden(default_page: Page) -> None:
+def test__given_nested_subgraph__when_fix_krita_node_ui__then_nested_metadata_widget_is_hidden(
+    default_page: Page,
+) -> None:
     metadata_widget = default_page.evaluate(
         """
         async () => {
