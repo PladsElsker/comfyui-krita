@@ -106,6 +106,8 @@ export function setupAdditionalWebsocketRoutes() {
     websocketRoutesSetup = true;
 
     app.api.socket.addEventListener('message', async event => {
+        if(typeof event.data !== "string") return;
+
         try {
             const data = JSON.parse(event.data);
             switch(data.type) {
