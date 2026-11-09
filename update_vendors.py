@@ -11,10 +11,13 @@ def _update_vendors_func(
     ignore_list: list[str] = [],
 ) -> None:
     base = Path(__file__).resolve().parent
-    venv_site = base / venv_dir / "Lib" / "site-packages"
+    if sys.platform == "win32":
+        venv_site = base / venv_dir / "Lib" / "site-packages"
+    else:
+        venv_site = base / venv_dir / "lib" / "python3.10" / "site-packages"
 
-    if not venv_site or not venv_site.exists():
-        message = f"[!] Could not locate site-packages inside {venv_dir}"
+    if not venv_site.exists():
+        message = f"[!] Could not locate Python 3.10 site-packages inside {venv_dir}: {venv_site}"
         logging.info(message)
         sys.exit(1)
 
