@@ -77,11 +77,10 @@ def _define_node_state_routes() -> None:
 
 
 def _define_image_transfer_routes() -> None:
-    @PromptServer.instance.routes.get("/krita/{sid}/images/{transfer_id}")
+    @PromptServer.instance.routes.get("/krita/images/{transfer_id}")
     async def get_generated_image(request: Request) -> Response:
-        sid = request.match_info["sid"]
         transfer_id = request.match_info["transfer_id"]
-        image_data = api.get_staged_image(sid, transfer_id)
+        image_data = api.get_staged_image(transfer_id)
         if image_data is None:
             return web.Response(status=404)
         return web.Response(
