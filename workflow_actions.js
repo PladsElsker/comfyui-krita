@@ -15,6 +15,8 @@ const EXTENSION_NAME = "Krita.WorkflowSync";
 let baseUrl = null;
 let previousTabName = null;
 let previousDocumentIdLists = {};
+let websocketRoutesSetup = false;
+const kritaNodeStateCache = new Map();
 
 
 export const api = (() => {
@@ -55,17 +57,20 @@ export const api = (() => {
 export const extension = { 
     name: EXTENSION_NAME,
     async afterConfigureGraph() {
-        await updateDocumentWidgetValues();
-        await setupAdditionalWebsocketRoutes();
-        await sendWorkflow(true);
-        await sendWorkflowOnChanges();
-
-        for(const node of app.graph.nodes) {
+        for(const node of getGraphNodesRecursive()) {
             fixKritaNodeUi(node);
         }
+
+        setupAdditionalWebsocketRoutes();
+        await updateDocumentWidgetValues();
+        await loadKritaNodeStates();
+        applyCachedKritaNodeStates();
+        await sendWorkflow(true);
+        await sendWorkflowOnChanges();
     },
     async nodeCreated(node) {
         fixKritaNodeUi(node);
+        applyCachedKritaNodeStates();
     },
 };
 
@@ -97,14 +102,109 @@ export function fixKritaNodeUi(node) {
 
 
 export function setupAdditionalWebsocketRoutes() {
+    if(websocketRoutesSetup) return;
+    websocketRoutesSetup = true;
+
     app.api.socket.addEventListener('message', async event => {
-        const data = JSON.parse(event.data);
-        switch(data.type) {
-            case "krita::documents::update":
-                updateDocumentWidgetValues(data.data.documents);
-                await sendWorkflow();
+        try {
+            const data = JSON.parse(event.data);
+            switch(data.type) {
+                case "krita::documents::update":
+                    await updateDocumentWidgetValues(data.data.documents);
+                    await sendWorkflow();
+                    break;
+                case "krita::nodes::update":
+                    if(data.data.deleted) {
+                        removeKritaNodeState(data.data);
+                    }
+                    else if(data.data.state) {
+                        applyKritaNodeState(data.data.state);
+                    }
+                    break;
+            }
+        }
+        catch(error) {
+            console.error("Could not process a Krita integration websocket event", error);
         }
     });
+}
+
+
+function kritaNodeStateKey(documentId, nodeId, nodeType=KRITA_SAVE_IMAGE_NODE_TYPE) {
+    return `${documentId}::${nodeType}::${nodeId}`;
+}
+
+
+export function applyKritaNodeState(state) {
+    if(!state || state.type !== KRITA_SAVE_IMAGE_NODE_TYPE || !state.document_id) return;
+
+    kritaNodeStateCache.set(kritaNodeStateKey(state.document_id, state.id, state.type), state);
+    applyCachedKritaNodeStates();
+}
+
+
+function removeKritaNodeState(deleted) {
+    if(!deleted?.document_id || deleted.id === undefined || !deleted.type) return;
+
+    kritaNodeStateCache.delete(kritaNodeStateKey(deleted.document_id, deleted.id, deleted.type));
+    applyCachedKritaNodeStates();
+}
+
+
+export async function loadKritaNodeStates() {
+    try {
+        const response = await api.get('/krita/nodes/states');
+        for(const state of (response.states ?? [])) {
+            if(state.type === KRITA_SAVE_IMAGE_NODE_TYPE && state.document_id) {
+                kritaNodeStateCache.set(kritaNodeStateKey(state.document_id, state.id, state.type), state);
+            }
+        }
+        applyCachedKritaNodeStates();
+    }
+    catch(error) {
+        console.error("Could not load the current Krita output-node state", error);
+    }
+}
+
+
+export function applyCachedKritaNodeStates() {
+    for(const node of getInternalKritaNodes()) {
+        const documentWidget = node.widgets?.find(w => w.label === DOCUMENT_WIDGET_LABEL);
+        const metaWidget = node.widgets?.find(w => w.label === META_WIDGET_LABEL);
+        if(!metaWidget) continue;
+
+        const documentId = documentWidget?.value;
+        const state = documentId
+            ? kritaNodeStateCache.get(kritaNodeStateKey(documentId, node.id, node.type))
+            : null;
+
+        if(state) {
+            setNodeMetadataValue(node, metaWidget, state);
+            continue;
+        }
+
+        if(metaWidget.value) {
+            try {
+                const currentState = JSON.parse(metaWidget.value);
+                if(currentState.document_id !== documentId) {
+                    setNodeMetadataValue(node, metaWidget, "");
+                }
+            }
+            catch {
+                setNodeMetadataValue(node, metaWidget, "");
+            }
+        }
+    }
+}
+
+
+function setNodeMetadataValue(node, widget, value) {
+    const serialized = typeof value === "string" ? value : JSON.stringify(value);
+    if(widget.value === serialized) return;
+
+    widget.value = serialized;
+    node.graph?.change?.();
+    node.setDirtyCanvas?.(true, true);
 }
 
 
@@ -130,6 +230,8 @@ export async function updateDocumentWidgetValues(documentNames=null) {
             dropdownWidget.value = documentNames[0]
         }
     }
+
+    applyCachedKritaNodeStates();
 }
 
 
@@ -144,6 +246,7 @@ export async function sendWorkflowOnChanges() {
 
 
 export async function sendWorkflow(skipCondition=false) {
+    applyCachedKritaNodeStates();
     const tabName = getActiveTabName();
     if(!tabName) return;
 
