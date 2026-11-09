@@ -76,28 +76,24 @@ export const extension = {
 };
 
 
-export function fixKritaNodeUi(node) {
-    if(node.type && !KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)) return;
+export function fixKritaNodeUi(node, visitedNodes=new Set()) {
+    if(!node || visitedNodes.has(node)) return;
+    visitedNodes.add(node);
 
-    const metaWidget = node.widgets?.find(w => w.label === META_WIDGET_LABEL);
-    const metaSlot = node.inputs.find(i => i.name === META_WIDGET_LABEL);
-    const documentSlot = node.inputs.find(i => i.name === DOCUMENT_WIDGET_LABEL);
-    if(documentSlot) {
-        const slotIndex = node.inputs.indexOf(documentSlot);
-        node.inputs.splice(slotIndex, 1);
-    }
-    if(metaSlot) {
-        const slotIndex = node.inputs.indexOf(metaSlot);
-        node.inputs.splice(slotIndex, 1);
-    }
-    if(metaWidget) {
-        metaWidget.hidden = true;
+    if(KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)) {
+        const inputs = node.inputs ?? [];
+        const metaWidget = node.widgets?.find(w => w.label === META_WIDGET_LABEL);
+        const metaSlot = inputs.find(i => i.name === META_WIDGET_LABEL);
+        const documentSlot = inputs.find(i => i.name === DOCUMENT_WIDGET_LABEL);
+
+        if(documentSlot) inputs.splice(inputs.indexOf(documentSlot), 1);
+        if(metaSlot) inputs.splice(inputs.indexOf(metaSlot), 1);
+        if(metaWidget) metaWidget.hidden = true;
     }
 
-    if(node.subgraph) {
-        for(const subnode of node.subgraph.nodes) {
-            fixKritaNodeUi(subnode);
-        }
+    // Ordinary ComfyUI nodes can own subgraphs that contain Krita nodes.
+    for(const subnode of (node.subgraph?.nodes ?? [])) {
+        fixKritaNodeUi(subnode, visitedNodes);
     }
 }
 
@@ -194,9 +190,14 @@ export function applyCachedKritaNodeStates() {
             continue;
         }
 
-        if(metaWidget.value) {
-            setNodeMetadataValue(node, metaWidget, "");
-        }
+        setNodeMetadataValue(node, metaWidget, {
+            id: node.id,
+            type: node.type,
+            document_id: "",
+            insert_direction: "below",
+            path: [{ quuid: null, type: "target" }],
+            layer_name: "Not set",
+        });
     }
 }
 
@@ -280,7 +281,7 @@ export async function sendWorkflow(skipCondition=false) {
 export function getActiveTabName() {
     const tabGroupElement = document.querySelector(COMFY_TABS_CONTAINER_SELECTOR);
     const tabElements = tabGroupElement?.querySelector(COMFY_ACTIVE_TAB_SELECTOR);
-    return tabElements?.innerHTML ?? previousTabName;
+    return tabElements?.textContent?.trim() ?? previousTabName;
 }
 
 
@@ -327,45 +328,35 @@ export function wsToHttpBase(wsUrl) {
 }
 
 
-export function getInternalKritaNodes() {
-    const internalKritaNodes = [];
-    const nodes = getGraphNodesRecursive();
-
-    for(const node of nodes) {
-        if(KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)) {
-            internalKritaNodes.push(node);
-        }
-    }
-
-    return internalKritaNodes;
+export function getInternalKritaNodes(rootGraph=app.graph) {
+    return getGraphNodesRecursive(rootGraph).filter(
+        node => KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)
+    );
 }
 
 
-export function generateActiveKritaNodes() {
-    const kritaNodes = [];
+export function generateActiveKritaNodes(rootGraph=app.graph) {
     const customKritaNodeFactory = new CustomKritaNodeFactory();
 
-    const nodePairs = getGraphNodesRecursive();
-
-    for(const internalNode of nodePairs) {
-        if(!KRITA_CUSTOM_IO_NODE_TYPES.includes(internalNode.type)) continue;
-        if(internalNode.mode !== 0) continue;
-
-        const customKritaNode = customKritaNodeFactory.create(internalNode);
-        kritaNodes.push(customKritaNode.dump());
-    }
-
-    return kritaNodes;
+    return getInternalKritaNodes(rootGraph)
+        .filter(internalNode => internalNode.mode === 0)
+        .map(internalNode => customKritaNodeFactory.create(internalNode).dump());
 }
 
 
-export function getGraphNodesRecursive(rootGraph) {
-    if(!rootGraph) rootGraph = app.graph;
+export function getGraphNodesRecursive(rootGraph=app.graph, visitedGraphs=new Set(), visitedNodes=new Set()) {
+    if(!rootGraph || visitedGraphs.has(rootGraph)) return [];
+    visitedGraphs.add(rootGraph);
 
     const nodes = [];
-    for(const node of rootGraph.nodes) {
+    for(const node of (rootGraph.nodes ?? [])) {
+        if(!node || visitedNodes.has(node)) continue;
+        visitedNodes.add(node);
         nodes.push(node);
-        if(node.subgraph) getGraphNodesRecursive(node.subgraph).forEach(n => nodes.push(n));
+
+        if(node.subgraph) {
+            nodes.push(...getGraphNodesRecursive(node.subgraph, visitedGraphs, visitedNodes));
+        }
     }
 
     return nodes;
