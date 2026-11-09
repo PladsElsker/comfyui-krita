@@ -1,4 +1,3 @@
-import contextlib
 import json
 import logging
 import threading
@@ -82,9 +81,11 @@ class ComfyKritaBridge(QObject):
     def _define_commands(self) -> None:
         @self.comfy_ws.handler("status")
         def status_statement(data: dict) -> None:
-            with contextlib.suppress(Exception):
+            try:
                 status_request = StatusRequest.model_validate(data)
                 self.status_statement(status_request)
+            except Exception:  # noqa: BLE001
+                LOGGER.exception("Could not register the Krita websocket session with ComfyUI")
 
         @self.comfy_ws.handler("krita::workflows::update")
         def update_workflows(data: dict) -> None:
