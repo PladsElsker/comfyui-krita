@@ -337,7 +337,10 @@ class ComfyKritaBridge(QObject):
         }
 
     def _download_layer_image(self, notification: LayerCreateNotification) -> None:
-        if notification.transfer_id in self._image_downloads:
+        if (
+            notification.transfer_id in self._image_downloads
+            or notification.transfer_id in self._pending_image_insertions
+        ):
             LOGGER.warning("Ignoring duplicate generated image transfer %s", notification.transfer_id)
             return
 
@@ -382,6 +385,15 @@ class ComfyKritaBridge(QObject):
             document = self.document_monitor.mapping.get(state.document_id)
             if document is None or document not in opened_documents:
                 continue
+
+            LOGGER.debug(
+                "Attempting generated image insertion: transfer=%s document_id=%s document=%r size=%d path=%s",
+                transfer_id,
+                state.document_id,
+                document.name(),
+                len(image_data),
+                [token.model_dump() for token in state.path],
+            )
 
             layer_name = f"ComfyUI Output {state.id}"
             if notification.batch_size > 1:
