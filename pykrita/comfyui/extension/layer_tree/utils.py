@@ -127,6 +127,17 @@ class LayerUtils:
         )
 
     @classmethod
+    def insert_node(cls, document: Document, node: Node, path: list[FlatLayerToken]) -> None:
+        relative_path = cls.rebase_path(document, path)
+        if relative_path is None:
+            message = "The rebased output insertion parent no longer exists"
+            raise ValueError(message)
+
+        if not relative_path.parent.addChildNode(node, relative_path.sibling):
+            message = "Krita rejected the generated layer insertion"
+            raise RuntimeError(message)
+
+    @classmethod
     def rebase_path(cls, document: "Document", path: list[FlatLayerToken]) -> "LayerRelativePath | None":
         target_markers = [token for token in path if token.type == "target"]
         if len(target_markers) != 1:
