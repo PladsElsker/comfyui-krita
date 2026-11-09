@@ -33,15 +33,6 @@ class SaveImageNode(ComfyUiNode):
         self.set_title_text(node.name)
         self._update_layer_name(self.layer_name)
 
-        self.target_edit_hint = QLabel(
-            "Target edit mode: click a layer in Krita's Layers Docker to set it as the output target. Click the cancel icon to exit."
-        )
-        self.target_edit_hint.setWordWrap(True)
-        self.target_edit_hint.setVisible(False)
-        hint_font = self.target_edit_hint.font()
-        hint_font.setPointSize(max(8, hint_font.pointSize() - 1))
-        self.target_edit_hint.setFont(hint_font)
-        self.middle_rack.addWidget(self.target_edit_hint)
         self._configure_target_edit_style()
 
         self.direction_button = DirectionButton()
@@ -138,7 +129,6 @@ class SaveImageNode(ComfyUiNode):
 
     def _set_target_editing_feedback(self, *, editing: bool) -> None:
         self.target_button.set_editing(editing)
-        self.target_edit_hint.setVisible(editing)
         self.setProperty("targetEditing", editing)
         self.style().unpolish(self)
         self.style().polish(self)
