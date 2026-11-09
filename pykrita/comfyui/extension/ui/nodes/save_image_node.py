@@ -31,7 +31,7 @@ class SaveImageNode(ComfyUiNode):
         self._applying_state = False
 
         self.set_title_text(node.name)
-        self._update_layer_name(self.layer_name)
+        self._update_layer_name(self.layer_name, is_set=False)
 
         self._configure_target_edit_style()
 
@@ -60,9 +60,9 @@ class SaveImageNode(ComfyUiNode):
         try:
             self.layer_path = list(state.path)
             self.layer_name = state.layer_name
-            self._update_layer_name(self.layer_name)
             marker = next((token for token in self.layer_path if token.type == "target"), None)
             target_id = str(marker.quuid) if marker is not None and marker.quuid is not None else None
+            self._update_layer_name(self.layer_name, is_set=target_id is not None)
             self.target_picker.watch_target(target_id, state.layer_name if target_id is not None else None)
 
             should_insert_below = state.insert_direction == "below"
@@ -107,7 +107,7 @@ class SaveImageNode(ComfyUiNode):
         # Persist a null target for future prompts. In-flight prompts keep
         # their own path snapshot and resolve deletion during result insertion.
         self.layer_path = [FlatLayerToken(quuid=None, type="target")]
-        self._update_layer_name("Not set")
+        self._update_layer_name("Not set", is_set=False)
         self._consolidate_state()
 
     def _update_target_name(self, name: str) -> None:
@@ -152,9 +152,16 @@ class SaveImageNode(ComfyUiNode):
     def _reset_target_button(self) -> None:
         self._set_target_editing_feedback(editing=False)
 
-    def _update_layer_name(self, name: str) -> None:
+    def _update_layer_name(self, name: str, *, is_set: bool = True) -> None:
         self.layer_name = name
-        self.set_info_text(f'Layer: "{name}"')
+        if is_set:
+            disabled_color = self.layer_info_text.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText)
+            self.layer_info_text.setStyleSheet(f"color: {disabled_color.name()};")
+            self.set_info_text(f'Layer: "{name}"')
+        else:
+            highlight = self.palette().color(QPalette.ColorRole.Highlight)
+            self.layer_info_text.setStyleSheet(f"color: {highlight.name()}; font-weight: bold;")
+            self.set_info_text("Layer: Not set")
 
     def insert_image_node(self, image_node: KritaNode, path: list[FlatLayerToken]) -> None:
         """Insert an output image using the path registered with its ComfyUI prompt."""

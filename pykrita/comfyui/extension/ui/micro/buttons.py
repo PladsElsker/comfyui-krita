@@ -71,7 +71,10 @@ class TargetEditButton(QToolButton):
 
     def set_editing(self, editing: bool) -> None:
         if editing:
-            self.setToolTip("Cancel target editing")
+            self.setToolTip(
+                "Click a layer in Krita's Layers Docker to set it as the output target.\n"
+                "Click this button again to cancel target editing."
+            )
             self.setIcon(self.style().standardIcon(QStyle.SP_DialogCancelButton))
             return
 
