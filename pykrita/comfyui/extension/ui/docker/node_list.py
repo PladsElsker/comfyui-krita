@@ -1,5 +1,7 @@
+from typing import cast
+
 from krita import Document, Window
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtBoundSignal, pyqtSignal
 from PyQt5.QtGui import QPalette
 from PyQt5.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
@@ -11,6 +13,8 @@ NodeKey = tuple[int, str, str | None]
 
 
 class NodeListWidget(QScrollArea):
+    node_state_changed = cast("pyqtBoundSignal", pyqtSignal(object))
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -45,6 +49,17 @@ class NodeListWidget(QScrollArea):
         for to_delete_key in to_delete_keys:
             widget: ComfyUiNode = current_node_mapping[to_delete_key]
 
+            previous_state = self.previous_node_states.pop(to_delete_key, None)
+            if previous_state is not None:
+                self.node_state_changed.emit(
+                    {
+                        "deleted": True,
+                        "document_id": previous_state.document_id,
+                        "id": previous_state.id,
+                        "type": previous_state.type,
+                    }
+                )
+
             if isinstance(widget, ComfyUiNode):
                 widget.cleanup()
                 widget.deleteLater()
@@ -53,13 +68,17 @@ class NodeListWidget(QScrollArea):
         for to_create_key in to_create_keys:
             to_create = comfyui_node_mapping[to_create_key]
             node_widget = NodeFactory.create(self, to_create, window, document, document_id)
+            node_widget.state_changed.connect(self._register_node_state)
+            self.node_widgets.append(node_widget)
 
             if to_create_key in self.previous_node_states:
                 previous_node_state = self.previous_node_states[to_create_key]
                 node_widget.apply(previous_node_state)
-
-            node_widget.state_changed.connect(self._register_node_state)
-            self.node_widgets.append(node_widget)
+                self._register_node_state(previous_node_state)
+            else:
+                initialize_state = getattr(node_widget, "initialize_state", None)
+                if callable(initialize_state):
+                    initialize_state()
 
         self._fill_main_layout()
 
@@ -104,6 +123,7 @@ class NodeListWidget(QScrollArea):
 
     def _register_node_state(self, state: UiNodeState) -> None:
         self.previous_node_states[self._get_node_key(state)] = state
+        self.node_state_changed.emit({"deleted": False, "state": state})
 
     def _get_node_key(self, node: Node | ComfyUiNode | UiNodeState, document_id: str | None = None) -> NodeKey:
         if document_id is None and not hasattr(node, "document_id"):
