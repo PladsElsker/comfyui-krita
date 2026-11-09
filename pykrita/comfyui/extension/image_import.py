@@ -8,10 +8,7 @@ _SRGB_PROFILES = ("sRGB-elle-V2-srgbtrc.icc", "sRGB built-in")
 
 
 def _set_srgb_color_space(node: Node) -> bool:
-    for profile in _SRGB_PROFILES:
-        if node.setColorSpace("RGBA", "U8", profile):
-            return True
-    return False
+    return any(node.setColorSpace("RGBA", "U8", profile) for profile in _SRGB_PROFILES)
 
 
 def _decode_png(image_data: bytes) -> tuple[int, int, bytes]:
