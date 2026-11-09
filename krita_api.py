@@ -124,6 +124,8 @@ class KritaApi:
         staged = self._staged_images.get(transfer_id)
         if staged is None or staged.sid != sid:
             return None
+
+        self._staged_images.pop(transfer_id, None)
         return staged.data
 
     def _prune_staged_images(self) -> None:
