@@ -13,10 +13,7 @@ def _set_srgb_color_space(node: Node) -> bool:
 
 
 def _decode_png(image_data: bytes) -> tuple[int, int, bytes]:
-    qInfo(
-        f"[ComfyUI Krita Image] PNG decode starting: bytes={len(image_data)}, "
-        f"signature={image_data[:8].hex()}"
-    )
+    qInfo(f"[ComfyUI Krita Image] PNG decode starting: bytes={len(image_data)}, " f"signature={image_data[:8].hex()}")
     image = QImage.fromData(image_data, "PNG")
     if image.isNull():
         qCritical("[ComfyUI Krita Image] PNG DECODE FAILED: QImage.fromData returned a null image")
@@ -40,10 +37,7 @@ def _decode_png(image_data: bytes) -> tuple[int, int, bytes]:
         f"contains_nonzero_data={any(pixel_data)}"
     )
     if len(pixel_data) != expected_bytes:
-        qCritical(
-            f"[ComfyUI Krita Image] PIXEL BUFFER SIZE MISMATCH: actual={len(pixel_data)}, "
-            f"expected={expected_bytes}"
-        )
+        qCritical(f"[ComfyUI Krita Image] PIXEL BUFFER SIZE MISMATCH: actual={len(pixel_data)}, " f"expected={expected_bytes}")
         message = f"Decoded PNG pixel buffer has {len(pixel_data)} bytes; expected {expected_bytes}"
         raise ValueError(message)
 
@@ -80,10 +74,7 @@ def _create_populated_layer(
         raise RuntimeError(message)
 
     pixel_write = node.setPixelData(pixel_data, 0, 0, width, height)
-    qInfo(
-        f"[ComfyUI Krita Image] setPixelData returned {pixel_write}; "
-        f"layer color={node.colorModel()}/{node.colorDepth()}/{node.colorProfile()}"
-    )
+    qInfo(f"[ComfyUI Krita Image] setPixelData returned {pixel_write}; " f"layer color={node.colorModel()}/{node.colorDepth()}/{node.colorProfile()}")
     if not pixel_write:
         qCritical("[ComfyUI Krita Image] PIXEL WRITE FAILED: Node.setPixelData returned false")
         message = "Krita rejected the generated image pixel buffer"
@@ -96,10 +87,7 @@ def _create_populated_layer(
         f"expected={expected_bytes}, contains_nonzero_data={any(written_pixels)}"
     )
     if len(written_pixels) != expected_bytes:
-        qCritical(
-            f"[ComfyUI Krita Image] PIXEL READBACK FAILED: actual={len(written_pixels)}, "
-            f"expected={expected_bytes}"
-        )
+        qCritical(f"[ComfyUI Krita Image] PIXEL READBACK FAILED: actual={len(written_pixels)}, " f"expected={expected_bytes}")
         message = f"Krita stored {len(written_pixels)} bytes for the generated layer; expected {expected_bytes}"
         raise RuntimeError(message)
 
@@ -119,9 +107,7 @@ def insert_png_image(
     width, height, pixel_data = _decode_png(image_data)
     node = _create_populated_layer(document, layer_name, width, height, pixel_data)
 
-    qInfo(
-        f"[ComfyUI Krita Image] Target insertion resolution starting: layer={node.name()!r}"
-    )
+    qInfo(f"[ComfyUI Krita Image] Target insertion resolution starting: layer={node.name()!r}")
     relative_path = LayerUtils.rebase_path(document, path)
     if relative_path is None:
         qCritical("[ComfyUI Krita Image] TARGET RESOLUTION FAILED: rebase_path returned None")
@@ -167,10 +153,7 @@ def insert_png_image(
     qInfo(f"[ComfyUI Krita Image] Layer visibility after setVisible(True): {node.visible()}")
     document.setActiveNode(node)
     active_node = document.activeNode()
-    qInfo(
-        f"[ComfyUI Krita Image] Active layer after insertion: "
-        f"{active_node.name() if active_node is not None else None!r}"
-    )
+    qInfo(f"[ComfyUI Krita Image] Active layer after insertion: " f"{active_node.name() if active_node is not None else None!r}")
     document.refreshProjection()
     document.setModified(True)
 
