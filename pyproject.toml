@@ -1,13 +1,13 @@
-python = "3.10"
+python = "3.13"
 
 [tool.black]
-target-version = ["py310"]
+target-version = ["py313"]
 line-length = 150
 
 [tool.ruff]
 line-length = 150
 fix = true
-target-version = "py310"
+target-version = "py313"
 lint.select = ["A", "B", "C", "E", "F", "G", "I", "N", "Q", "S", "T", "W",
           "ANN", "ARG", "BLE", "COM", "DJ", "DTZ", "EM", "ERA", "EXE", "FBT",
           "ICN", "INP", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PTH",

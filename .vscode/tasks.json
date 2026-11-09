@@ -4,7 +4,7 @@
         {
             "label": "export-code",
             "type": "shell",
-            "command": "venv/Scripts/python.exe",
+            "command": "venv/bin/python",
             "args": [
                 "-m",
                 "launch_scripts.export_code"
@@ -24,7 +24,7 @@
         {
             "label": "launch-krita",
             "type": "shell",
-            "command": "venv/Scripts/python.exe",
+            "command": "venv/bin/python",
             "args": [
                 "${workspaceFolder}/launch_scripts/start_krita_debug.py"
             ],
@@ -41,7 +41,7 @@
         {
             "label": "wait-for-debugger",
             "type": "shell",
-            "command": "venv/Scripts/python.exe",
+            "command": "venv/bin/python",
             "args": ["${workspaceFolder}/launch_scripts/wait_for_debugger.py"],
             "problemMatcher": [],
             "dependsOn": "launch-krita",

@@ -1,7 +1,7 @@
 {
     "ExtensionName": "comfyui",
-    "Watch": ".\\pykrita",
-    "ExportFrom": "C:\\Users\\Plads\\Documents\\GitHub\\comfyui-krita\\pykrita\\comfyui",
-    "ExportTo": "C:\\Users\\Plads\\AppData\\Roaming\\krita\\pykrita\\comfyui",
-    "ZipFrom": ".\\pykrita"
+    "Watch": "./pykrita",
+    "ExportFrom": "./pykrita",
+    "ExportTo": "~/.local/share/krita/pykrita",
+    "ZipFrom": "./pykrita"
 }
