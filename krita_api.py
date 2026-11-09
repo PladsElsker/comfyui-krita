@@ -126,8 +126,7 @@ class KritaApi:
         if sid is None or sid not in PromptServer.instance.sockets:
             staged.notified_sid = None
             LOGGER.warning(
-                "Keeping generated image %s staged for Krita document %s; "
-                "waiting for an active PromptServer session",
+                "Keeping generated image %s staged for Krita document %s; " "waiting for an active PromptServer session",
                 notification.transfer_id,
                 staged.document_id,
             )
