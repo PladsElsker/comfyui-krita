@@ -415,7 +415,6 @@ def test__given_nested_subgraph__when_fix_krita_node_ui__then_nested_metadata_wi
     assert metadata_widget == {"hidden": True, "remainingInputs": 0}
 
 
-
 def test__given_krita_document_names__when_updating_document_widget_values__then_dynamic_combo_contains_selected_document(
     si1_workflow: Page,
 ) -> None:
