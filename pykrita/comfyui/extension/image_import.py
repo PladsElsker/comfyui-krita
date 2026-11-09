@@ -27,16 +27,21 @@ def insert_png_image(
         raise RuntimeError(message)
 
     if not any(node.setColorSpace("RGBA", "U8", profile) for profile in _SRGB_PROFILES):
-        message = "Krita could not assign an sRGB color space to the generated layer"
+        message = "Krita could not prepare an sRGB color space for the generated layer"
         raise RuntimeError(message)
 
-    LayerUtils.insert_node(document, node, path)
-
     if not node.setPixelData(pixel_data, 0, 0, image.width(), image.height()):
+        message = "Krita could not write the generated image pixels to the paint layer"
+        raise RuntimeError(message)
+
+    # PNG payload pixels are interpreted as sRGB, then converted into the
+    # destination document's actual model, depth, and profile.
+    LayerUtils.insert_node(document, node, path)
+    if not node.setColorSpace(document.colorModel(), document.colorDepth(), document.colorProfile()):
         parent = node.parentNode()
         if parent is not None:
             parent.removeChildNode(node)
-        message = "Krita could not write the generated image pixels to the paint layer"
+        message = "Krita could not convert the generated layer to the document color space"
         raise RuntimeError(message)
 
     document.refreshProjection()
