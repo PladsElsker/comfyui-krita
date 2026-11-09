@@ -52,18 +52,12 @@ class _ImageDownloadTask(QRunnable):
         try:
             image_data = self.comfy_ws.get_bytes(route)
         except Exception as error:  # noqa: BLE001
-            qCritical(
-                f"[ComfyUI Krita Image] HTTP download FAILED: transfer={transfer_id}, "
-                f"document_id={state.document_id}, error={error}"
-            )
+            qCritical(f"[ComfyUI Krita Image] HTTP download FAILED: transfer={transfer_id}, " f"document_id={state.document_id}, error={error}")
             self.signals.failed.emit(self.notification, str(error))
             return
 
-        is_png = image_data.startswith(b"\\x89PNG\\r\\n\\x1a\\n")
-        qInfo(
-            f"[ComfyUI Krita Image] HTTP download complete: transfer={transfer_id}, "
-            f"bytes={len(image_data)}, png_signature={is_png}"
-        )
+        is_png = image_data.startswith(bytes((137, 80, 78, 71, 13, 10, 26, 10)))
+        qInfo(f"[ComfyUI Krita Image] HTTP download complete: transfer={transfer_id}, " f"bytes={len(image_data)}, png_signature={is_png}")
         self.signals.completed.emit(self.notification, image_data)
 
 
@@ -353,9 +347,7 @@ class ComfyKritaBridge(QObject):
     def _download_layer_image(self, notification: LayerCreateNotification) -> None:
         state = notification.state
         if notification.transfer_id in self._image_downloads:
-            qWarning(
-                f"[ComfyUI Krita Image] Duplicate notification ignored: transfer={notification.transfer_id}"
-            )
+            qWarning(f"[ComfyUI Krita Image] Duplicate notification ignored: transfer={notification.transfer_id}")
             LOGGER.warning("Ignoring duplicate generated image transfer %s", notification.transfer_id)
             return
 
@@ -436,10 +428,7 @@ class ComfyKritaBridge(QObject):
         try:
             node = insert_png_image(document, image_data, state.path, layer_name)
         except Exception as error:  # noqa: BLE001
-            qCritical(
-                f"[ComfyUI Krita Image] INSERTION FAILED: transfer={notification.transfer_id}, "
-                f"document_id={state.document_id}, error={error}"
-            )
+            qCritical(f"[ComfyUI Krita Image] INSERTION FAILED: transfer={notification.transfer_id}, " f"document_id={state.document_id}, error={error}")
             LOGGER.exception(
                 "Generated image %s was fetched but could not be inserted into document %s",
                 notification.transfer_id,
