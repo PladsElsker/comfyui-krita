@@ -1,7 +1,6 @@
 import json
 import logging
 import threading
-import time
 
 from PyQt5.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, pyqtSignal, pyqtSlot
 
@@ -19,8 +18,6 @@ from comfyui.extension.models import (
 
 LOGGER = logging.getLogger(__name__)
 MAX_NODE_STATE_UPLOAD_ATTEMPTS = 3
-PENDING_IMAGE_INSERTION_TTL_SECONDS = 180
-PENDING_IMAGE_INSERTION_RETRY_INTERVAL_MS = 300
 
 
 class _NodeStateUploadTask(QRunnable):
@@ -64,11 +61,6 @@ class ComfyKritaBridge(QObject):
         self.document_monitor = document_monitor
         self._connected_node_lists: set[int] = set()
         self._image_downloads: dict[str, _ImageDownloadTask] = {}
-        self._pending_image_insertions: dict[str, tuple[LayerCreateNotification, bytes, float]] = {}
-        self._pending_image_retry_timer = QTimer(self)
-        self._pending_image_retry_timer.setInterval(PENDING_IMAGE_INSERTION_RETRY_INTERVAL_MS)
-        self._pending_image_retry_timer.timeout.connect(self._retry_pending_image_insertions)
-        self.document_monitor.on_documents_changed.connect(self._retry_pending_image_insertions)
 
         self._download_pool = QThreadPool(self)
         self._download_pool.setMaxThreadCount(1)
@@ -123,7 +115,6 @@ class ComfyKritaBridge(QObject):
             mappings = self.generate_document_name_mappings()
 
         self.document_monitor.assign_name_mappings(mappings)
-        self._retry_pending_image_insertions()
         self.request_workflows()
         self.send_krita_state()
 
@@ -337,7 +328,7 @@ class ComfyKritaBridge(QObject):
         }
 
     def _download_layer_image(self, notification: LayerCreateNotification) -> None:
-        if notification.transfer_id in self._image_downloads or notification.transfer_id in self._pending_image_insertions:
+        if notification.transfer_id in self._image_downloads:
             LOGGER.warning("Ignoring duplicate generated image transfer %s", notification.transfer_id)
             return
 
@@ -350,80 +341,58 @@ class ComfyKritaBridge(QObject):
     @pyqtSlot(object, bytes)
     def _on_image_downloaded(self, notification: LayerCreateNotification, image_data: bytes) -> None:
         self._image_downloads.pop(notification.transfer_id, None)
-        self._pending_image_insertions[notification.transfer_id] = (
-            notification,
-            image_data,
-            time.monotonic() + PENDING_IMAGE_INSERTION_TTL_SECONDS,
-        )
-        LOGGER.debug(
-            "Downloaded %d bytes for generated image %s; waiting for its Krita document mapping",
-            len(image_data),
-            notification.transfer_id,
-        )
-        self._retry_pending_image_insertions()
+        state = notification.state
 
-    @pyqtSlot()
-    def _retry_pending_image_insertions(self) -> None:
-        opened_documents = self.document_monitor.get_opened_documents()
-        now = time.monotonic()
-
-        for transfer_id, (notification, image_data, expires_at) in list(self._pending_image_insertions.items()):
-            state = notification.state
-            if expires_at <= now:
-                self._pending_image_insertions.pop(transfer_id, None)
-                LOGGER.error(
-                    "Discarding generated image %s because Krita document %s did not become available within %d seconds",
-                    transfer_id,
-                    state.document_id,
-                    PENDING_IMAGE_INSERTION_TTL_SECONDS,
-                )
-                continue
-
-            document = self.document_monitor.mapping.get(state.document_id)
-            if document is None or document not in opened_documents:
-                continue
-
-            LOGGER.debug(
-                "Attempting generated image insertion: transfer=%s document_id=%s document=%r size=%d path=%s",
-                transfer_id,
-                state.document_id,
-                document.name(),
+        document = self.document_monitor.mapping.get(state.document_id)
+        if document is None:
+            LOGGER.error(
+                "Fetched generated image %s (%d bytes), but Krita has no document mapping for ID %s",
+                notification.transfer_id,
                 len(image_data),
-                [token.model_dump() for token in state.path],
-            )
-
-            layer_name = f"ComfyUI Output {state.id}"
-            if notification.batch_size > 1:
-                layer_name += f" ({notification.batch_index + 1}/{notification.batch_size})"
-
-            try:
-                node = insert_png_image(document, image_data, state.path, layer_name)
-            except Exception:  # noqa: BLE001
-                self._pending_image_insertions.pop(transfer_id, None)
-                LOGGER.exception(
-                    "Could not insert generated image %s for Krita node %s into document %s",
-                    transfer_id,
-                    state.id,
-                    state.document_id,
-                )
-                continue
-
-            self._pending_image_insertions.pop(transfer_id, None)
-            parent = node.parentNode()
-            parent_name = parent.name() if parent is not None else "<no parent>"
-            LOGGER.info(
-                "Inserted generated image %s as layer %r in Krita document %s under %r",
-                transfer_id,
-                node.name(),
                 state.document_id,
-                parent_name,
             )
+            return
 
-        if self._pending_image_insertions:
-            if not self._pending_image_retry_timer.isActive():
-                self._pending_image_retry_timer.start()
-        else:
-            self._pending_image_retry_timer.stop()
+        if document not in self.document_monitor.get_opened_documents():
+            LOGGER.error(
+                "Fetched generated image %s (%d bytes), but target document %s is not open",
+                notification.transfer_id,
+                len(image_data),
+                state.document_id,
+            )
+            return
+
+        layer_name = f"ComfyUI Output {state.id}"
+        if notification.batch_size > 1:
+            layer_name += f" ({notification.batch_index + 1}/{notification.batch_size})"
+
+        LOGGER.info(
+            "Inserting generated image %s (%d bytes) into document %r (%s), node %s",
+            notification.transfer_id,
+            len(image_data),
+            document.name(),
+            state.document_id,
+            state.id,
+        )
+
+        try:
+            node = insert_png_image(document, image_data, state.path, layer_name)
+        except Exception:  # noqa: BLE001
+            LOGGER.exception(
+                "Generated image %s was fetched but could not be inserted into document %s",
+                notification.transfer_id,
+                state.document_id,
+            )
+            return
+
+        parent = node.parentNode()
+        LOGGER.info(
+            "Inserted generated image %s as visible layer %r under %r in document %r",
+            notification.transfer_id,
+            node.name(),
+            parent.name() if parent is not None else "<no parent>",
+            document.name(),
+        )
 
     @pyqtSlot(object, str)
     def _on_image_download_failed(self, notification: LayerCreateNotification, error: str) -> None:
