@@ -50,6 +50,14 @@ class SaveImageNode(ComfyUiNode):
         self.target_picker.target_renamed.connect(self._update_target_name)
         self.target_picker.cancelled.connect(self._reset_target_button)
 
+    def initialize_state(self) -> None:
+        if self.layer_path:
+            return
+
+        self.layer_path = [FlatLayerToken(quuid=None, type="target")]
+        self._update_layer_name("Not set", is_set=False)
+        self._consolidate_state()
+
     def cleanup(self) -> None:
         if self.target_picker.is_editing:
             self.target_picker.cancel()
@@ -165,14 +173,7 @@ class SaveImageNode(ComfyUiNode):
 
     def insert_image_node(self, image_node: KritaNode, path: list[FlatLayerToken]) -> None:
         """Insert an output image using the path registered with its ComfyUI prompt."""
-        relative_path = LayerUtils.rebase_path(self.document, path)
-        if relative_path is None:
-            message = "The rebased output insertion parent no longer exists"
-            raise ValueError(message)
-
-        if not relative_path.parent.addChildNode(image_node, relative_path.sibling):
-            message = "Krita rejected the generated layer insertion"
-            raise RuntimeError(message)
+        LayerUtils.insert_node(self.document, image_node, path)
 
     def _consolidate_state(self) -> None:
         if not self.layer_path:
