@@ -10,8 +10,6 @@ from dataclasses import dataclass
 from PIL.Image import Image
 from server import PromptServer
 
-LOGGER = logging.getLogger(__name__)
-
 from .models import (
     KritaDocuments,
     KritaNodeStateUpdate,
@@ -19,6 +17,8 @@ from .models import (
     SaveImageState,
     UpdateWorkflowsRequest,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 STALE_SIDS_PRUNING_REFRESH_RATE = 3
 STAGED_IMAGE_TTL_SECONDS = 180
@@ -136,11 +136,20 @@ class KritaApi:
         if staged.notified_sid == sid:
             return
 
-        await PromptServer.instance.send(
-            "krita::layers::create",
-            notification.model_dump(),
-            sid,
-        )
+        try:
+            await PromptServer.instance.send(
+                "krita::layers::create",
+                notification.model_dump(),
+                sid,
+            )
+        except Exception:  # noqa: BLE001
+            staged.notified_sid = None
+            LOGGER.exception(
+                "Could not dispatch generated image %s to Krita SID %s; it remains staged",
+                notification.transfer_id,
+                sid,
+            )
+            return
 
         # PromptServer.send_json silently skips unknown SIDs. Recheck the
         # socket after sending so a disconnect racing with dispatch does not
