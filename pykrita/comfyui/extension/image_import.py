@@ -44,6 +44,11 @@ def insert_png_image(
     # PNG payload pixels are interpreted as sRGB, then converted into the
     # destination document's actual model, depth, and profile.
     LayerUtils.insert_node(document, node, path)
+    parent = node.parentNode()
+    if parent is None:
+        message = "Krita reported a successful insertion but the generated layer has no parent"
+        raise RuntimeError(message)
+
     if not node.setColorSpace(document.colorModel(), document.colorDepth(), document.colorProfile()):
         parent = node.parentNode()
         if parent is not None:
