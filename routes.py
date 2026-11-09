@@ -18,6 +18,12 @@ def define_routes() -> None:
 
 
 def _define_krita_routes() -> None:
+    _define_document_routes()
+    _define_node_state_routes()
+    _define_image_transfer_routes()
+
+
+def _define_document_routes() -> None:
     @PromptServer.instance.routes.put("/krita/{sid}/documents")
     async def update_documents(request: Request) -> Response:
         sid = request.match_info["sid"]
@@ -46,6 +52,8 @@ def _define_krita_routes() -> None:
         except Exception:  # noqa: BLE001
             return web.json_response(status=400)
 
+
+def _define_node_state_routes() -> None:
     @PromptServer.instance.routes.put("/krita/{sid}/nodes/state")
     async def update_node_state(request: Request) -> Response:
         sid = request.match_info["sid"]
@@ -67,6 +75,8 @@ def _define_krita_routes() -> None:
         except Exception:  # noqa: BLE001
             return web.json_response(status=400)
 
+
+def _define_image_transfer_routes() -> None:
     @PromptServer.instance.routes.get("/krita/{sid}/images/{transfer_id}")
     async def get_generated_image(request: Request) -> Response:
         sid = request.match_info["sid"]
