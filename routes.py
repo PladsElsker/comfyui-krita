@@ -30,6 +30,7 @@ def _define_krita_routes() -> None:
             local_document_mapping = await api.update_documents(
                 update_request.sid,
                 update_request.documents,
+                update_request.previous_mappings,
             )
             mapping_response = DocumentMappingResponse(mapping=local_document_mapping)
             return web.json_response(mapping_response.model_dump())
