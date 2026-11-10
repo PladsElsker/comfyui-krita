@@ -36,13 +36,19 @@ def _get_selected_roots(document: Document, selected_nodes: list[Node]) -> list[
     source_nodes = _nodes_by_id(document.rootNode())
     missing_ids = selected_ids - source_nodes.keys()
     if missing_ids:
-        message = f"Selected Krita layers no longer exist: {', '.join(sorted(missing_ids))}"
+        message = (
+            "Selected Krita layers no longer exist: "
+            f"{', '.join(sorted(missing_ids))}"
+        )
         raise ValueError(message)
 
     roots = [
         node
         for node in selected_nodes
-        if not _has_selected_ancestor(node, selected_ids) and _is_effectively_visible(node)
+        if (
+            not _has_selected_ancestor(node, selected_ids)
+            and _is_effectively_visible(node)
+        )
     ]
     if not roots:
         message = "The selected layers are hidden or no longer available"
@@ -62,7 +68,10 @@ def _clone_document(document: Document) -> Document:
     # Krita's clone operation expects the source image to be locked.
     document.waitForDone()
     if not document.tryBarrierLock():
-        message = "Krita is still updating the document; try accepting the layer selection again"
+        message = (
+            "Krita is still updating the document; "
+            "try accepting the layer selection again"
+        )
         raise RuntimeError(message)
 
     try:
@@ -76,12 +85,18 @@ def _clone_document(document: Document) -> Document:
     return scratch_document
 
 
-def _render_scratch_projection(scratch_document: Document, keep_ids: set[str]) -> QImage:
+def _render_scratch_projection(
+    scratch_document: Document,
+    keep_ids: set[str],
+) -> QImage:
     scratch_document.setBatchmode(True)
     scratch_document.setAutosave(False)
     cloned_nodes = _nodes_by_id(scratch_document.rootNode())
     if not keep_ids.issubset(cloned_nodes):
-        message = "Krita's scratch document did not preserve the selected layer identities"
+        message = (
+            "Krita's scratch document did not preserve "
+            "the selected layer identities"
+        )
         raise RuntimeError(message)
 
     # Keep selected subtrees and their ancestor groups/masks. Hiding other
