@@ -14,7 +14,7 @@ export const KRITA_CUSTOM_IO_NODE_TYPES = [
 ];
 
 function getMetadataWidgetLabel(nodeType) {
-    return META_WIDGET_LABEL;
+    return KRITA_CUSTOM_IO_NODE_TYPES.includes(nodeType) ? META_WIDGET_LABEL : null;
 }
 
 function createDefaultNodeState(node) {
