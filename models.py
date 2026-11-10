@@ -56,6 +56,13 @@ class LoadImageState(BaseModel):
     snapshot_revision: str = ""
 
 
+class LoadImageExecutionState(BaseModel):
+    id: int
+    type: Literal["KritaLoadImage-15347"]
+    document_id: str
+    snapshot_revision: str = ""
+
+
 KritaNodeState = SaveImageState | LoadImageState
 
 
