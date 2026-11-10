@@ -62,10 +62,11 @@ def capture_selected_layers_projection(
             projection.format(),
             projection.bytesPerLine(),
         )
-        return projection, scratch_document
     except Exception as error:  # noqa: BLE001
         _warn("[Load Image export] capture failed:\\n%s", traceback.format_exc())
         raise ProjectionCaptureError(str(error), scratch_document) from error
+    else:
+        return projection, scratch_document
 
 
 def _clone_document(
@@ -76,7 +77,7 @@ def _clone_document(
     try_barrier_lock = getattr(document, "tryBarrierLock", None)
     if not callable(try_barrier_lock):
         message = "This Krita version does not expose Document.tryBarrierLock()"
-        raise RuntimeError(message)
+        raise TypeError(message)
 
     _warn("[Load Image export] waiting for source image barrier (worker thread)")
     deadline = time.monotonic() + SOURCE_BARRIER_TIMEOUT_SECONDS
