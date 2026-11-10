@@ -109,12 +109,7 @@ def _validate_snapshot_metadata(api: "KritaApi", state: LoadImageState) -> None:
         message = "The image snapshot revision is missing or invalid"
         raise ValueError(message)
 
-    current_workflow_nodes = api._last_workflows_request.workflows.get(
-        state.document_id, []
-    )
-    if not any(
-        node.id == state.id and node.type == state.type for node in current_workflow_nodes
-    ):
+    if not api.has_workflow_node(state.document_id, state.id, state.type):
         message = "The Load Image node is no longer present in the current ComfyUI workflow"
         raise ValueError(message)
 
