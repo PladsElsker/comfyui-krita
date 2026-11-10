@@ -1,5 +1,7 @@
 from krita import Document, Node
+from PyQt5.QtCore import QEventLoop
 from PyQt5.QtGui import QImage
+from PyQt5.QtWidgets import QApplication
 
 _MASK_NODE_TYPES = {
     "colormask",
@@ -54,9 +56,10 @@ def _get_required_node_ids(selected_roots: list[Node]) -> set[str]:
 
 
 def _clone_document(document: Document) -> Document:
-    # KisDocument::clone() requires a consistent, locked image. waitForDone()
-    # also flushes delayed node updates; lock() then waits for the image barrier
-    # instead of failing when Krita still has work queued.
+    # Mirror Krita's own lock-and-clone sequence: let pending UI-side
+    # operations finish without accepting new user input, flush delayed nodes
+    # and image jobs, then take the image barrier lock before cloning.
+    QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
     document.waitForDone()
     document.lock()
     try:
