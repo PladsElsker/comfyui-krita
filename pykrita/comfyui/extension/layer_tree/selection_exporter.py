@@ -1,97 +1,89 @@
 from krita import Document, Node
-from PyQt5.QtCore import QRect
-
-from .layer_compositor import LayerGroupSnapshot, LayerPixelSnapshot
+from PyQt5.QtGui import QImage
 
 
-def capture_selected_layer_pixels(
+def capture_selected_layers_projection(
     document: Document,
     selected_nodes: list[Node],
-) -> tuple[int, int, list[LayerPixelSnapshot]]:
-    """Copy only selected layer projections into detached, canvas-positioned buffers.
+) -> QImage:
+    """Render the selected layer subtree through Krita's native image renderer.
 
-    This function must run on Krita's UI thread because it reads live document
-    and Node objects. The returned snapshots contain only Python values and
-    copied bytes; the compositor can safely consume them on a worker thread.
+    Krita objects must only be accessed from the UI thread. The returned QImage
+    is detached from the scratch document and can be encoded on a worker thread.
     """
+    if not selected_nodes:
+        message = "Select at least one Krita layer"
+        raise ValueError(message)
+
     selected_ids = {str(node.uniqueId()) for node in selected_nodes}
-    if not selected_ids:
-        raise ValueError("Select at least one Krita layer")
+    source_nodes = _nodes_by_id(document.rootNode())
+    missing_ids = selected_ids - source_nodes.keys()
+    if missing_ids:
+        message = f"Selected Krita layers no longer exist: {', '.join(sorted(missing_ids))}"
+        raise ValueError(message)
 
-    document_width = document.width()
-    document_height = document.height()
-    if document_width <= 0 or document_height <= 0:
-        raise ValueError("The Krita document has invalid canvas dimensions")
-
-    # Keep selected nodes in document tree order, not click order.
-    ordered_nodes = [
+    selected_roots = [
         node
-        for node in _walk_nodes(document.rootNode())
-        if str(node.uniqueId()) in selected_ids
+        for node in selected_nodes
+        if not _has_selected_ancestor(node, selected_ids) and _is_effectively_visible(node)
     ]
-    if len(ordered_nodes) != len(selected_ids):
-        found_ids = {str(node.uniqueId()) for node in ordered_nodes}
-        missing = selected_ids - found_ids
-        raise ValueError(f"Some selected Krita layers no longer exist: {', '.join(sorted(missing))}")
+    if not selected_roots:
+        message = "The selected layers are hidden or no longer available"
+        raise ValueError(message)
 
-    # A selected group projection already includes its descendants and masks.
-    # Drop selected descendants so that the group is only composited once.
-    filtered_nodes = [
-        node
-        for node in ordered_nodes
-        if not _has_selected_ancestor(node, selected_ids)
-    ]
+    keep_ids: set[str] = set()
+    for node in selected_roots:
+        _add_subtree_ids(node, keep_ids)
+        _add_ancestor_ids(node, keep_ids)
 
-    canvas = QRect(0, 0, document_width, document_height)
-    snapshots: list[LayerPixelSnapshot] = []
+    # Krita's document clone is an independent in-memory image. Lock the source
+    # while cloning so the copied node tree and its pixel data are consistent.
+    document.waitForDone()
+    if not document.tryBarrierLock():
+        message = "Krita is still updating the document; try accepting the layer selection again"
+        raise RuntimeError(message)
 
-    for node in filtered_nodes:
-        if not _is_effectively_visible(node):
-            continue
+    scratch_document = None
+    try:
+        scratch_document = document.clone()
+    finally:
+        document.unlock()
 
-        if node.colorModel() != "RGBA" or node.colorDepth() != "U8":
-            raise ValueError(
-                f"Layer {node.name()!r} uses {node.colorModel()} {node.colorDepth()}. "
-                "The current in-memory compositor requires RGBA U8 projections."
-            )
+    if scratch_document is None:
+        message = "Krita could not create an in-memory scratch document"
+        raise RuntimeError(message)
 
-        clipped_bounds = node.bounds().intersected(canvas)
-        if clipped_bounds.isEmpty():
-            continue
+    try:
+        cloned_nodes = _nodes_by_id(scratch_document.rootNode())
+        if not keep_ids.issubset(cloned_nodes):
+            message = "Krita's scratch document did not preserve the selected layer identities"
+            raise RuntimeError(message)
 
-        x = clipped_bounds.x()
-        y = clipped_bounds.y()
-        width = clipped_bounds.width()
-        height = clipped_bounds.height()
-        # projectionPixelData returns a QByteArray copy of rendered pixels.
-        # bytes() detaches it from Krita before this method returns.
-        pixel_data = bytes(node.projectionPixelData(x, y, width, height))
-        expected_size = width * height * 4
-        if len(pixel_data) != expected_size:
-            raise RuntimeError(
-                f"Krita returned {len(pixel_data)} bytes for layer {node.name()!r}; "
-                f"expected {expected_size} RGBA bytes"
-            )
+        # Hide everything outside the selected subtrees. Ancestor groups remain
+        # present so Krita can apply their own opacity, masks and blend behavior.
+        for node_id, node in cloned_nodes.items():
+            if node_id not in keep_ids and node.visible():
+                node.setVisible(False)
 
-        ancestors = _group_ancestors(node)
-        snapshots.append(
-            LayerPixelSnapshot(
-                name=node.name(),
-                x=x,
-                y=y,
-                width=width,
-                height=height,
-                pixels=pixel_data,
-                opacity=node.opacity(),
-                blending_mode=node.blendingMode(),
-                ancestors=ancestors,
-            )
+        scratch_document.waitForDone()
+        scratch_document.refreshProjection()
+        projection = scratch_document.projection(
+            0,
+            0,
+            scratch_document.width(),
+            scratch_document.height(),
         )
+        if projection.isNull():
+            message = "Krita returned an empty projection for the selected layers"
+            raise RuntimeError(message)
 
-    if not snapshots:
-        raise ValueError("The selected layers contain no visible pixels inside the document canvas")
+        return projection.copy()
+    finally:
+        scratch_document.close()
 
-    return document_width, document_height, snapshots
+
+def _nodes_by_id(root: Node) -> dict[str, Node]:
+    return {str(node.uniqueId()): node for node in _walk_nodes(root)}
 
 
 def _walk_nodes(parent: Node) -> list[Node]:
@@ -111,22 +103,17 @@ def _has_selected_ancestor(node: Node, selected_ids: set[str]) -> bool:
     return False
 
 
-def _group_ancestors(node: Node) -> tuple[LayerGroupSnapshot, ...]:
-    ancestors: list[LayerGroupSnapshot] = []
+def _add_subtree_ids(node: Node, node_ids: set[str]) -> None:
+    node_ids.add(str(node.uniqueId()))
+    for child in node.childNodes():
+        _add_subtree_ids(child, node_ids)
+
+
+def _add_ancestor_ids(node: Node, node_ids: set[str]) -> None:
     parent = node.parentNode()
     while parent is not None:
-        if parent.type() == "grouplayer":
-            ancestors.append(
-                LayerGroupSnapshot(
-                    node_id=str(parent.uniqueId()),
-                    opacity=parent.opacity(),
-                    blending_mode=parent.blendingMode(),
-                )
-            )
+        node_ids.add(str(parent.uniqueId()))
         parent = parent.parentNode()
-
-    ancestors.reverse()
-    return tuple(ancestors)
 
 
 def _is_effectively_visible(node: Node) -> bool:
