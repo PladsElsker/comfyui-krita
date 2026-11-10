@@ -15,18 +15,21 @@ def decode_composited_png(
     dtype: object,
 ) -> tuple[Tensor, Tensor]:
     try:
-        with Image.open(BytesIO(image_data)) as image:
-            if image.format != "PNG":
-                raise ValueError("The Krita layer snapshot must be a PNG")
-            rgba_image = image.convert("RGBA")
-            width, height = rgba_image.size
-            if width < 1 or height < 1 or width * height > MAX_LOAD_IMAGE_PIXELS:
-                raise ValueError("The Krita layer snapshot has unsupported dimensions")
-            pixel_data = rgba_image.tobytes()
-    except ValueError:
-        raise
-    except Exception as error:
-        raise ValueError("The Krita layer snapshot is not a valid image") from error
+        image = Image.open(BytesIO(image_data))
+    except Exception as error:  # noqa: BLE001
+        message = "The Krita layer snapshot is not a valid image"
+        raise ValueError(message) from error
+
+    with image:
+        if image.format != "PNG":
+            message = "The Krita layer snapshot must be a PNG"
+            raise ValueError(message)
+        rgba_image = image.convert("RGBA")
+        width, height = rgba_image.size
+        if width < 1 or height < 1 or width * height > MAX_LOAD_IMAGE_PIXELS:
+            message = "The Krita layer snapshot has unsupported dimensions"
+            raise ValueError(message)
+        pixel_data = rgba_image.tobytes()
 
     rgba = np.frombuffer(pixel_data, dtype=np.uint8).reshape(height, width, 4)
     rgb = rgba[..., :3].astype(np.float32)
