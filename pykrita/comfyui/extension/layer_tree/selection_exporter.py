@@ -77,11 +77,7 @@ def _get_selected_roots(document: Document, selected_nodes: list[Node]) -> list[
         message = f"Selected Krita layers no longer exist: {', '.join(sorted(missing_ids))}"
         raise ValueError(message)
 
-    roots = [
-        node
-        for node in selected_nodes
-        if not _has_selected_ancestor(node, selected_ids) and _is_effectively_visible(node)
-    ]
+    roots = [node for node in selected_nodes if not _has_selected_ancestor(node, selected_ids) and _is_effectively_visible(node)]
     if not roots:
         message = "The selected layers are hidden or no longer available"
         raise ValueError(message)
@@ -137,10 +133,7 @@ def _render_scratch_projection(
     missing_ids = keep_ids - cloned_nodes.keys()
     if missing_ids:
         missing_ids_text = ", ".join(sorted(missing_ids))
-        message = (
-            "Krita's scratch document did not preserve selected layer identities: "
-            f"{missing_ids_text}"
-        )
+        message = "Krita's scratch document did not preserve selected layer identities: " f"{missing_ids_text}"
         _warn(
             "[Load Image export] clone identity mismatch missing=%s cloned_count=%d cloned_ids=%s",
             sorted(missing_ids),
