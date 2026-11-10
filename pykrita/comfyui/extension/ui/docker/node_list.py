@@ -74,11 +74,10 @@ class NodeListWidget(QScrollArea):
                     widget.id,
                     widget.isVisible(),
                 )
-                widget.cleanup()
-                # deleteLater() is deferred by Qt. Hide the stale widget now,
-                # otherwise its child action buttons can remain painted at
-                # their old geometry while a replacement widget is created.
+                # Hide before cleanup: picker cancellation can synchronously
+                # update the old node's action buttons. deleteLater() is deferred.
                 widget.hide()
+                widget.cleanup()
                 widget.deleteLater()
                 self.node_widgets.remove(widget)
 
