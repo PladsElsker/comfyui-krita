@@ -648,3 +648,38 @@ def test__given_both_krita_node_types__when_document_widgets_are_refreshed__then
             "value": "document-1",
         },
     ]
+
+
+
+def test__given_non_krita_node__when_fix_krita_node_ui__then_document_and_metadata_widgets_are_untouched(
+    default_page: Page,
+) -> None:
+    node_ui = default_page.evaluate(
+        """
+        async () => {
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const metadataWidget = {
+                name: "_meta-15347",
+                label: "_meta-15347",
+                hidden: false,
+                options: {},
+            };
+            const node = {
+                type: "SomeOtherNode",
+                inputs: [{ name: "_meta-15347" }, { name: "document" }],
+                widgets: [
+                    { name: "document", label: "document", value: "document-1" },
+                    metadataWidget,
+                ],
+                setDirtyCanvas() {},
+            };
+
+            workflow.fixKritaNodeUi(node);
+            return {
+                hidden: metadataWidget.hidden,
+                remainingInputs: node.inputs.length,
+            };
+        }
+        """,
+    )
+    assert node_ui == {"hidden": False, "remainingInputs": 2}
