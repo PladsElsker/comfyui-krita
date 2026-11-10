@@ -122,34 +122,7 @@ def _define_input_image_routes() -> None:
                 )
 
             if error_response is None:
-                with ZipFile(BytesIO(package_buffer)) as archive:
-                    infos = archive.infolist()
-                    names = [info.filename for info in infos]
-                    if (
-                        len(infos) != len(LOAD_IMAGE_PACKAGE_MEMBERS)
-                        or set(names) != LOAD_IMAGE_PACKAGE_MEMBERS
-                    ):
-                        error_response = web.json_response(
-                            {"error": "The layer snapshot package is incomplete"},
-                            status=400,
-                        )
-                    elif archive.getinfo("state.json").file_size > MAX_LOAD_IMAGE_STATE_BYTES:
-                        error_response = web.json_response(
-                            {"error": "The layer snapshot state is too large"},
-                            status=400,
-                        )
-                    elif archive.getinfo("composite.png").file_size > MAX_LOAD_IMAGE_PNG_BYTES:
-                        error_response = web.json_response(
-                            {"error": "The layer snapshot image is too large"},
-                            status=400,
-                        )
-                    else:
-                        state = LoadImageState.model_validate_json(
-                            archive.read("state.json")
-                        )
-                        image_data = archive.read("composite.png")
-
-            if error_response is None:
+                state, image_data = _parse_load_image_package(package_buffer)
                 await api.store_load_image_snapshot(sid, state, image_data)
         except LookupError as error:
             error_response = web.json_response({"error": str(error)}, status=404)
@@ -162,6 +135,25 @@ def _define_input_image_routes() -> None:
             )
 
         return error_response if error_response is not None else web.json_response()
+
+
+def _parse_load_image_package(package_data: bytes) -> tuple[LoadImageState, bytes]:
+    with ZipFile(BytesIO(package_data)) as archive:
+        infos = archive.infolist()
+        names = {info.filename for info in infos}
+        if len(infos) != len(LOAD_IMAGE_PACKAGE_MEMBERS) or names != LOAD_IMAGE_PACKAGE_MEMBERS:
+            message = "The layer snapshot package is incomplete"
+            raise ValueError(message)
+        if archive.getinfo("state.json").file_size > MAX_LOAD_IMAGE_STATE_BYTES:
+            message = "The layer snapshot state is too large"
+            raise ValueError(message)
+        if archive.getinfo("composite.png").file_size > MAX_LOAD_IMAGE_PNG_BYTES:
+            message = "The layer snapshot image is too large"
+            raise ValueError(message)
+
+        state = LoadImageState.model_validate_json(archive.read("state.json"))
+        image_data = archive.read("composite.png")
+    return state, image_data
 
 def _define_image_transfer_routes() -> None:
     @PromptServer.instance.routes.get("/krita/images/{transfer_id}")
