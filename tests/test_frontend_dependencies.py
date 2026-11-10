@@ -504,16 +504,16 @@ def test__given_krita_load_image_node__when_fix_krita_node_ui__then_document_and
         async () => {
             const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
             const metadataWidget = {
-                name: "_meta-15348",
-                label: "_meta-15348",
+                name: "_meta-15347",
+                label: "_meta-15347",
                 value: '{"document_id":"document-1"}',
                 hidden: false,
                 options: {},
             };
             const node = {
                 id: 90,
-                type: "KritaLoadImage-15348",
-                inputs: [{ name: "_meta-15348" }, { name: "document" }],
+                type: "KritaLoadImage-15347",
+                inputs: [{ name: "_meta-15347" }, { name: "document" }],
                 widgets: [
                     { name: "document", label: "document", value: "document-1" },
                     metadataWidget,
@@ -551,11 +551,11 @@ def test__given_krita_load_image_node__when_state_updates__then_input_metadata_w
             const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
             const node = {
                 id: 99001,
-                type: "KritaLoadImage-15348",
+                type: "KritaLoadImage-15347",
                 inputs: [],
                 widgets: [
                     { name: "document", label: "document", value: "document-1" },
-                    { name: "_meta-15348", label: "_meta-15348", value: "" },
+                    { name: "_meta-15347", label: "_meta-15347", value: "" },
                 ],
                 setDirtyCanvas() {},
             };
@@ -563,7 +563,7 @@ def test__given_krita_load_image_node__when_state_updates__then_input_metadata_w
 
             workflow.applyKritaNodeState({
                 id: 99001,
-                type: "KritaLoadImage-15348",
+                type: "KritaLoadImage-15347",
                 document_id: "document-1",
                 layer_ids: ["layer-1", "layer-2"],
                 layer_names: ["Background", "Line Art"],
@@ -578,7 +578,7 @@ def test__given_krita_load_image_node__when_state_updates__then_input_metadata_w
     )
     assert updated_state == {
         "id": 99001,
-        "type": "KritaLoadImage-15348",
+        "type": "KritaLoadImage-15347",
         "document_id": "document-1",
         "layer_ids": ["layer-1", "layer-2"],
         "layer_names": ["Background", "Line Art"],

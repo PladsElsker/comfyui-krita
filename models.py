@@ -49,7 +49,7 @@ class SaveImageState(BaseModel):
 
 class LoadImageState(BaseModel):
     id: int
-    type: Literal["KritaLoadImage-15348"]
+    type: Literal["KritaLoadImage-15347"]
     document_id: str
     layer_ids: list[str] = Field(default_factory=list)
     layer_names: list[str] = Field(default_factory=list)

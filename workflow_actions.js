@@ -2,10 +2,9 @@ import { app } from "../../../scripts/app.js";
 
 
 const KRITA_SAVE_IMAGE_NODE_TYPE = "KritaSaveImage-15347";
-const KRITA_LOAD_IMAGE_NODE_TYPE = "KritaLoadImage-15348";
+const KRITA_LOAD_IMAGE_NODE_TYPE = "KritaLoadImage-15347";
 const DOCUMENT_WIDGET_LABEL = "document";
 const META_WIDGET_LABEL = "_meta-15347";
-const LOAD_IMAGE_META_WIDGET_LABEL = "_meta-15348";
 const KRITA_DOCUMENT_GRAPH_USAGE_REFRESH_RATE = 300;
 export const COMFY_TABS_CONTAINER_SELECTOR = ".workflow-tabs-container";
 export const COMFY_ACTIVE_TAB_SELECTOR = '[role="tab"][aria-selected="true"] .workflow-label';
@@ -15,9 +14,7 @@ export const KRITA_CUSTOM_IO_NODE_TYPES = [
 ];
 
 function getMetadataWidgetLabel(nodeType) {
-    if(nodeType === KRITA_SAVE_IMAGE_NODE_TYPE) return META_WIDGET_LABEL;
-    if(nodeType === KRITA_LOAD_IMAGE_NODE_TYPE) return LOAD_IMAGE_META_WIDGET_LABEL;
-    return null;
+    return META_WIDGET_LABEL;
 }
 
 function createDefaultNodeState(node) {
