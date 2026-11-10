@@ -7,11 +7,6 @@ from server import PromptServer
 
 from .constants import KRITA_IO_NODE_TYPES, KRITA_OUTPUT_NODE_TYPES
 from .krita_api import api
-MAX_LOAD_IMAGE_UPLOAD_BYTES = 65 * 1024 * 1024
-MAX_LOAD_IMAGE_STATE_BYTES = 1024 * 1024
-MAX_LOAD_IMAGE_PNG_BYTES = 64 * 1024 * 1024
-
-
 from .models import (
     DocumentMappingResponse,
     KritaNodeStateUpdate,
@@ -19,6 +14,10 @@ from .models import (
     UpdateKritaDocumentsRequest,
     UpdateWorkflowsRequest,
 )
+
+MAX_LOAD_IMAGE_UPLOAD_BYTES = 65 * 1024 * 1024
+MAX_LOAD_IMAGE_STATE_BYTES = 1024 * 1024
+MAX_LOAD_IMAGE_PNG_BYTES = 64 * 1024 * 1024
 
 
 def define_routes() -> None:
