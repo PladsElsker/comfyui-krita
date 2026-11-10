@@ -2,7 +2,7 @@ import json
 import logging
 import threading
 
-from PyQt5.QtCore import QObject, QRunnable, QThread, QThreadPool, QTimer, Qt, pyqtSignal, pyqtSlot, qCritical, qInfo, qWarning
+from PyQt5.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, pyqtSignal, pyqtSlot
 
 from comfyui.extension.comfy_websocket import ComfyWebsocket
 from comfyui.extension.document_monitor import DocumentMonitor
@@ -45,19 +45,13 @@ class _ImageDownloadTask(QRunnable):
         transfer_id = self.notification.transfer_id
         state = self.notification.state
         route = f"/krita/images/{transfer_id}"
-        qWarning(
-            f"[ComfyUI Krita Image] HTTP download starting: transfer={transfer_id}, "
-            f"document_id={state.document_id}, node_id={state.id}, route={route}"
-        )
         try:
             image_data = self.comfy_ws.get_bytes(route)
         except Exception as error:  # noqa: BLE001
-            qCritical(f"[ComfyUI Krita Image] HTTP download FAILED: transfer={transfer_id}, " f"document_id={state.document_id}, error={error}")
             self.signals.failed.emit(self.notification, str(error))
             return
 
         is_png = image_data.startswith(bytes((137, 80, 78, 71, 13, 10, 26, 10)))
-        qWarning(f"[ComfyUI Krita Image] HTTP download complete: transfer={transfer_id}, " f"bytes={len(image_data)}, png_signature={is_png}")
         self.signals.completed.emit(self.notification, image_data)
 
 
@@ -68,7 +62,6 @@ class ComfyKritaBridge(QObject):
         super().__init__()
         self.comfy_ws = comfy_ws
         self.document_monitor = document_monitor
-        qWarning("[ComfyUI Krita Image] Diagnostic instrumentation active; " "warning-level messages are enabled")
         self._connected_node_lists: set[int] = set()
         self._image_downloads: dict[str, _ImageDownloadTask] = {}
 
@@ -105,18 +98,11 @@ class ComfyKritaBridge(QObject):
 
         @self.comfy_ws.handler("krita::layers::create")
         def create_layer(data: dict) -> None:
-            qWarning(f"[ComfyUI Krita Image] WebSocket notification received: keys={sorted(data.keys())}")
             try:
                 notification = LayerCreateNotification.model_validate(data)
                 state = notification.state
-                qWarning(
-                    f"[ComfyUI Krita Image] Notification validated: transfer={notification.transfer_id}, "
-                    f"document_id={state.document_id}, node_id={state.id}, node_type={state.type}, "
-                    f"path_tokens={len(state.path)}, batch={notification.batch_index + 1}/{notification.batch_size}"
-                )
                 self._download_layer_image(notification)
             except Exception as error:  # noqa: BLE001
-                qCritical(f"[ComfyUI Krita Image] Notification validation/dispatch FAILED: {error}")
                 LOGGER.exception("Received an invalid generated-layer notification")
 
     def status_statement(self, status_request: StatusRequest) -> None:
@@ -348,15 +334,9 @@ class ComfyKritaBridge(QObject):
     def _download_layer_image(self, notification: LayerCreateNotification) -> None:
         state = notification.state
         if notification.transfer_id in self._image_downloads:
-            qWarning(f"[ComfyUI Krita Image] Duplicate notification ignored: transfer={notification.transfer_id}")
             LOGGER.warning("Ignoring duplicate generated image transfer %s", notification.transfer_id)
             return
 
-        qWarning(
-            f"[ComfyUI Krita Image] Queueing HTTP download: transfer={notification.transfer_id}, "
-            f"sid={self.comfy_ws.sid}, connected={self.comfy_ws.is_connected}, "
-            f"document_id={state.document_id}"
-        )
         task = _ImageDownloadTask(self.comfy_ws, notification)
         task.signals.completed.connect(self._on_image_downloaded, Qt.ConnectionType.QueuedConnection)
         task.signals.failed.connect(self._on_image_download_failed, Qt.ConnectionType.QueuedConnection)
@@ -367,25 +347,10 @@ class ComfyKritaBridge(QObject):
     def _on_image_downloaded(self, notification: LayerCreateNotification, image_data: bytes) -> None:
         self._image_downloads.pop(notification.transfer_id, None)
         state = notification.state
-        is_ui_thread = QThread.currentThread() == self.thread()
-        qWarning(
-            f"[ComfyUI Krita Image] Download completion delivered to bridge: transfer={notification.transfer_id}, "
-            f"bytes={len(image_data)}, ui_thread={is_ui_thread}, "
-            f"document_id={state.document_id}, node_id={state.id}"
-        )
 
         opened_documents = self.document_monitor.get_opened_documents()
-        qWarning(
-            f"[ComfyUI Krita Image] Document lookup: requested_id={state.document_id}, "
-            f"mapped_ids={list(self.document_monitor.mapping.keys())}, "
-            f"open_documents={[doc.name() for doc in opened_documents]}"
-        )
         document = self.document_monitor.mapping.get(state.document_id)
         if document is None:
-            qCritical(
-                f"[ComfyUI Krita Image] DOCUMENT LOOKUP FAILED: transfer={notification.transfer_id}, "
-                f"document_id={state.document_id}, known_ids={list(self.document_monitor.mapping.keys())}"
-            )
             LOGGER.error(
                 "Fetched generated image %s (%d bytes), but Krita has no document mapping for ID %s",
                 notification.transfer_id,
@@ -395,10 +360,6 @@ class ComfyKritaBridge(QObject):
             return
 
         if document not in opened_documents:
-            qCritical(
-                f"[ComfyUI Krita Image] DOCUMENT IS NOT OPEN: transfer={notification.transfer_id}, "
-                f"document_id={state.document_id}, document={document.name()}"
-            )
             LOGGER.error(
                 "Fetched generated image %s (%d bytes), but target document %s is not open",
                 notification.transfer_id,
@@ -411,27 +372,9 @@ class ComfyKritaBridge(QObject):
         if notification.batch_size > 1:
             layer_name += f" ({notification.batch_index + 1}/{notification.batch_size})"
 
-        qWarning(
-            f"[ComfyUI Krita Image] Starting insertion: transfer={notification.transfer_id}, "
-            f"document={document.name()}, document_id={state.document_id}, node_id={state.id}, "
-            f"layer_name={layer_name!r}, direction={state.insert_direction}, "
-            f"target_path={[(token.type, str(token.quuid) if token.quuid is not None else None) for token in state.path]}"
-        )
-        LOGGER.info(
-            "Inserting generated image %s (%d bytes) into document %r (%s), node %s",
-            notification.transfer_id,
-            len(image_data),
-            document.name(),
-            state.document_id,
-            state.id,
-        )
-
         try:
             node = insert_png_image(document, image_data, state.path, layer_name)
         except Exception as error:  # noqa: BLE001
-            qCritical(
-                f"[ComfyUI Krita Image] INSERTION FAILED: transfer={notification.transfer_id}, " f"document_id={state.document_id}, error={error}"
-            )
             LOGGER.exception(
                 "Generated image %s was fetched but could not be inserted into document %s",
                 notification.transfer_id,
@@ -441,27 +384,8 @@ class ComfyKritaBridge(QObject):
 
         parent = node.parentNode()
         top_level_nodes = document.topLevelNodes()
-        qWarning(
-            f"[ComfyUI Krita Image] INSERTION COMPLETE: transfer={notification.transfer_id}, "
-            f"layer={node.name()!r}, node_type={node.type()}, visible={node.visible()}, "
-            f"parent={parent.name() if parent is not None else None!r}, "
-            f"parent_type={parent.type() if parent is not None else None}, "
-            f"top_level_layers={[item.name() for item in top_level_nodes]}, "
-            f"active_node={document.activeNode().name() if document.activeNode() is not None else None}"
-        )
-        LOGGER.info(
-            "Inserted generated image %s as visible layer %r under %r in document %r",
-            notification.transfer_id,
-            node.name(),
-            parent.name() if parent is not None else "<no parent>",
-            document.name(),
-        )
 
     @pyqtSlot(object, str)
     def _on_image_download_failed(self, notification: LayerCreateNotification, error: str) -> None:
         self._image_downloads.pop(notification.transfer_id, None)
-        qCritical(
-            f"[ComfyUI Krita Image] DOWNLOAD SIGNAL FAILED: transfer={notification.transfer_id}, "
-            f"document_id={notification.state.document_id}, error={error}"
-        )
         LOGGER.error("Could not download generated image %s: %s", notification.transfer_id, error)
