@@ -104,6 +104,12 @@ class LayerMultiSelectionPicker(QObject):
                 selection_model.setCurrentIndex(current_index, QItemSelectionModel.SelectionFlag.NoUpdate)
                 layer_view.scrollTo(current_index)
 
+            # Krita tracks the active node independently from the Qt selection
+            # model. Clear the old single-layer active highlight as well as its
+            # selection-model row before entering multi-selection mode.
+            active_selection_node = selected_nodes[0] if selected_nodes else self.document.rootNode()
+            self.document.setActiveNode(active_selection_node)
+
             self.window.activeViewChanged.connect(self._on_active_view_changed)
             app = QApplication.instance()
             if app is not None:
