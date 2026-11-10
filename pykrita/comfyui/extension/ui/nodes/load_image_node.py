@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import traceback
+import uuid
 from typing import ClassVar, cast
 
 from krita import DockWidget, Document, Node as KritaNode, Window
@@ -41,43 +42,80 @@ LOGGER = logging.getLogger(__name__)
 
 
 class _ProjectionExportSignals(QObject):
-    completed = cast("pyqtBoundSignal", pyqtSignal(object, object, bytes))
+    completed = cast("pyqtBoundSignal", pyqtSignal(object, object, object, bytes))
     failed = cast("pyqtBoundSignal", pyqtSignal(object, object, str))
+    scratch_document_ready = cast("pyqtBoundSignal", pyqtSignal(object))
+
+
+class _ScratchDocumentDisposer(QObject):
+    @pyqtSlot(object)
+    def dispose(self, document: Document) -> None:
+        # Scratch documents are created in the worker but Krita's QObject
+        # document wrapper is disposed from the GUI thread.
+        try:
+            document.close()
+        except Exception:  # noqa: BLE001
+            LOGGER.exception("Could not close a Load Image scratch document")
+
+
+_SCRATCH_DOCUMENT_DISPOSER = _ScratchDocumentDisposer()
 
 
 class _ProjectionExportTask(QRunnable):
-    def __init__(self, state: LoadImageState, projection: QImage) -> None:
+    def __init__(
+        self,
+        document: Document,
+        state: LoadImageState,
+        selected_layer_ids: list[str],
+        capture_token: str,
+    ) -> None:
         super().__init__()
+        self.document = document
         self.state = state
-        self.projection = projection
+        self.selected_layer_ids = list(selected_layer_ids)
+        self.capture_token = capture_token
         self.signals = _ProjectionExportSignals()
+        self.signals.scratch_document_ready.connect(
+            _SCRATCH_DOCUMENT_DISPOSER.dispose,
+            Qt.ConnectionType.QueuedConnection,
+        )
 
     def run(self) -> None:
-        buffer_data = QByteArray()
-        buffer = QBuffer(buffer_data)
-        if not buffer.open(QIODevice.OpenModeFlag.WriteOnly):
-            message = "Could not open the in-memory PNG buffer"
-            self.signals.failed.emit(self, self.state, message)
-            return
-
+        scratch_document: Document | None = None
         try:
-            if not self.projection.save(buffer, "PNG"):
-                message = "Krita could not encode the selected-layer projection as PNG"
-                self.signals.failed.emit(self, self.state, message)
-                return
-            image_data = bytes(buffer_data)
+            projection, scratch_document = capture_selected_layers_projection(
+                self.document,
+                self.selected_layer_ids,
+            )
+            self.signals.scratch_document_ready.emit(scratch_document)
+            revision = _projection_revision(projection)
+            state = self.state.model_copy(update={"snapshot_revision": revision})
+
+            buffer_data = QByteArray()
+            buffer = QBuffer(buffer_data)
+            if not buffer.open(QIODevice.OpenModeFlag.WriteOnly):
+                message = "Could not open the in-memory PNG buffer"
+                raise RuntimeError(message)
+
+            try:
+                if not projection.save(buffer, "PNG"):
+                    message = "Krita could not encode the selected-layer projection as PNG"
+                    raise RuntimeError(message)
+                image_data = bytes(buffer_data)
+            finally:
+                buffer.close()
+
+            if not image_data:
+                message = "Krita produced an empty PNG for the selected layers"
+                raise RuntimeError(message)
+
+            self.signals.completed.emit(self, self.capture_token, state, image_data)
         except Exception as error:  # noqa: BLE001
-            self.signals.failed.emit(self, self.state, str(error))
-            return
-        finally:
-            buffer.close()
-
-        if not image_data:
-            message = "Krita produced an empty PNG for the selected layers"
-            self.signals.failed.emit(self, self.state, message)
-            return
-
-        self.signals.completed.emit(self, self.state, image_data)
+            if scratch_document is None:
+                scratch_document = getattr(error, "scratch_document", None)
+                if scratch_document is not None:
+                    self.signals.scratch_document_ready.emit(scratch_document)
+            self.signals.failed.emit(self, self.capture_token, str(error))
 
 
 def _projection_revision(projection: QImage) -> str:
@@ -118,7 +156,11 @@ class LoadImageNode(ComfyUiNode):
         self._pending_state: LoadImageState | None = None
         self._composition_pool = QThreadPool.globalInstance()
         self._composition_tasks: set[_ProjectionExportTask] = set()
+        self._capture_active = False
+        self._active_capture_token: str | None = None
+        self._latest_capture: tuple[str, list[str], list[str]] | None = None
         self._refresh_requested = False
+        self._disposed = False
         self._live_refresh_timer = QTimer(self)
         self._live_refresh_timer.setSingleShot(True)
         self._live_refresh_timer.setInterval(self.LIVE_REFRESH_DEBOUNCE_MS)
@@ -190,6 +232,8 @@ class LoadImageNode(ComfyUiNode):
         self.state_changed.emit(state)
 
     def cleanup(self) -> None:
+        self._disposed = True
+        self._latest_capture = None
         self._live_refresh_timer.stop()
         app = QApplication.instance()
         if self._event_filter_installed and app is not None:
@@ -294,63 +338,53 @@ class LoadImageNode(ComfyUiNode):
         self._live_refresh_timer.start()
 
     def _refresh_selected_projection(self) -> None:
-        if not self.layer_ids or self.layer_picker.is_editing:
+        if not self.layer_ids or self.layer_picker.is_editing or self._disposed:
             return
-        if self._pending_state is not None or self._composition_tasks:
-            self._refresh_requested = True
-            return
-
-        selected_id_set = set(self.layer_ids)
-        selected_nodes = [
-            node
-            for node in self.layer_picker._walk_nodes(self.document.rootNode())
-            if str(node.uniqueId()) in selected_id_set
-        ]
-        if selected_nodes:
-            self._capture_selected_nodes(selected_nodes)
+        self._queue_projection_capture(self.layer_ids, self.layer_names)
 
     def _selection_accepted(self, selected_nodes: list[KritaNode]) -> None:
         self._reset_edit_controls()
-        self._capture_selected_nodes(selected_nodes)
-
-    def _capture_selected_nodes(self, selected_nodes: list[KritaNode]) -> None:
-        try:
-            projection = capture_selected_layers_projection(self.document, selected_nodes)
-        except Exception as error:  # noqa: BLE001
-            qWarning(
-                "[Load Image node] capture failed "
-                f"document={self.document.name()!r} node_id={self.id} "
-                f"selected={[(str(node.uniqueId()), node.name(), node.type()) for node in selected_nodes]}\n"
-                f"{traceback.format_exc()}"
-            )
-            self.layer_info_text.setToolTip(str(error))
-            self.set_info_text("Layer capture failed")
-            return
-
         layer_ids = [str(layer.uniqueId()) for layer in selected_nodes]
         layer_names = [layer.name() for layer in selected_nodes]
-        revision = _projection_revision(projection)
+        self._queue_projection_capture(layer_ids, layer_names)
+
+    def _queue_projection_capture(self, layer_ids: list[str], layer_names: list[str]) -> None:
+        if not layer_ids or self._disposed:
+            return
+
+        # Keep only the latest requested layer set. A running render is never
+        # duplicated; a newer request is processed as soon as it completes.
+        self.layer_ids = list(layer_ids)
+        self.layer_names = list(layer_names)
+        self._latest_capture = (uuid.uuid4().hex, list(layer_ids), list(layer_names))
+        self._refresh_requested = True
+        self._start_latest_projection_capture()
+
+    def _start_latest_projection_capture(self) -> None:
+        if (
+            self._disposed
+            or self._capture_active
+            or self._pending_state is not None
+            or self._latest_capture is None
+        ):
+            return
+
+        capture_token, layer_ids, layer_names = self._latest_capture
+        self._latest_capture = None
         state = LoadImageState(
             id=self.id,
             type=self.type,
             document_id=self.document_id,
             layer_ids=layer_ids,
             layer_names=layer_names,
-            snapshot_revision=revision,
+            snapshot_revision="",
         )
-        if revision == self.snapshot_revision:
-            # Selection metadata may have changed while the composed pixels
-            # stayed identical. Synchronize the UI state without uploading or
-            # changing the ComfyUI execution-cache token.
-            self._apply_state(state)
-            self.state_changed.emit(state)
-            self.set_info_text(f"{len(layer_names)} selected layer(s) — unchanged")
-            return
-
-        self._pending_state = state
-        self.set_info_text(f"Encoding {len(layer_names)} selected layer(s)…")
-
-        task = _ProjectionExportTask(state, projection)
+        task = _ProjectionExportTask(
+            self.document,
+            state,
+            layer_ids,
+            capture_token,
+        )
         task.signals.completed.connect(
             self._on_projection_export_completed,
             Qt.ConnectionType.QueuedConnection,
@@ -359,37 +393,67 @@ class LoadImageNode(ComfyUiNode):
             self._on_projection_export_failed,
             Qt.ConnectionType.QueuedConnection,
         )
+        self._capture_active = True
+        self._active_capture_token = capture_token
         self._composition_tasks.add(task)
+        self.set_info_text(f"Composing {len(layer_names)} selected layer(s)…")
         self._composition_pool.start(task)
 
     def _on_projection_export_completed(
         self,
         task: _ProjectionExportTask,
+        capture_token: str,
         state: LoadImageState,
         image_data: bytes,
     ) -> None:
         self._composition_tasks.discard(task)
-        if self._pending_state is None or self._pending_state.snapshot_revision != state.snapshot_revision:
+        active_token = self._active_capture_token
+        self._capture_active = False
+        self._active_capture_token = None
+
+        if self._disposed:
+            return
+        if capture_token != active_token or self._latest_capture is not None:
+            self._start_latest_projection_capture()
             return
 
+        if state.snapshot_revision == self.snapshot_revision:
+            # Selection metadata may change while composed pixels remain equal.
+            self._apply_state(state)
+            self._pending_state = None
+            self.state_changed.emit(state)
+            self.set_info_text(f"{len(state.layer_names)} selected layer(s) — unchanged")
+            self._refresh_requested = False
+            self._start_latest_projection_capture()
+            return
+
+        self._pending_state = state
+        self._refresh_requested = False
         self.set_info_text(f"Uploading {len(state.layer_names)} selected layer(s)…")
         self.snapshot_ready.emit(state, image_data)
 
     def _on_projection_export_failed(
         self,
         task: _ProjectionExportTask,
-        state: LoadImageState,
+        capture_token: str,
         error: str,
     ) -> None:
         self._composition_tasks.discard(task)
-        if self._pending_state is None or self._pending_state.snapshot_revision != state.snapshot_revision:
+        active_token = self._active_capture_token
+        self._capture_active = False
+        self._active_capture_token = None
+
+        if self._disposed:
+            return
+        if capture_token != active_token or self._latest_capture is not None:
+            self._start_latest_projection_capture()
             return
 
-        self._pending_state = None
         self.layer_info_text.setToolTip(error)
         self.set_info_text("Layer export failed")
         LOGGER.error("Could not export the selected Krita layer projection: %s", error)
-        self._resume_requested_refresh()
+        self._refresh_requested = False
+        self._start_latest_projection_capture()
 
     def snapshot_uploaded(self, state: LoadImageState) -> None:
         if self._pending_state is None or self._pending_state.snapshot_revision != state.snapshot_revision:
@@ -398,13 +462,7 @@ class LoadImageNode(ComfyUiNode):
         self._apply_state(state)
         self._pending_state = None
         self.state_changed.emit(state)
-        self._resume_requested_refresh()
-
-    def _resume_requested_refresh(self) -> None:
-        if not self._refresh_requested:
-            return
-        self._refresh_requested = False
-        self._live_refresh_timer.start(100)
+        self._start_latest_projection_capture()
 
     def snapshot_upload_failed(self, state: LoadImageState, error: str) -> None:
         if self._pending_state is None or self._pending_state.snapshot_revision != state.snapshot_revision:
@@ -414,7 +472,7 @@ class LoadImageNode(ComfyUiNode):
         self.layer_info_text.setToolTip(error)
         self.set_info_text("Upload failed — edit selection to retry")
         LOGGER.error("Could not upload the Krita layer snapshot: %s", error)
-        self._resume_requested_refresh()
+        self._start_latest_projection_capture()
 
     def _update_layer_info(self) -> None:
         if not self.layer_ids:
