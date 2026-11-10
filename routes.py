@@ -1,3 +1,6 @@
+from io import BytesIO
+from zipfile import BadZipFile, ZipFile
+
 from aiohttp import web
 from aiohttp.web import Request, Response
 from server import PromptServer
@@ -7,6 +10,7 @@ from .krita_api import api
 from .models import (
     DocumentMappingResponse,
     KritaNodeStateUpdate,
+    LoadImageState,
     UpdateKritaDocumentsRequest,
     UpdateWorkflowsRequest,
 )
@@ -20,6 +24,7 @@ def define_routes() -> None:
 def _define_krita_routes() -> None:
     _define_document_routes()
     _define_node_state_routes()
+    _define_input_image_routes()
     _define_image_transfer_routes()
 
 
@@ -75,6 +80,37 @@ def _define_node_state_routes() -> None:
         except Exception:  # noqa: BLE001
             return web.json_response(status=400)
 
+
+
+def _define_input_image_routes() -> None:
+    @PromptServer.instance.routes.put("/krita/{sid}/nodes/load-image")
+    async def upload_load_image_snapshot(request: Request) -> Response:
+        sid = request.match_info["sid"]
+        try:
+            package = await request.read()
+            if not package:
+                return web.json_response({"error": "The layer snapshot package is empty"}, status=400)
+
+            with ZipFile(BytesIO(package)) as archive:
+                names = set(archive.namelist())
+                if not {"state.json", "composite.png"}.issubset(names):
+                    return web.json_response({"error": "The layer snapshot package is incomplete"}, status=400)
+                if archive.getinfo("state.json").file_size > 1024 * 1024:
+                    return web.json_response({"error": "The layer snapshot state is too large"}, status=400)
+                if archive.getinfo("composite.png").file_size > 64 * 1024 * 1024:
+                    return web.json_response({"error": "The layer snapshot image is too large"}, status=400)
+
+                state = LoadImageState.model_validate_json(archive.read("state.json"))
+                image_data = archive.read("composite.png")
+
+            await api.store_load_image_snapshot(sid, state, image_data)
+        except LookupError as error:
+            return web.json_response({"error": str(error)}, status=404)
+        except (BadZipFile, KeyError, ValueError) as error:
+            return web.json_response({"error": str(error)}, status=400)
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "Could not store the Krita layer snapshot"}, status=400)
+        return web.json_response()
 
 def _define_image_transfer_routes() -> None:
     @PromptServer.instance.routes.get("/krita/images/{transfer_id}")
