@@ -1,5 +1,5 @@
 # noqa: N999
-import os
+from pathlib import Path
 import secrets
 from typing import override
 
@@ -53,9 +53,9 @@ def _to_pil_images(image: Tensor) -> list[PilImage.Image]:
 
 def _write_preview_image(image_data: bytes) -> dict[str, str]:
     filename = f"krita_{secrets.token_hex(12)}.png"
-    filepath = os.path.join(folder_paths.get_temp_directory(), filename)
-    os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    with open(filepath, "wb") as preview_file:
+    filepath = Path(folder_paths.get_temp_directory()) / filename
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    with filepath.open("wb") as preview_file:
         preview_file.write(image_data)
     return {"filename": filename, "subfolder": "", "type": "temp"}
 
@@ -91,25 +91,47 @@ class KritaSaveImage(io.ComfyNode):
     @classmethod
     def validate_inputs(cls, **kwargs: object) -> bool | str:
         document_value = kwargs.get(KRITA_DOCUMENT_DROPDOWN_LABEL)
-        if not isinstance(document_value, str) or not document_value:
-            return "Select a connected Krita document before running this node."
-
-        registered_documents = api.get_registered_documents().documents
-        if document_value not in registered_documents:
-            return f"The Krita document {document_value!r} is not currently connected."
-
-        meta = kwargs.get(META_WIDGET_LABEL)
-        if not isinstance(meta, str) or not meta:
-            return "Krita output-node state has not synchronized yet."
+        meta = kwargs.get(LOAD_IMAGE_META_WIDGET_LABEL)
+        validation_checks = (
+            (
+                not isinstance(document_value, str) or not document_value,
+                "Select a connected Krita document before running this node.",
+            ),
+            (
+                document_value not in api.get_registered_documents().documents,
+                f"The Krita document {document_value!r} is not currently connected.",
+            ),
+            (
+                not isinstance(meta, str) or not meta,
+                "Krita layer selection has not synchronized yet.",
+            ),
+        )
+        for invalid, message in validation_checks:
+            if invalid:
+                return message
 
         try:
-            state = SaveImageState.model_validate_json(meta)
+            state = LoadImageState.model_validate_json(meta)
         except ValidationError:
-            return "Krita output-node metadata is invalid; reconnect Krita to synchronize it."
+            return "Krita input-node metadata is invalid; reconnect Krita to synchronize it."
 
-        if state.document_id != document_value:
-            return "The selected Krita document does not match the synchronized output-node state."
-
+        state_checks = (
+            (
+                state.document_id != document_value,
+                "The selected Krita document does not match the synchronized input-node state.",
+            ),
+            (
+                not state.layer_ids or not state.snapshot_revision,
+                "Select one or more layers in Krita and accept the selection.",
+            ),
+            (
+                not api.has_load_image_snapshot(state),
+                "The selected Krita layers have not been uploaded yet; reselect them in Krita.",
+            ),
+        )
+        for invalid, message in state_checks:
+            if invalid:
+                return message
         return True
 
     @classmethod
@@ -194,15 +216,18 @@ class KritaLoadImage(io.ComfyNode):
         document_value = kwargs.get(KRITA_DOCUMENT_DROPDOWN_LABEL)
         meta = kwargs.get(LOAD_IMAGE_META_WIDGET_LABEL)
         if not isinstance(document_value, str) or not isinstance(meta, str):
-            raise ValueError("Select a Krita document and confirm a layer selection before running this node.")
+            message = "Select a Krita document and confirm a layer selection before running this node."
+            raise TypeError(message)
 
         state = LoadImageState.model_validate_json(meta)
         if state.document_id != document_value:
-            raise ValueError("The selected Krita document does not match the synchronized input-node state.")
+            message = "The selected Krita document does not match the synchronized input-node state."
+            raise ValueError(message)
 
         image_data = api.get_load_image_snapshot(state)
         if image_data is None:
-            raise ValueError("The selected Krita layer snapshot is unavailable; reselect the layers in Krita.")
+            message = "The selected Krita layer snapshot is unavailable; reselect the layers in Krita."
+            raise ValueError(message)
 
         layers, mask = decode_composited_png(
             image_data,
