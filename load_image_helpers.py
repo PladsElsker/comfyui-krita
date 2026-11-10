@@ -40,4 +40,7 @@ def decode_composited_png(
     image_tensor = from_numpy(rgb).unsqueeze(0)
     # ComfyUI masks use 1 for fully masked and 0 for fully kept pixels.
     mask_tensor = (1.0 - from_numpy(alpha)).unsqueeze(0)
-    return image_tensor.to(device=device, dtype=dtype), mask_tensor.to(device=device, dtype=dtype)
+    return (
+        image_tensor.to(device=device, dtype=dtype),
+        mask_tensor.to(device=device, dtype=dtype),
+    )
