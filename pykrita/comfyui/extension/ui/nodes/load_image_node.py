@@ -1,9 +1,11 @@
 import logging
+import traceback
 import uuid
 from typing import ClassVar, cast
 
 from krita import DockWidget, Document, Node as KritaNode, Window
 from PyQt5.QtCore import (
+    qWarning,
     QByteArray,
     QSize,
     QBuffer,
@@ -208,11 +210,11 @@ class LoadImageNode(ComfyUiNode):
         try:
             projection = capture_selected_layers_projection(self.document, selected_nodes)
         except Exception as error:  # noqa: BLE001
-            LOGGER.exception(
-                "[Load Image node] capture failed document=%r node_id=%s selected=%s",
-                self.document.name(),
-                self.id,
-                [(str(node.uniqueId()), node.name(), node.type()) for node in selected_nodes],
+            qWarning(
+                "[Load Image node] capture failed "
+                f"document={self.document.name()!r} node_id={self.id} "
+                f"selected={[(str(node.uniqueId()), node.name(), node.type()) for node in selected_nodes]}\n"
+                f"{traceback.format_exc()}"
             )
             self.layer_info_text.setToolTip(str(error))
             self.set_info_text("Layer capture failed")
