@@ -684,7 +684,6 @@ def test__given_non_krita_node__when_fix_krita_node_ui__then_document_and_metada
     assert node_ui == {"hidden": False, "remainingInputs": 2}
 
 
-
 def test__given_identical_load_image_revision__when_selection_metadata_changes__then_execution_input_is_unchanged(
     default_page: Page,
 ) -> None:
@@ -747,5 +746,3 @@ def test__given_identical_load_image_revision__when_selection_metadata_changes__
     }
     assert result["firstValue"] == result["value"]
     assert result["finalChanges"] == result["firstChanges"]
-
-
