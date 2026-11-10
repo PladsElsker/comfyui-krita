@@ -32,6 +32,15 @@ LOGGER = logging.getLogger(__name__)
 MAX_NODE_STATE_UPLOAD_ATTEMPTS = 3
 
 
+def _extract_load_image_snapshot_revision(response: str) -> str:
+    upload_result = json.loads(response)
+    snapshot_revision = upload_result.get("snapshot_revision")
+    if not isinstance(snapshot_revision, str) or not snapshot_revision:
+        message = "ComfyUI did not return the canonical Load Image snapshot revision"
+        raise RuntimeError(message)
+    return snapshot_revision
+
+
 class _NodeStateUploadTask(QRunnable):
     def __init__(self, bridge: "ComfyKritaBridge") -> None:
         super().__init__()
@@ -102,11 +111,7 @@ class _LoadImageUploadTask(QRunnable):
                 package_buffer.getvalue(),
                 content_type="application/zip",
             )
-            upload_result = json.loads(response)
-            snapshot_revision = upload_result.get("snapshot_revision")
-            if not isinstance(snapshot_revision, str) or not snapshot_revision:
-                message = "ComfyUI did not return the canonical Load Image snapshot revision"
-                raise RuntimeError(message)
+            snapshot_revision = _extract_load_image_snapshot_revision(response)
         except Exception as error:  # noqa: BLE001
             self.signals.failed.emit(self.widget, self.state, str(error))
             return
