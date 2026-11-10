@@ -7,6 +7,11 @@ from server import PromptServer
 
 from .constants import KRITA_IO_NODE_TYPES, KRITA_OUTPUT_NODE_TYPES
 from .krita_api import api
+MAX_LOAD_IMAGE_UPLOAD_BYTES = 65 * 1024 * 1024
+MAX_LOAD_IMAGE_STATE_BYTES = 1024 * 1024
+MAX_LOAD_IMAGE_PNG_BYTES = 64 * 1024 * 1024
+
+
 from .models import (
     DocumentMappingResponse,
     KritaNodeStateUpdate,
@@ -87,17 +92,26 @@ def _define_input_image_routes() -> None:
     async def upload_load_image_snapshot(request: Request) -> Response:
         sid = request.match_info["sid"]
         try:
-            package = await request.read()
-            if not package:
+            if request.content_length is not None and request.content_length > MAX_LOAD_IMAGE_UPLOAD_BYTES:
+                return web.json_response({"error": "The layer snapshot package is too large"}, status=413)
+
+            package_buffer = bytearray()
+            async for chunk in request.content.iter_chunked(1024 * 1024):
+                if len(package_buffer) + len(chunk) > MAX_LOAD_IMAGE_UPLOAD_BYTES:
+                    return web.json_response({"error": "The layer snapshot package is too large"}, status=413)
+                package_buffer.extend(chunk)
+
+            if not package_buffer:
                 return web.json_response({"error": "The layer snapshot package is empty"}, status=400)
 
-            with ZipFile(BytesIO(package)) as archive:
-                names = set(archive.namelist())
-                if not {"state.json", "composite.png"}.issubset(names):
+            with ZipFile(BytesIO(package_buffer)) as archive:
+                infos = archive.infolist()
+                names = [info.filename for info in infos]
+                if len(infos) != 2 or set(names) != {"state.json", "composite.png"}:
                     return web.json_response({"error": "The layer snapshot package is incomplete"}, status=400)
-                if archive.getinfo("state.json").file_size > 1024 * 1024:
+                if archive.getinfo("state.json").file_size > MAX_LOAD_IMAGE_STATE_BYTES:
                     return web.json_response({"error": "The layer snapshot state is too large"}, status=400)
-                if archive.getinfo("composite.png").file_size > 64 * 1024 * 1024:
+                if archive.getinfo("composite.png").file_size > MAX_LOAD_IMAGE_PNG_BYTES:
                     return web.json_response({"error": "The layer snapshot image is too large"}, status=400)
 
                 state = LoadImageState.model_validate_json(archive.read("state.json"))
