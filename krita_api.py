@@ -441,6 +441,7 @@ class KritaApi:
         return self._split_update_workflows_request_per_sids(self._last_workflows_request).get(sid, None)
 
     def has_workflow_node(self, document_id: str, node_id: int, node_type: str) -> bool:
+        """Return whether the active workflow contains the specified node."""
         workflow_nodes = self._last_workflows_request.workflows.get(document_id, [])
         return any(node.id == node_id and node.type == node_type for node in workflow_nodes)
 
