@@ -89,6 +89,24 @@ class ComfyWebsocket(QObject):
     def get(self, route: str) -> str:
         return self._request("GET", route)
 
+    def put_bytes(self, route: str, data: bytes, content_type: str = "application/octet-stream") -> str:
+        assert self.http_base is not None  # noqa: S101
+
+        url = f"{self.http_base.rstrip('/')}/{route.lstrip('/')}"
+        response = self._http.request(
+            method="PUT",
+            url=url,
+            body=data,
+            headers={"Content-Type": content_type},
+            timeout=urllib3.Timeout(total=60),
+        )
+
+        if response.status >= HTTPStatus.BAD_REQUEST.value:
+            message = f"HTTP {response.status}: {response.data.decode('utf-8', 'replace')}"
+            raise RuntimeError(message)
+
+        return response.data.decode("utf-8")
+
     def get_bytes(self, route: str) -> bytes:
         assert self.http_base is not None  # noqa: S101
 
