@@ -62,16 +62,10 @@ class ComfyUiNode(QWidget):
 
     def set_action_buttons(self, buttons: list[QToolButton]) -> None:
         while self.action_buttons_container.count() > 0:
-            item = self.action_buttons_container.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                # Removing a widget from a layout does not hide it. Keep inactive
-                # actions from remaining visible at their previous geometry.
-                widget.hide()
+            self.action_buttons_container.takeAt(0)
 
         for button in buttons:
             self.action_buttons_container.addWidget(button)
-            button.show()
 
     def update_node_data(self, node: Node) -> None: ...
 
