@@ -90,28 +90,32 @@ def _define_node_state_routes() -> None:
 
 
 def _define_input_image_routes() -> None:
-    @PromptServer.instance.routes.put("/krita/{sid}/nodes/load-image")
-    async def upload_load_image_snapshot(request: Request) -> Response:
-        sid = request.match_info["sid"]
-        try:
-            package_data = await _read_load_image_package(request)
-            state, image_data = _parse_load_image_package(package_data)
-            await api.store_load_image_snapshot(sid, state, image_data)
-        except LoadImagePackageTooLargeError:
-            return web.json_response(
-                {"error": "The layer snapshot package is too large"},
-                status=413,
-            )
-        except LookupError as error:
-            return web.json_response({"error": str(error)}, status=404)
-        except (BadZipFile, KeyError, ValueError) as error:
-            return web.json_response({"error": str(error)}, status=400)
-        except Exception:  # noqa: BLE001
-            return web.json_response(
-                {"error": "Could not store the Krita layer snapshot"},
-                status=400,
-            )
-        return web.json_response()
+    PromptServer.instance.routes.put("/krita/{sid}/nodes/load-image")(
+        _upload_load_image_snapshot
+    )
+
+
+async def _upload_load_image_snapshot(request: Request) -> Response:
+    sid = request.match_info["sid"]
+    try:
+        package_data = await _read_load_image_package(request)
+        state, image_data = _parse_load_image_package(package_data)
+        await api.store_load_image_snapshot(sid, state, image_data)
+    except LoadImagePackageTooLargeError:
+        return web.json_response(
+            {"error": "The layer snapshot package is too large"},
+            status=413,
+        )
+    except LookupError as error:
+        return web.json_response({"error": str(error)}, status=404)
+    except (BadZipFile, KeyError, ValueError) as error:
+        return web.json_response({"error": str(error)}, status=400)
+    except Exception:  # noqa: BLE001
+        return web.json_response(
+            {"error": "Could not store the Krita layer snapshot"},
+            status=400,
+        )
+    return web.json_response()
 
 
 class LoadImagePackageTooLargeError(ValueError):
@@ -135,7 +139,6 @@ async def _read_load_image_package(request: Request) -> bytes:
         message = "The layer snapshot package is empty"
         raise ValueError(message)
     return bytes(package_buffer)
-
 
 def _parse_load_image_package(package_data: bytes) -> tuple[LoadImageState, bytes]:
     with ZipFile(BytesIO(package_data)) as archive:
