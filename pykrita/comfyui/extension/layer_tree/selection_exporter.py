@@ -54,12 +54,11 @@ def _get_required_node_ids(selected_roots: list[Node]) -> set[str]:
 
 
 def _clone_document(document: Document) -> Document:
-    # Krita's clone operation expects the source image to be locked.
+    # KisDocument::clone() requires a consistent, locked image. waitForDone()
+    # also flushes delayed node updates; lock() then waits for the image barrier
+    # instead of failing when Krita still has work queued.
     document.waitForDone()
-    if not document.tryBarrierLock():
-        message = "Krita is still updating the document; " "try accepting the layer selection again"
-        raise RuntimeError(message)
-
+    document.lock()
     try:
         scratch_document = document.clone()
     finally:
