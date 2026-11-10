@@ -1,15 +1,13 @@
 # noqa: N999
 import os
 import secrets
-from io import BytesIO
 from typing import override
 
-import numpy as np
 from PIL import Image as PilImage
 from comfy import model_management
 from comfy_api.latest import ComfyExtension, io
 from pydantic import ValidationError
-from torch import Tensor, from_numpy
+from torch import Tensor
 from torchvision.transforms.functional import to_pil_image
 
 import folder_paths
@@ -24,6 +22,7 @@ from .constants import (
     META_WIDGET_LABEL,
 )
 from .krita_api import api
+from .load_image_helpers import decode_composited_png
 from .models import LoadImageState, SaveImageState
 from .routes import define_routes
 
@@ -50,36 +49,6 @@ def _to_pil_images(image: Tensor) -> list[PilImage.Image]:
             image_tensor = image_tensor.permute(2, 0, 1)
         result.append(to_pil_image(image_tensor.detach().cpu()))
     return result
-
-
-def _decode_composited_png(image_data: bytes) -> tuple[Tensor, Tensor]:
-    try:
-        with PilImage.open(BytesIO(image_data)) as image:
-            if image.format != "PNG":
-                raise ValueError("The Krita layer snapshot must be a PNG")
-            rgba_image = image.convert("RGBA")
-            width, height = rgba_image.size
-            if width < 1 or height < 1 or width * height > 16_000_000:
-                raise ValueError("The Krita layer snapshot has unsupported dimensions")
-            pixel_data = rgba_image.tobytes()
-    except Exception as error:
-        raise ValueError("The Krita layer snapshot is not a valid image") from error
-
-    # Pillow returns channel bytes in RGBA order. Keep the copied byte buffer
-    # uint8 until the final IMAGE and MASK tensors are formed to avoid building
-    # a full-size float32 RGBA array.
-    rgba = np.frombuffer(pixel_data, dtype=np.uint8).reshape(height, width, 4)
-    rgb = rgba[..., :3].astype(np.float32)
-    rgb *= 1.0 / 255.0
-    alpha = rgba[..., 3].astype(np.float32)
-    alpha *= 1.0 / 255.0
-
-    image_tensor = from_numpy(rgb).unsqueeze(0)
-    # ComfyUI masks use 1 for fully masked and 0 for fully kept pixels.
-    mask_tensor = (1.0 - from_numpy(alpha)).unsqueeze(0)
-    device = model_management.intermediate_device()
-    dtype = model_management.intermediate_dtype()
-    return image_tensor.to(device=device, dtype=dtype), mask_tensor.to(device=device, dtype=dtype)
 
 
 def _write_preview_image(image_data: bytes) -> dict[str, str]:
@@ -234,7 +203,11 @@ class KritaLoadImage(io.ComfyNode):
         if image_data is None:
             raise ValueError("The selected Krita layer snapshot is unavailable; reselect the layers in Krita.")
 
-        layers, mask = _decode_composited_png(image_data)
+        layers, mask = decode_composited_png(
+            image_data,
+            device=model_management.intermediate_device(),
+            dtype=model_management.intermediate_dtype(),
+        )
         preview_info = _write_preview_image(image_data)
         return io.NodeOutput(layers, mask, ui={"images": [preview_info]})
 
