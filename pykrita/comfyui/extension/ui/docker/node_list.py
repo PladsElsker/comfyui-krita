@@ -65,10 +65,11 @@ class NodeListWidget(QScrollArea):
             widget: ComfyUiNode = current_node_mapping[to_delete_key]
 
             if isinstance(widget, ComfyUiNode):
-                qWarning(
+                message = (
                     f"[Krita Docker] removing node widget type={widget.type} "
                     f"id={widget.id} visible={widget.isVisible()}"
                 )
+                qWarning(message)
                 # Hide before cleanup: picker cancellation can synchronously
                 # update the old node's action buttons. deleteLater() is deferred.
                 widget.hide()
@@ -90,10 +91,11 @@ class NodeListWidget(QScrollArea):
                     )
                 )
             self.node_widgets.append(node_widget)
-            qWarning(
+            message = (
                 f"[Krita Docker] created node widget type={node_widget.type} "
                 f"id={node_widget.id} visible={node_widget.isVisible()}"
             )
+            qWarning(message)
 
             if to_create_key in self.previous_node_states:
                 previous_node_state = self.previous_node_states[to_create_key]
