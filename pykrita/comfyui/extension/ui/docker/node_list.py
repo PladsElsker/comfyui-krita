@@ -76,7 +76,7 @@ class NodeListWidget(QScrollArea):
             snapshot_ready = getattr(node_widget, "snapshot_ready", None)
             if snapshot_ready is not None:
                 snapshot_ready.connect(
-                    lambda state, image_data, widget=node_widget: self.snapshot_upload_requested.emit(
+                    lambda state, image_data, widget=node_widget: self._queue_snapshot_upload(
                         widget,
                         state,
                         image_data,
@@ -133,6 +133,13 @@ class NodeListWidget(QScrollArea):
         line.setFixedHeight(1)
         line.setStyleSheet("background-color: rgba(0, 0, 0, 20); border: none;")
         self.main_layout.addWidget(line)
+
+    def _queue_snapshot_upload(self, widget: ComfyUiNode, state: UiNodeState, image_data: bytes) -> None:
+        # Keep the accepted state locally while the matching image bytes are
+        # uploaded. Do not publish the state to ComfyUI until the atomic upload
+        # has stored both together.
+        self.previous_node_states[self._get_node_key(state)] = state
+        self.snapshot_upload_requested.emit(widget, state, image_data)
 
     def _register_node_state(self, state: UiNodeState) -> None:
         self.previous_node_states[self._get_node_key(state)] = state
