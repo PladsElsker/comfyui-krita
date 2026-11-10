@@ -217,7 +217,7 @@ class KritaApi:
         sid: str,
         state: LoadImageState,
         image_data: bytes,
-    ) -> None:
+    ) -> dict[str, bool | str]:
         _validate_snapshot_owner(self, sid, state)
         _validate_snapshot_metadata(self, state)
         if len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_BYTES:
