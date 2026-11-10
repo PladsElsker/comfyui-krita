@@ -1,6 +1,4 @@
 import { app } from "../../../scripts/app.js";
-import { useNodeOutputStore } from "../../../stores/nodeOutputStore.js";
-import { useWorkflowStore } from "../../../platform/workflow/management/stores/workflowStore.js";
 
 
 const KRITA_SAVE_IMAGE_NODE_TYPE = "KritaSaveImage-15347";
@@ -48,8 +46,8 @@ let previousDocumentIdLists = {};
 let websocketRoutesSetup = false;
 const kritaNodeStateCache = new Map();
 const kritaNodeStateEventRevisions = new Map();
-const kritaLoadImagePreviewRevisions = new Map();
-const kritaLoadImagePreviewRequests = new Map();
+const kritaLoadImagePreviewRevisions = new WeakMap();
+const kritaLoadImagePreviewRequests = new WeakMap();
 
 
 export const api = (() => {
@@ -276,6 +274,15 @@ function setNodeMetadataValue(node, widget, value) {
 }
 
 
+function getKritaNodeLocatorId(node) {
+    const localId = String(node.id);
+    const graph = node.graph;
+    if(!graph || graph.isRootGraph) return localId;
+    const graphId = graph.id;
+    return graphId ? `${graphId}:${localId}` : localId;
+}
+
+
 async function updateKritaLoadImagePreview(state, preview) {
     if(
         state?.type !== KRITA_LOAD_IMAGE_NODE_TYPE ||
@@ -290,12 +297,11 @@ async function updateKritaLoadImagePreview(state, preview) {
     });
     if(!node) return;
 
-    const key = `${state.document_id}::${state.id}`;
-    if(kritaLoadImagePreviewRevisions.get(key) === state.snapshot_revision) return;
+    if(kritaLoadImagePreviewRevisions.get(node) === state.snapshot_revision) return;
 
-    // A later event supersedes any preview fetch already in flight.
-    const requestId = (kritaLoadImagePreviewRequests.get(key) ?? 0) + 1;
-    kritaLoadImagePreviewRequests.set(key, requestId);
+    // A later snapshot supersedes any preview fetch already in flight.
+    const requestId = (kritaLoadImagePreviewRequests.get(node) ?? 0) + 1;
+    kritaLoadImagePreviewRequests.set(node, requestId);
     const params = new URLSearchParams({
         filename: preview.filename,
         subfolder: preview.subfolder ?? "",
@@ -309,21 +315,44 @@ async function updateKritaLoadImagePreview(state, preview) {
     }
 
     const objectUrl = URL.createObjectURL(await response.blob());
-    if(kritaLoadImagePreviewRequests.get(key) !== requestId) {
+    if(kritaLoadImagePreviewRequests.get(node) !== requestId) {
         URL.revokeObjectURL(objectUrl);
         return;
     }
 
-    try {
-        const outputStore = useNodeOutputStore();
-        const { nodeToNodeLocatorId } = useWorkflowStore();
-        outputStore.setNodePreviewsByLocatorId(nodeToNodeLocatorId(node), [objectUrl]);
-        kritaLoadImagePreviewRevisions.set(key, state.snapshot_revision);
-    }
-    catch(error) {
-        URL.revokeObjectURL(objectUrl);
-        throw error;
-    }
+    const image = new Image();
+    image.onload = () => {
+        if(
+            kritaLoadImagePreviewRequests.get(node) !== requestId ||
+            !getInternalKritaNodes().includes(node)
+        ) {
+            URL.revokeObjectURL(objectUrl);
+            return;
+        }
+
+        const locatorId = getKritaNodeLocatorId(node);
+        const pinia = app.vueApp?._context?.provides?.pinia;
+        const nodeOutputStore = pinia?._s?.get?.("nodeOutput");
+        if(typeof nodeOutputStore?.setNodePreviewsByLocatorId === "function") {
+            // Use the already-instantiated ComfyUI store when the Vue frontend
+            // exposes it; no non-public source-module import is required.
+            nodeOutputStore.setNodePreviewsByLocatorId(locatorId, [objectUrl]);
+        }
+        else {
+            // Legacy LiteGraph canvas preview fallback.
+            const previousUrl = node._kritaLoadImagePreviewUrl;
+            node.imgs = [image];
+            node.imageIndex = 0;
+            if(previousUrl && previousUrl !== objectUrl) URL.revokeObjectURL(previousUrl);
+        }
+
+        node._kritaLoadImagePreviewUrl = objectUrl;
+        if(app.nodePreviewImages) app.nodePreviewImages[locatorId] = [objectUrl];
+        node.setDirtyCanvas?.(true, true);
+        kritaLoadImagePreviewRevisions.set(node, state.snapshot_revision);
+    };
+    image.onerror = () => URL.revokeObjectURL(objectUrl);
+    image.src = objectUrl;
 }
 
 
