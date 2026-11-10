@@ -1,6 +1,5 @@
 import hashlib
 import logging
-import traceback
 import uuid
 from typing import ClassVar, cast
 
@@ -19,6 +18,7 @@ from PyQt5.QtCore import (
     QThreadPool,
     pyqtBoundSignal,
     pyqtSignal,
+    pyqtSlot,
 )
 from PyQt5.QtGui import QIcon, QImage, QPalette
 from PyQt5.QtSvg import QSvgRenderer
