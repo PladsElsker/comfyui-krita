@@ -117,6 +117,12 @@ class LoadImageNode(ComfyUiNode):
         self.cancel_button = self._create_action_button(CANCEL_ICON, "Cancel layer selection")
         self.cancel_button.clicked.connect(self._cancel_editing)
 
+        # These child widgets are not in the layout until selection mode starts.
+        # Explicitly hide them so Qt cannot show them at their default geometry
+        # when the parent node widget becomes visible.
+        self.accept_button.hide()
+        self.cancel_button.hide()
+
         self.set_action_buttons([self.edit_button])
 
         self.layer_picker = LayerMultiSelectionPicker(window, document, self)
