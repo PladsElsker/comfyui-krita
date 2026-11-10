@@ -14,6 +14,7 @@ NodeKey = tuple[int, str, str | None]
 
 class NodeListWidget(QScrollArea):
     node_state_changed = cast("pyqtBoundSignal", pyqtSignal(object))
+    snapshot_upload_requested = cast("pyqtBoundSignal", pyqtSignal(object, object, bytes))
 
     def __init__(self) -> None:
         super().__init__()
@@ -72,6 +73,15 @@ class NodeListWidget(QScrollArea):
             to_create = comfyui_node_mapping[to_create_key]
             node_widget = NodeFactory.create(self, to_create, window, document, document_id)
             node_widget.state_changed.connect(self._register_node_state)
+            snapshot_ready = getattr(node_widget, "snapshot_ready", None)
+            if snapshot_ready is not None:
+                snapshot_ready.connect(
+                    lambda state, image_data, widget=node_widget: self.snapshot_upload_requested.emit(
+                        widget,
+                        state,
+                        image_data,
+                    )
+                )
             self.node_widgets.append(node_widget)
 
             if to_create_key in self.previous_node_states:
