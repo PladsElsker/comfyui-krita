@@ -47,6 +47,8 @@ let previousDocumentIdLists = {};
 let websocketRoutesSetup = false;
 const kritaNodeStateCache = new Map();
 const kritaNodeStateEventRevisions = new Map();
+const kritaLoadImagePreviewRevisions = new Map();
+const kritaLoadImagePreviewRequests = new Map();
 
 
 export const api = (() => {
@@ -274,7 +276,12 @@ function setNodeMetadataValue(node, widget, value) {
 
 
 async function updateKritaLoadImagePreview(state, preview) {
-    if(state?.type !== KRITA_LOAD_IMAGE_NODE_TYPE || !preview?.filename || baseUrl === null) return;
+    if(
+        state?.type !== KRITA_LOAD_IMAGE_NODE_TYPE ||
+        !state.snapshot_revision ||
+        !preview?.filename ||
+        baseUrl === null
+    ) return;
 
     const node = getInternalKritaNodes().find(candidate => {
         if(candidate.id !== state.id || candidate.type !== KRITA_LOAD_IMAGE_NODE_TYPE) return false;
@@ -282,6 +289,12 @@ async function updateKritaLoadImagePreview(state, preview) {
     });
     if(!node) return;
 
+    const key = `${state.document_id}::${state.id}`;
+    if(kritaLoadImagePreviewRevisions.get(key) === state.snapshot_revision) return;
+
+    // A later event supersedes any preview fetch already in flight.
+    const requestId = (kritaLoadImagePreviewRequests.get(key) ?? 0) + 1;
+    kritaLoadImagePreviewRequests.set(key, requestId);
     const params = new URLSearchParams({
         filename: preview.filename,
         subfolder: preview.subfolder ?? "",
@@ -295,8 +308,15 @@ async function updateKritaLoadImagePreview(state, preview) {
     }
 
     const objectUrl = URL.createObjectURL(await response.blob());
+    if(kritaLoadImagePreviewRequests.get(key) !== requestId) {
+        URL.revokeObjectURL(objectUrl);
+        return;
+    }
+
     try {
-        useNodeOutputStore().setNodePreviewsByNodeId(node.id, [objectUrl]);
+        const outputStore = useNodeOutputStore();
+        outputStore.setNodePreviewsByLocatorId(outputStore.nodeToNodeLocatorId(node), [objectUrl]);
+        kritaLoadImagePreviewRevisions.set(key, state.snapshot_revision);
     }
     catch(error) {
         URL.revokeObjectURL(objectUrl);
