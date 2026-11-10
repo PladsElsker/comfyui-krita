@@ -77,7 +77,7 @@ def test__given_valid_snapshot__when_storing__then_state_and_pixels_are_cached_t
     api = KRITA_API_MODULE.KritaApi()
     api.registered_documents["test-sid"] = {"document-1"}
     api._last_workflows_request.workflows["document-1"] = [
-        KRITA_API_MODULE.Node(id=42, type="KritaLoadImage-15348", name="Load Image")
+        MODELS_MODULE.Node(id=42, type="KritaLoadImage-15348", name="Load Image")
     ]
     state = _load_state()
     image_data = _rgba_png()
@@ -99,7 +99,7 @@ def test__given_replacement_snapshot__when_storing__then_old_revision_is_invalid
     api = KRITA_API_MODULE.KritaApi()
     api.registered_documents["test-sid"] = {"document-1"}
     api._last_workflows_request.workflows["document-1"] = [
-        KRITA_API_MODULE.Node(id=42, type="KritaLoadImage-15348", name="Load Image")
+        MODELS_MODULE.Node(id=42, type="KritaLoadImage-15348", name="Load Image")
     ]
     old_state = _load_state("revision-1")
     new_state = _load_state("revision-2")
