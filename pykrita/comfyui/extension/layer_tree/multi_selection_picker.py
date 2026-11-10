@@ -69,17 +69,19 @@ class LayerMultiSelectionPicker(QObject):
             message = "Krita's Layers Docker has no selection model"
             raise TargetSelectionUnavailableError(message)
 
-        self._view = view
-        self._layer_view = layer_view
-        self._selection_model = selection_model
-        self._previous_selection_ids = [str(node.uniqueId()) for node in view.selectedNodes()]
-        active_node = self.document.activeNode()
-        self._previous_active_node_id = str(active_node.uniqueId()) if active_node is not None else None
-        self._previous_selection_mode = layer_view.selectionMode()
         claim_selection_session(self)
-        self._editing = True
 
         try:
+            self._view = view
+            self._layer_view = layer_view
+            self._selection_model = selection_model
+            # Snapshot only after the previous editor has restored its selection.
+            self._previous_selection_ids = [str(node.uniqueId()) for node in view.selectedNodes()]
+            active_node = self.document.activeNode()
+            self._previous_active_node_id = str(active_node.uniqueId()) if active_node is not None else None
+            self._previous_selection_mode = layer_view.selectionMode()
+            self._editing = True
+
             layer_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
             selection_model.clearSelection()
             selection_model.setCurrentIndex(QModelIndex(), QItemSelectionModel.SelectionFlag.NoUpdate)
@@ -108,7 +110,10 @@ class LayerMultiSelectionPicker(QObject):
                 app.installEventFilter(self)
                 self._event_filter_installed = True
         except Exception:
-            self._finish(restore_selection=True)
+            if self._editing:
+                self._finish(restore_selection=True)
+            else:
+                self._clear_session()
             raise
 
     def accept(self) -> list[Node]:
