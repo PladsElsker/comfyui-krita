@@ -63,13 +63,8 @@ def _create_populated_layer(
         raise RuntimeError(message)
 
     if written_pixels != pixel_data:
-        first_mismatch = next(
-            (index for index, (actual, expected) in enumerate(zip(written_pixels, pixel_data, strict=True)) if actual != expected),
-            None,
-        )
         message = "Krita pixel readback does not match the generated PNG pixel buffer"
         raise RuntimeError(message)
-
 
     return node
 
@@ -100,7 +95,6 @@ def insert_png_image(
 
     node.setVisible(True)
     document.setActiveNode(node)
-    active_node = document.activeNode()
     document.refreshProjection()
     document.setModified(True)
 
