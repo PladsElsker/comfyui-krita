@@ -17,12 +17,24 @@ _session = _SelectionSession()
 
 
 def claim_selection_session(picker: object) -> None:
-    """Claim the single shared edit session for either Krita node picker."""
-    if _session.active_picker is picker:
+    """Claim the shared edit session, cancelling its previous owner first."""
+    active_picker = _session.active_picker
+    if active_picker is picker:
         return
-    if _session.active_picker is not None:
-        message = "Another Krita node is already editing the Layers Docker"
-        raise SelectionSessionUnavailableError(message)
+
+    if active_picker is not None:
+        if getattr(active_picker, "is_editing", False):
+            cancel = getattr(active_picker, "cancel", None)
+            if not callable(cancel):
+                message = "The active Krita edit session cannot be cancelled"
+                raise SelectionSessionUnavailableError(message)
+            cancel()
+        else:
+            release_selection_session(active_picker)
+
+        if _session.active_picker is not None:
+            message = "The previous Krita edit session did not release ownership"
+            raise SelectionSessionUnavailableError(message)
 
     _session.active_picker = picker
 
