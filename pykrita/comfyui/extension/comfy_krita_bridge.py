@@ -376,7 +376,7 @@ class ComfyKritaBridge(QObject):
     @pyqtSlot(object, object, str)
     def _on_load_image_snapshot_upload_failed(self, widget: object, state: LoadImageState, error: str) -> None:
         key = (state.document_id, state.id, state.type)
-        self._active_load_image_snapshot_uploads.discard(key)
+        self._active_load_image_snapshot_uploads.pop(key, None)
         attempts_key = (*key, state.snapshot_revision)
         attempts = self._load_image_upload_attempts.get(attempts_key, 0) + 1
         self._load_image_upload_attempts[attempts_key] = attempts
