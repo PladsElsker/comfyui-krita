@@ -331,7 +331,8 @@ async function updateKritaLoadImagePreview(state, preview) {
         }
 
         const locatorId = getKritaNodeLocatorId(node);
-        const provides = app.vueApp?._context?.provides;
+        const vueApp = app.vueApp ?? document.getElementById("vue-app")?.__vue_app__;
+        const provides = vueApp?._context?.provides;
         const pinia = provides?.pinia ?? Object.getOwnPropertySymbols(provides ?? {})
             .map(symbol => provides[symbol])
             .find(candidate => candidate?._s?.get);
@@ -345,6 +346,11 @@ async function updateKritaLoadImagePreview(state, preview) {
             // Legacy LiteGraph canvas preview fallback.
             const previousUrl = node._kritaLoadImagePreviewUrl;
             node.imgs = [image];
+            node.images = [{
+                filename: preview.filename,
+                subfolder: preview.subfolder ?? "",
+                type: preview.type ?? "temp",
+            }];
             node.imageIndex = 0;
             if(previousUrl && previousUrl !== objectUrl) URL.revokeObjectURL(previousUrl);
         }
