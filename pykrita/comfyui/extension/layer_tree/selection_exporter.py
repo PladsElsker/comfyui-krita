@@ -34,7 +34,7 @@ def capture_selected_layers_projection(
     keep_ids: set[str] = set()
     for node in selected_roots:
         _add_subtree_ids(node, keep_ids)
-        _add_ancestor_ids(node, keep_ids)
+        _add_ancestor_context_ids(node, keep_ids)
 
     # Krita's document clone is an independent in-memory image. Lock the source
     # while cloning so the copied node tree and its pixel data are consistent.
@@ -54,6 +54,8 @@ def capture_selected_layers_projection(
         raise RuntimeError(message)
 
     try:
+        scratch_document.setBatchmode(True)
+        scratch_document.setAutosave(False)
         cloned_nodes = _nodes_by_id(scratch_document.rootNode())
         if not keep_ids.issubset(cloned_nodes):
             message = "Krita's scratch document did not preserve the selected layer identities"
@@ -109,10 +111,23 @@ def _add_subtree_ids(node: Node, node_ids: set[str]) -> None:
         _add_subtree_ids(child, node_ids)
 
 
-def _add_ancestor_ids(node: Node, node_ids: set[str]) -> None:
+_MASK_NODE_TYPES = {
+    "colormask",
+    "colorizemask",
+    "filtermask",
+    "selectionmask",
+    "transformmask",
+    "transparencymask",
+}
+
+
+def _add_ancestor_context_ids(node: Node, node_ids: set[str]) -> None:
     parent = node.parentNode()
     while parent is not None:
         node_ids.add(str(parent.uniqueId()))
+        for child in parent.childNodes():
+            if child.type() in _MASK_NODE_TYPES:
+                _add_subtree_ids(child, node_ids)
         parent = parent.parentNode()
 
 
