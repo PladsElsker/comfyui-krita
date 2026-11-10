@@ -18,7 +18,6 @@ from .constants import (
     KRITA_DOCUMENT_DROPDOWN_LABEL,
     KRITA_LOAD_IMAGE_NODE_TYPE,
     KRITA_SAVE_IMAGE_NODE_TYPE,
-    LOAD_IMAGE_META_WIDGET_LABEL,
     META_WIDGET_LABEL,
 )
 from .krita_api import api
@@ -158,8 +157,8 @@ class KritaLoadImage(io.ComfyNode):
                     tooltip="Select the Krita document containing the selected layers.",
                 ),
                 io.String.Input(
-                    id=LOAD_IMAGE_META_WIDGET_LABEL,
-                    display_name=LOAD_IMAGE_META_WIDGET_LABEL,
+                    id=META_WIDGET_LABEL,
+                    display_name=META_WIDGET_LABEL,
                     default=DEFAULT_KRITA_LOAD_IMAGE_STATE,
                     optional=True,
                     tooltip="Internal Krita input-node state.",
@@ -175,7 +174,7 @@ class KritaLoadImage(io.ComfyNode):
     @classmethod
     def validate_inputs(cls, **kwargs: object) -> bool | str:
         document_value = kwargs.get(KRITA_DOCUMENT_DROPDOWN_LABEL)
-        meta = kwargs.get(LOAD_IMAGE_META_WIDGET_LABEL)
+        meta = kwargs.get(META_WIDGET_LABEL)
         validation_checks = (
             (
                 not isinstance(document_value, str) or not document_value,
@@ -224,7 +223,7 @@ class KritaLoadImage(io.ComfyNode):
         **kwargs: dict | list | float | str | None,
     ) -> io.NodeOutput:  # type: ignore
         document_value = kwargs.get(KRITA_DOCUMENT_DROPDOWN_LABEL)
-        meta = kwargs.get(LOAD_IMAGE_META_WIDGET_LABEL)
+        meta = kwargs.get(META_WIDGET_LABEL)
         if not isinstance(document_value, str) or not isinstance(meta, str):
             message = "Select a Krita document and confirm a layer selection before running this node."
             raise TypeError(message)
