@@ -1,7 +1,11 @@
+import logging
+
 from krita import Document, Node
 from PyQt5.QtCore import QEventLoop
 from PyQt5.QtGui import QImage
 from PyQt5.QtWidgets import QApplication
+
+LOGGER = logging.getLogger(__name__)
 
 _MASK_NODE_TYPES = {
     "colormask",
@@ -18,14 +22,43 @@ def capture_selected_layers_projection(
     selected_nodes: list[Node],
 ) -> QImage:
     """Render selected layers through Krita's native projection renderer."""
-    selected_roots = _get_selected_roots(document, selected_nodes)
-    keep_ids = _get_required_node_ids(selected_roots)
-    scratch_document = _clone_document(document)
-
+    LOGGER.info(
+        "[Load Image export] begin document=%r size=%dx%d model=%s depth=%s profile=%s selected=%s",
+        document.name(),
+        document.width(),
+        document.height(),
+        document.colorModel(),
+        document.colorDepth(),
+        document.colorProfile(),
+        [(str(node.uniqueId()), node.name(), node.type()) for node in selected_nodes],
+    )
     try:
-        return _render_scratch_projection(scratch_document, keep_ids)
-    finally:
-        scratch_document.close()
+        selected_roots = _get_selected_roots(document, selected_nodes)
+        LOGGER.info(
+            "[Load Image export] visible selected roots=%s",
+            [(str(node.uniqueId()), node.name(), node.type()) for node in selected_roots],
+        )
+
+        keep_ids = _get_required_node_ids(selected_roots)
+        LOGGER.info("[Load Image export] retained layer-tree nodes=%d", len(keep_ids))
+
+        scratch_document = _clone_document(document)
+        try:
+            projection = _render_scratch_projection(scratch_document, keep_ids)
+            LOGGER.info(
+                "[Load Image export] projection ready size=%dx%d format=%s bytes_per_line=%d",
+                projection.width(),
+                projection.height(),
+                projection.format(),
+                projection.bytesPerLine(),
+            )
+            return projection
+        finally:
+            LOGGER.info("[Load Image export] closing scratch document")
+            scratch_document.close()
+    except Exception:
+        LOGGER.exception("[Load Image export] capture failed")
+        raise
 
 
 def _get_selected_roots(document: Document, selected_nodes: list[Node]) -> list[Node]:
@@ -56,20 +89,34 @@ def _get_required_node_ids(selected_roots: list[Node]) -> set[str]:
 
 
 def _clone_document(document: Document) -> Document:
-    # Mirror Krita's own lock-and-clone sequence: let pending UI-side
-    # operations finish without accepting new user input, flush delayed nodes
-    # and image jobs, then take the image barrier lock before cloning.
+    LOGGER.info("[Load Image export] processing pending UI events")
     QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+
+    LOGGER.info("[Load Image export] waiting for source document jobs")
     document.waitForDone()
+
+    LOGGER.info("[Load Image export] acquiring source image barrier lock")
     document.lock()
     try:
+        LOGGER.info("[Load Image export] cloning source document")
         scratch_document = document.clone()
     finally:
         document.unlock()
+        LOGGER.info("[Load Image export] source image barrier lock released")
 
     if scratch_document is None:
         message = "Krita could not create an in-memory scratch document"
         raise RuntimeError(message)
+
+    LOGGER.info(
+        "[Load Image export] cloned document=%r size=%dx%d model=%s depth=%s profile=%s",
+        scratch_document.name(),
+        scratch_document.width(),
+        scratch_document.height(),
+        scratch_document.colorModel(),
+        scratch_document.colorDepth(),
+        scratch_document.colorProfile(),
+    )
     return scratch_document
 
 
@@ -77,31 +124,70 @@ def _render_scratch_projection(
     scratch_document: Document,
     keep_ids: set[str],
 ) -> QImage:
+    LOGGER.info("[Load Image export] configuring scratch document")
     scratch_document.setBatchmode(True)
     scratch_document.setAutosave(False)
+
     cloned_nodes = _nodes_by_id(scratch_document.rootNode())
-    if not keep_ids.issubset(cloned_nodes):
-        message = "Krita's scratch document did not preserve " "the selected layer identities"
+    missing_ids = keep_ids - cloned_nodes.keys()
+    if missing_ids:
+        message = f"Krita's scratch document did not preserve selected layer identities: {', '.join(sorted(missing_ids))}"
+        LOGGER.error(
+            "[Load Image export] clone identity mismatch missing=%s cloned_count=%d cloned_ids=%s",
+            sorted(missing_ids),
+            len(cloned_nodes),
+            sorted(cloned_nodes),
+        )
         raise RuntimeError(message)
 
-    # Keep selected subtrees and their ancestor groups/masks. Hiding other
-    # nodes preserves references used by clone and filter layers.
+    hidden_nodes = []
     for node_id, node in cloned_nodes.items():
         if node_id not in keep_ids and node.visible():
             node.setVisible(False)
+            hidden_nodes.append((node_id, node.name(), node.type()))
 
+    LOGGER.info(
+        "[Load Image export] visibility filtered hidden_count=%d retained_count=%d hidden=%s",
+        len(hidden_nodes),
+        len(keep_ids),
+        hidden_nodes,
+    )
+
+    LOGGER.info("[Load Image export] waiting for scratch document visibility updates")
     scratch_document.waitForDone()
+
+    LOGGER.info("[Load Image export] refreshing native projection")
     scratch_document.refreshProjection()
-    projection = scratch_document.projection(
-        0,
-        0,
-        scratch_document.width(),
-        scratch_document.height(),
+
+    width = scratch_document.width()
+    height = scratch_document.height()
+    LOGGER.info(
+        "[Load Image export] reading projection rect=(0,0,%d,%d) model=%s depth=%s profile=%s",
+        width,
+        height,
+        scratch_document.colorModel(),
+        scratch_document.colorDepth(),
+        scratch_document.colorProfile(),
+    )
+    projection = scratch_document.projection(0, 0, width, height)
+    LOGGER.info(
+        "[Load Image export] projection returned null=%s size=%dx%d format=%s",
+        projection.isNull(),
+        projection.width(),
+        projection.height(),
+        projection.format(),
     )
     if projection.isNull():
         message = "Krita returned an empty projection for the selected layers"
         raise RuntimeError(message)
-    return projection.copy()
+
+    LOGGER.info("[Load Image export] copying projection out of scratch document")
+    detached_projection = projection.copy()
+    if detached_projection.isNull():
+        message = "Krita could not detach the selected-layer projection from the scratch document"
+        raise RuntimeError(message)
+
+    return detached_projection
 
 
 def _nodes_by_id(root: Node) -> dict[str, Node]:
