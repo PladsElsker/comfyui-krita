@@ -5,6 +5,7 @@ from typing import ClassVar, cast
 from krita import DockWidget, Document, Node as KritaNode, Window
 from PyQt5.QtCore import (
     QByteArray,
+    QSize,
     QBuffer,
     QIODevice,
     QObject,
@@ -14,15 +15,20 @@ from PyQt5.QtCore import (
     pyqtBoundSignal,
     pyqtSignal,
 )
-from PyQt5.QtGui import QImage
+from PyQt5.QtGui import QIcon, QImage, QPalette
 from PyQt5.QtWidgets import QToolButton
 
 from comfyui.extension.layer_tree.multi_selection_picker import LayerMultiSelectionPicker
 from comfyui.extension.layer_tree.selection_exporter import capture_selected_layers_projection
 from comfyui.extension.layer_tree.target_picker import TargetSelectionUnavailableError
 from comfyui.extension.models import LoadImageState, Node, UiNodeState
-from comfyui.extension.ui.icons import LAYERS_ICON
-from comfyui.extension.ui.micro.buttons import TargetEditButton
+from comfyui.extension.ui.icons import (
+    CANCEL_ICON,
+    CHECK_ICON,
+    LAYERS_ICON,
+    STACKS_ICON,
+    render_svg_to_pixmap,
+)
 
 from .comfyui_node import ComfyUiNode
 
@@ -96,19 +102,13 @@ class LoadImageNode(ComfyUiNode):
         self.set_title_text(node.name)
         self._update_layer_info()
 
-        self.edit_button = TargetEditButton()
+        self.edit_button = self._create_action_button(STACKS_ICON, "Select layers")
         self.edit_button.clicked.connect(self._toggle_editing)
 
-        self.accept_button = QToolButton()
-        self.accept_button.setText("Accept")
-        self.accept_button.setToolTip("Accept the selected Krita layers")
-        self.accept_button.setAutoRaise(True)
+        self.accept_button = self._create_action_button(CHECK_ICON, "Accept selected layers")
         self.accept_button.clicked.connect(self._accept_selection)
 
-        self.cancel_button = QToolButton()
-        self.cancel_button.setText("Cancel")
-        self.cancel_button.setToolTip("Cancel layer selection")
-        self.cancel_button.setAutoRaise(True)
+        self.cancel_button = self._create_action_button(CANCEL_ICON, "Cancel layer selection")
         self.cancel_button.clicked.connect(self._cancel_editing)
 
         self.set_action_buttons([self.edit_button])
@@ -116,6 +116,20 @@ class LoadImageNode(ComfyUiNode):
         self.layer_picker = LayerMultiSelectionPicker(window, document, self)
         self.layer_picker.cancelled.connect(self._reset_edit_controls)
         self.layer_picker.selection_accepted.connect(self._selection_accepted)
+
+    def _create_action_button(self, icon_renderer: object, tooltip: str) -> QToolButton:
+        button = QToolButton(self)
+        button.setAutoRaise(True)
+        button.setContentsMargins(0, 0, 0, 0)
+        button.setToolTip(tooltip)
+
+        color = button.palette().color(QPalette.ColorRole.ButtonText)
+        pixmap = render_svg_to_pixmap(icon_renderer, size=QSize(20, 20), color=color)
+        if pixmap:
+            button.setIconSize(pixmap.size())
+            button.setIcon(QIcon(pixmap))
+
+        return button
 
     def initialize_state(self) -> None:
         if self.layer_ids or self.snapshot_revision:
