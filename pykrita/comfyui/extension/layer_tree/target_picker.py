@@ -2,8 +2,8 @@ import logging
 from contextlib import suppress
 
 from krita import Document, Node, View, Window
-from PyQt5.QtCore import QAbstractItemModel, QItemSelectionModel, QModelIndex, QObject, QTimer, pyqtSignal
-from PyQt5.QtWidgets import QTreeView
+from PyQt5.QtCore import QAbstractItemModel, QEvent, QItemSelectionModel, QModelIndex, QObject, Qt, QTimer, pyqtSignal
+from PyQt5.QtWidgets import QApplication, QTreeView
 
 from .utils import LayerUtils
 
@@ -38,6 +38,7 @@ class LayerTargetPicker(QObject):
         self._selection_model: QItemSelectionModel | None = None
         self._selection_connected = False
         self._active_view_connected = False
+        self._event_filter_installed = False
         self._previous_selection_ids: list[str] = []
         self._previous_active_node_id: str | None = None
         self._initial_target_id: str | None = None
@@ -181,6 +182,10 @@ class LayerTargetPicker(QObject):
             self._selection_connected = True
             self.window.activeViewChanged.connect(self._on_active_view_changed)
             self._active_view_connected = True
+            app = QApplication.instance()
+            if app is not None:
+                app.installEventFilter(self)
+                self._event_filter_installed = True
         except Exception:  # noqa: BLE001 - clean up the partial session, then re-raise
             try:
                 self._finish(restore_selection=True)
@@ -197,6 +202,13 @@ class LayerTargetPicker(QObject):
             self._finish(restore_selection=True)
         finally:
             self.cancelled.emit()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if self._editing and event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+            self.cancel()
+            event.accept()
+            return True
+        return super().eventFilter(watched, event)
 
     def _find_layer_view(self) -> QTreeView | None:
         # Krita's Layers Docker object name is private and intentionally kept here.
@@ -248,6 +260,12 @@ class LayerTargetPicker(QObject):
         self.target_selected.emit(target)
 
     def _finish(self, restore_selection: bool) -> None:
+        if self._event_filter_installed:
+            app = QApplication.instance()
+            if app is not None:
+                app.removeEventFilter(self)
+            self._event_filter_installed = False
+
         try:
             if self._selection_connected:
                 if self._selection_model is None:
@@ -354,6 +372,7 @@ class LayerTargetPicker(QObject):
         self._selection_model = None
         self._selection_connected = False
         self._active_view_connected = False
+        self._event_filter_installed = False
         self._previous_selection_ids = []
         self._previous_active_node_id = None
         self._initial_target_id = None
