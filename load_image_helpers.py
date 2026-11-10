@@ -23,6 +23,8 @@ def decode_composited_png(
             if width < 1 or height < 1 or width * height > MAX_LOAD_IMAGE_PIXELS:
                 raise ValueError("The Krita layer snapshot has unsupported dimensions")
             pixel_data = rgba_image.tobytes()
+    except ValueError:
+        raise
     except Exception as error:
         raise ValueError("The Krita layer snapshot is not a valid image") from error
 
