@@ -1,3 +1,5 @@
+from contextlib import suppress
+
 import logging
 
 from krita import Document, Node, View, Window
@@ -53,15 +55,18 @@ class LayerMultiSelectionPicker(QObject):
 
         view = self.window.activeView()
         if view is None or view.document() != self.document:
-            raise TargetSelectionUnavailableError("The target document is not active")
+            message = "The target document is not active"
+            raise TargetSelectionUnavailableError(message)
 
         layer_view = self._find_layer_view()
         if layer_view is None:
-            raise TargetSelectionUnavailableError("Krita's Layers Docker is unavailable")
+            message = "Krita's Layers Docker is unavailable"
+            raise TargetSelectionUnavailableError(message)
 
         selection_model = layer_view.selectionModel()
         if selection_model is None:
-            raise TargetSelectionUnavailableError("Krita's Layers Docker has no selection model")
+            message = "Krita's Layers Docker has no selection model"
+            raise TargetSelectionUnavailableError(message)
 
         self._view = view
         self._layer_view = layer_view
@@ -112,11 +117,13 @@ class LayerMultiSelectionPicker(QObject):
         if self.window.activeView() != self._view or self._view is None or self._view.document() != self.document:
             self._finish(restore_selection=False)
             self.cancelled.emit()
-            raise TargetSelectionUnavailableError("The Krita document changed while selecting layers")
+            message = "The Krita document changed while selecting layers"
+            raise TargetSelectionUnavailableError(message)
 
         selection_model = self._selection_model
         if selection_model is None:
-            raise RuntimeError("The Layers Docker selection model disappeared during layer selection")
+            message = "The Layers Docker selection model disappeared during layer selection"
+            raise RuntimeError(message)
 
         selected_indexes = selection_model.selectedRows(0)
         # Preserve the document's layer-stack order rather than the order in
@@ -127,7 +134,8 @@ class LayerMultiSelectionPicker(QObject):
             if node.type() in SUPPORTED_LAYER_TYPES and self._index_for_node(node) in selected_indexes
         ]
         if not selected_nodes:
-            raise ValueError("Select at least one layer before accepting")
+            message = "Select at least one layer before accepting"
+            raise ValueError(message)
 
         self._finish(restore_selection=True)
         self.selection_accepted.emit(selected_nodes)
@@ -163,10 +171,8 @@ class LayerMultiSelectionPicker(QObject):
                 self.cancelled.emit()
 
     def _finish(self, restore_selection: bool) -> None:
-        try:
+        with suppress(TypeError, RuntimeError):
             self.window.activeViewChanged.disconnect(self._on_active_view_changed)
-        except (TypeError, RuntimeError):
-            pass
 
         if self._event_filter_installed:
             app = QApplication.instance()
@@ -218,7 +224,8 @@ class LayerMultiSelectionPicker(QObject):
     def _index_for_node(self, node: Node) -> QModelIndex:
         layer_view = self._layer_view
         if layer_view is None:
-            raise RuntimeError("The Layers Docker tree view is unavailable")
+            message = "The Layers Docker tree view is unavailable"
+            raise RuntimeError(message)
 
         model = layer_view.model()
         root = self.document.rootNode()
@@ -237,13 +244,15 @@ class LayerMultiSelectionPicker(QObject):
             None,
         )
         if sibling_position is None:
-            raise ValueError(f"Krita layer {node.name()!r} is not present among its parent's children")
+            message = f"Krita layer {node.name()!r} is not present among its parent's children"
+            raise ValueError(message)
 
         # Krita's Node.childNodes() is bottom-to-top; the Docker displays top-to-bottom.
         row = len(siblings) - sibling_position - 1
         model_index = model.index(row, 0, parent_index)
         if not model_index.isValid():
-            raise RuntimeError(f"Could not resolve Krita layer {node.name()!r} in the Layers Docker")
+            message = f"Could not resolve Krita layer {node.name()!r} in the Layers Docker"
+            raise RuntimeError(message)
         return model_index
 
     @classmethod
