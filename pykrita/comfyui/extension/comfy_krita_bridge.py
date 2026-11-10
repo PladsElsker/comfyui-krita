@@ -283,7 +283,9 @@ class ComfyKritaBridge(QObject):
             node_list_id = id(node_list)
             if node_list_id not in self._connected_node_lists:
                 node_list.node_state_changed.connect(self._publish_node_state)
-                node_list.snapshot_upload_requested.connect(self._queue_load_image_snapshot_upload)
+                node_list.snapshot_upload_requested.connect(
+                    self._queue_load_image_snapshot_upload
+                )
                 self._connected_node_lists.add(node_list_id)
 
             for state in node_list.previous_node_states.values():
@@ -578,7 +580,8 @@ class ComfyKritaBridge(QObject):
         document = self.document_monitor.mapping.get(state.document_id)
         if document is None:
             LOGGER.error(
-                "Fetched generated image %s (%d bytes), but Krita has no document mapping for ID %s",
+                "Fetched generated image %s (%d bytes), but "
+                "Krita has no document mapping for ID %s",
                 notification.transfer_id,
                 len(image_data),
                 state.document_id,
@@ -587,7 +590,8 @@ class ComfyKritaBridge(QObject):
 
         if document not in opened_documents:
             LOGGER.error(
-                "Fetched generated image %s (%d bytes), but target document %s is not open",
+                "Fetched generated image %s (%d bytes), but "
+                "target document %s is not open",
                 notification.transfer_id,
                 len(image_data),
                 state.document_id,
@@ -602,7 +606,8 @@ class ComfyKritaBridge(QObject):
             insert_png_image(document, image_data, state.path, layer_name)
         except Exception as error:  # noqa: BLE001
             LOGGER.exception(
-                "Generated image %s was fetched but could not be inserted into document %s",
+                "Generated image %s was fetched but could not be "
+                "inserted into document %s",
                 notification.transfer_id,
                 state.document_id,
             )
