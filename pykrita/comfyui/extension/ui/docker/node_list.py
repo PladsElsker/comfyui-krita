@@ -1,3 +1,4 @@
+import logging
 from typing import cast
 
 from krita import Document, Window
@@ -8,6 +9,8 @@ from PyQt5.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 from comfyui.extension.models import Node, NodeDirection, UiNodeState
 from comfyui.extension.ui.nodes.comfyui_node import ComfyUiNode
 from comfyui.extension.ui.nodes.node_factory import NodeFactory
+
+LOGGER = logging.getLogger(__name__)
 
 NodeKey = tuple[int, str, str | None]
 
@@ -65,7 +68,17 @@ class NodeListWidget(QScrollArea):
             widget: ComfyUiNode = current_node_mapping[to_delete_key]
 
             if isinstance(widget, ComfyUiNode):
+                LOGGER.info(
+                    "[Krita Docker] removing node widget type=%s id=%s visible=%s",
+                    widget.type,
+                    widget.id,
+                    widget.isVisible(),
+                )
                 widget.cleanup()
+                # deleteLater() is deferred by Qt. Hide the stale widget now,
+                # otherwise its child action buttons can remain painted at
+                # their old geometry while a replacement widget is created.
+                widget.hide()
                 widget.deleteLater()
                 self.node_widgets.remove(widget)
 
@@ -83,6 +96,12 @@ class NodeListWidget(QScrollArea):
                     )
                 )
             self.node_widgets.append(node_widget)
+            LOGGER.info(
+                "[Krita Docker] created node widget type=%s id=%s visible=%s",
+                node_widget.type,
+                node_widget.id,
+                node_widget.isVisible(),
+            )
 
             if to_create_key in self.previous_node_states:
                 previous_node_state = self.previous_node_states[to_create_key]
