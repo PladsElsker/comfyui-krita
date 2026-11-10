@@ -314,7 +314,14 @@ class LoadImageNode(ComfyUiNode):
         active_view = self.window.activeView()
         if active_view is None or active_view.document() != self.document:
             return False
-        if event.type() not in {
+        shortcut_event = getattr(QEvent.Type, "Shortcut", None)
+        event_type = event.type()
+        if event_type == shortcut_event:
+            # QAction/QShortcut events can be delivered to the main window
+            # rather than the canvas widget that owns the active document.
+            return True
+
+        if event_type not in {
             QEvent.Type.MouseButtonRelease,
             QEvent.Type.TabletRelease,
             QEvent.Type.TouchEnd,
@@ -329,7 +336,11 @@ class LoadImageNode(ComfyUiNode):
                     class_name = current.metaObject().className()
                 except RuntimeError:
                     return False
-                if class_name in self.CANVAS_WIDGET_TYPES:
+                if class_name in self.CANVAS_WIDGET_TYPES or class_name in {
+                    "QMenu",
+                    "QMenuBar",
+                    "QToolBar",
+                }:
                     return True
                 current = current.parentWidget()
             else:
