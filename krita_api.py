@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import inspect
 import io
@@ -235,7 +236,7 @@ class KritaApi:
         if len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_BYTES:
             message = f"The Krita image snapshot exceeds the {MAX_LOAD_IMAGE_SNAPSHOT_BYTES}-byte limit"
             raise ValueError(message)
-        revision = _snapshot_revision(image_data)
+        revision = await asyncio.to_thread(_snapshot_revision, image_data)
         canonical_state = state.model_copy(update={"snapshot_revision": revision})
 
         key = (state.document_id, state.id, state.type)
@@ -264,7 +265,7 @@ class KritaApi:
             raise ValueError(message)
 
         preview = (
-            _write_snapshot_preview(image_data)
+            await asyncio.to_thread(_write_snapshot_preview, image_data)
             if changed
             else existing.preview
         )
