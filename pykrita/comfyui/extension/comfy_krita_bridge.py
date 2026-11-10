@@ -1,4 +1,5 @@
 import json
+from contextlib import suppress
 import logging
 import threading
 from io import BytesIO
@@ -364,12 +365,10 @@ class ComfyKritaBridge(QObject):
         self._load_image_snapshots[key] = (state, image_data)
         self._load_image_upload_attempts.pop((*key, state.snapshot_revision), None)
         if widget is not None and hasattr(widget, "snapshot_uploaded"):
-            try:
-                widget.snapshot_uploaded(state)
-            except RuntimeError:
+            with suppress(RuntimeError):
                 # The user may have switched documents while this worker was
                 # uploading; the accepted state is already retained in NodeList.
-                pass
+                widget.snapshot_uploaded(state)
 
         self._start_pending_load_image_snapshot_uploads()
 
@@ -382,10 +381,8 @@ class ComfyKritaBridge(QObject):
         self._load_image_upload_attempts[attempts_key] = attempts
         LOGGER.error("Could not upload Krita input snapshot for node %s: %s", state.id, error)
         if widget is not None and hasattr(widget, "snapshot_upload_failed"):
-            try:
+            with suppress(RuntimeError):
                 widget.snapshot_upload_failed(state, error)
-            except RuntimeError:
-                pass
         if attempts < MAX_NODE_STATE_UPLOAD_ATTEMPTS:
             QTimer.singleShot(1000, self._start_pending_load_image_snapshot_uploads)
 
