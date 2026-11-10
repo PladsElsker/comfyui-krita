@@ -584,3 +584,67 @@ def test__given_krita_load_image_node__when_state_updates__then_input_metadata_w
         "layer_names": ["Background", "Line Art"],
         "snapshot_revision": "revision-1",
     }
+
+
+
+def test__given_both_krita_node_types__when_document_widgets_are_refreshed__then_both_use_the_same_document_ids(
+    default_page: Page,
+) -> None:
+    dropdown_states = default_page.evaluate(
+        """
+        async () => {
+            const { app } = await import('../../../scripts/app.js');
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const nodeTypes = ["KritaSaveImage-15347", "KritaLoadImage-15347"];
+            const nodes = nodeTypes.map((type, index) => ({
+                id: 70001 + index,
+                type,
+                inputs: [],
+                widgets: [
+                    {
+                        name: "document",
+                        label: "document",
+                        value: null,
+                        options: { values: [] },
+                    },
+                    {
+                        name: "_meta-15347",
+                        label: "_meta-15347",
+                        value: "",
+                        options: {},
+                    },
+                ],
+                setDirtyCanvas() {},
+            }));
+            app.graph.nodes.push(...nodes);
+
+            await workflow.updateDocumentWidgetValues(["document-1", "document-2"]);
+
+            const result = nodes.map(node => {
+                const dropdown = node.widgets[0];
+                return {
+                    type: node.type,
+                    options: dropdown.options.values,
+                    value: dropdown.value,
+                };
+            });
+            app.graph.nodes.splice(
+                app.graph.nodes.length - nodes.length,
+                nodes.length,
+            );
+            return result;
+        }
+        """,
+    )
+    assert dropdown_states == [
+        {
+            "type": "KritaSaveImage-15347",
+            "options": ["document-1", "document-2"],
+            "value": "document-1",
+        },
+        {
+            "type": "KritaLoadImage-15347",
+            "options": ["document-1", "document-2"],
+            "value": "document-1",
+        },
+    ]
