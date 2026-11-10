@@ -61,6 +61,27 @@ class _ScratchDocumentDisposer(QObject):
 _SCRATCH_DOCUMENT_DISPOSER = _ScratchDocumentDisposer()
 
 
+def _encode_projection_png(projection: QImage) -> bytes:
+    buffer_data = QByteArray()
+    buffer = QBuffer(buffer_data)
+    if not buffer.open(QIODevice.OpenModeFlag.WriteOnly):
+        message = "Could not open the in-memory PNG buffer"
+        raise RuntimeError(message)
+
+    try:
+        if not projection.save(buffer, "PNG"):
+            message = "Krita could not encode the selected-layer projection as PNG"
+            raise RuntimeError(message)
+        image_data = bytes(buffer_data)
+    finally:
+        buffer.close()
+
+    if not image_data:
+        message = "Krita produced an empty PNG for the selected layers"
+        raise RuntimeError(message)
+    return image_data
+
+
 class _ProjectionExportTask(QRunnable):
     def __init__(
         self,
@@ -91,24 +112,7 @@ class _ProjectionExportTask(QRunnable):
             revision = _projection_revision(projection)
             state = self.state.model_copy(update={"snapshot_revision": revision})
 
-            buffer_data = QByteArray()
-            buffer = QBuffer(buffer_data)
-            if not buffer.open(QIODevice.OpenModeFlag.WriteOnly):
-                message = "Could not open the in-memory PNG buffer"
-                raise RuntimeError(message)
-
-            try:
-                if not projection.save(buffer, "PNG"):
-                    message = "Krita could not encode the selected-layer projection as PNG"
-                    raise RuntimeError(message)
-                image_data = bytes(buffer_data)
-            finally:
-                buffer.close()
-
-            if not image_data:
-                message = "Krita produced an empty PNG for the selected layers"
-                raise RuntimeError(message)
-
+            image_data = _encode_projection_png(projection)
             self.signals.completed.emit(self, self.capture_token, state, image_data)
         except Exception as error:  # noqa: BLE001
             if scratch_document is None:
