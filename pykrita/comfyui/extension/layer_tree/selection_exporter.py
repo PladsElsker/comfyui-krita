@@ -133,7 +133,7 @@ def _render_scratch_projection(
     missing_ids = keep_ids - cloned_nodes.keys()
     if missing_ids:
         missing_ids_text = ", ".join(sorted(missing_ids))
-        message = "Krita's scratch document did not preserve selected layer identities: " f"{missing_ids_text}"
+        message = f"Krita's scratch document did not preserve selected layer identities: {missing_ids_text}"
         _warn(
             "[Load Image export] clone identity mismatch missing=%s cloned_count=%d cloned_ids=%s",
             sorted(missing_ids),
