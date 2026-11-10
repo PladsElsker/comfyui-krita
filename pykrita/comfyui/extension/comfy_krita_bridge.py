@@ -70,7 +70,7 @@ class _ImageDownloadTask(QRunnable):
 
 
 class _LoadImageUploadSignals(QObject):
-    completed = pyqtSignal(object, object, bytes)
+    completed = pyqtSignal(object, object, bytes, str)
     failed = pyqtSignal(object, object, str)
 
 
@@ -97,16 +97,26 @@ class _LoadImageUploadTask(QRunnable):
             with ZipFile(package_buffer, "w", compression=ZIP_STORED) as archive:
                 archive.writestr("state.json", self.state.model_dump_json())
                 archive.writestr("composite.png", self.image_data)
-            self.comfy_ws.put_bytes(
+            response = self.comfy_ws.put_bytes(
                 f"/krita/{self.sid}/nodes/load-image",
                 package_buffer.getvalue(),
                 content_type="application/zip",
             )
+            upload_result = json.loads(response)
+            snapshot_revision = upload_result.get("snapshot_revision")
+            if not isinstance(snapshot_revision, str) or not snapshot_revision:
+                message = "ComfyUI did not return the canonical Load Image snapshot revision"
+                raise RuntimeError(message)
         except Exception as error:  # noqa: BLE001
             self.signals.failed.emit(self.widget, self.state, str(error))
             return
 
-        self.signals.completed.emit(self.widget, self.state, self.image_data)
+        self.signals.completed.emit(
+            self.widget,
+            self.state,
+            self.image_data,
+            snapshot_revision,
+        )
 
 
 class ComfyKritaBridge(QObject):
@@ -376,12 +386,13 @@ class ComfyKritaBridge(QObject):
             self._active_load_image_snapshot_uploads[key] = task
             self._load_image_upload_pool.start(task)
 
-    @pyqtSlot(object, object, bytes)
+    @pyqtSlot(object, object, bytes, str)
     def _on_load_image_snapshot_uploaded(
         self,
         widget: object,
         state: LoadImageState,
         image_data: bytes,
+        snapshot_revision: str,
     ) -> None:
         key = (state.document_id, state.id, state.type)
         self._active_load_image_snapshot_uploads.pop(key, None)
@@ -391,13 +402,14 @@ class ComfyKritaBridge(QObject):
             return
 
         self._pending_load_image_snapshots.pop(key, None)
-        self._load_image_snapshots[key] = (state, image_data)
+        canonical_state = state.model_copy(update={"snapshot_revision": snapshot_revision})
+        self._load_image_snapshots[key] = (canonical_state, image_data)
         self._load_image_upload_attempts.pop((*key, state.snapshot_revision), None)
         if widget is not None and hasattr(widget, "snapshot_uploaded"):
             with suppress(RuntimeError):
-                # The user may have switched documents while this worker was
-                # uploading; the accepted state is already retained in NodeList.
-                widget.snapshot_uploaded(state)
+                # The backend revision is derived from normalized RGBA pixels
+                # and is the execution-cache identity used by ComfyUI.
+                widget.snapshot_uploaded(canonical_state)
 
         self._start_pending_load_image_snapshot_uploads()
 
