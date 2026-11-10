@@ -493,6 +493,13 @@ class KritaApi:
             self._last_workflows_request
         ).get(sid, None)
 
+    def has_workflow_node(self, document_id: str, node_id: int, node_type: str) -> bool:
+        workflow_nodes = self._last_workflows_request.workflows.get(document_id, [])
+        return any(
+            node.id == node_id and node.type == node_type
+            for node in workflow_nodes
+        )
+
     def get_registered_documents(self) -> KritaDocuments:
         return KritaDocuments(
             documents=sorted(
