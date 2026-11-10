@@ -44,7 +44,7 @@ class DirectionButton(QToolButton):
             self._set_above_icon()
 
     def _set_below_icon(self) -> None:
-        self.setToolTip("Toggle insert direction")
+        self.setToolTip("Insert below layer")
         color = self.palette().color(QPalette.ColorRole.ButtonText)
         pixmap = render_svg_to_pixmap(ARROW_DOWN_ICON, size=QSize(20, 20), color=color)
 
@@ -55,7 +55,7 @@ class DirectionButton(QToolButton):
         self.changed_to_below.emit()
 
     def _set_above_icon(self) -> None:
-        self.setToolTip("Toggle insert direction")
+        self.setToolTip("Insert above layer")
         color = self.palette().color(QPalette.ColorRole.ButtonText)
         pixmap = render_svg_to_pixmap(ARROW_UP_ICON, size=QSize(20, 20), color=color)
 

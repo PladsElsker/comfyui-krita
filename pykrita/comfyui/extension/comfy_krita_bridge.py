@@ -1,23 +1,93 @@
-import contextlib
 import json
+import logging
+import threading
+
+from PyQt5.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, pyqtSignal, pyqtSlot
 
 from comfyui.extension.comfy_websocket import ComfyWebsocket
 from comfyui.extension.document_monitor import DocumentMonitor
-from comfyui.extension.models import DocumentMappingResponse, StatusRequest, UpdateDocumentsRequest, UpdateWorkflowsRequest
+from comfyui.extension.image_import import insert_png_image
+from comfyui.extension.models import (
+    DocumentMappingResponse,
+    LayerCreateNotification,
+    SaveImageState,
+    StatusRequest,
+    UpdateDocumentsRequest,
+    UpdateWorkflowsRequest,
+)
+
+LOGGER = logging.getLogger(__name__)
+MAX_NODE_STATE_UPLOAD_ATTEMPTS = 3
 
 
-class ComfyKritaBridge:
+class _NodeStateUploadTask(QRunnable):
+    def __init__(self, bridge: "ComfyKritaBridge") -> None:
+        super().__init__()
+        self.bridge = bridge
+
+    def run(self) -> None:
+        self.bridge.drain_node_state_updates()
+
+
+class _ImageDownloadSignals(QObject):
+    completed = pyqtSignal(object, bytes)
+    failed = pyqtSignal(object, str)
+
+
+class _ImageDownloadTask(QRunnable):
+    def __init__(self, comfy_ws: ComfyWebsocket, notification: LayerCreateNotification) -> None:
+        super().__init__()
+        self.comfy_ws = comfy_ws
+        self.notification = notification
+        self.signals = _ImageDownloadSignals()
+
+    def run(self) -> None:
+        transfer_id = self.notification.transfer_id
+        route = f"/krita/images/{transfer_id}"
+        try:
+            image_data = self.comfy_ws.get_bytes(route)
+        except Exception as error:  # noqa: BLE001
+            self.signals.failed.emit(self.notification, str(error))
+            return
+
+        self.signals.completed.emit(self.notification, image_data)
+
+
+class ComfyKritaBridge(QObject):
+    _state_upload_retry_requested = pyqtSignal()
+
     def __init__(self, comfy_ws: ComfyWebsocket, document_monitor: DocumentMonitor) -> None:
+        super().__init__()
         self.comfy_ws = comfy_ws
         self.document_monitor = document_monitor
+        self._connected_node_lists: set[int] = set()
+        self._image_downloads: dict[str, _ImageDownloadTask] = {}
+
+        self._download_pool = QThreadPool(self)
+        self._download_pool.setMaxThreadCount(1)
+
+        # Node-state HTTP writes are serialized on one worker. Coalescing by
+        # document/node/type means only the newest pending value is sent.
+        self._state_upload_pool = QThreadPool(self)
+        self._state_upload_pool.setMaxThreadCount(1)
+        self._pending_node_state_updates: dict[tuple[str, int, str], dict] = {}
+        self._node_state_upload_running = False
+        self._node_state_upload_lock = threading.Lock()
+        self._node_state_upload_attempts: dict[tuple[str, int, str], int] = {}
+        self._state_upload_retry_requested.connect(
+            self._schedule_node_state_upload_retry,
+            Qt.ConnectionType.QueuedConnection,
+        )
         self._define_commands()
 
     def _define_commands(self) -> None:
         @self.comfy_ws.handler("status")
         def status_statement(data: dict) -> None:
-            with contextlib.suppress(Exception):
+            try:
                 status_request = StatusRequest.model_validate(data)
                 self.status_statement(status_request)
+            except Exception:  # noqa: BLE001
+                LOGGER.exception("Could not register the Krita websocket session with ComfyUI")
 
         @self.comfy_ws.handler("krita::workflows::update")
         def update_workflows(data: dict) -> None:
@@ -26,7 +96,11 @@ class ComfyKritaBridge:
 
         @self.comfy_ws.handler("krita::layers::create")
         def create_layer(data: dict) -> None:
-            pass
+            try:
+                notification = LayerCreateNotification.model_validate(data)
+                self._download_layer_image(notification)
+            except Exception as error:  # noqa: BLE001
+                LOGGER.exception("Received an invalid generated-layer notification")
 
     def status_statement(self, status_request: StatusRequest) -> None:
         self.comfy_ws.sid = status_request.sid
@@ -74,7 +148,13 @@ class ComfyKritaBridge:
         from . import ComfyUIExtension  # noqa: PLC0415
 
         for docker, window in ComfyUIExtension.get_comfyui_window_docker_pairs():
-            active_document = window.activeView().document()
+            active_view = window.activeView()
+            if active_view is None:
+                continue
+
+            active_document = active_view.document()
+            if active_document is None:
+                continue
 
             found_document_id = None
             found_nodes = None
@@ -88,14 +168,217 @@ class ComfyKritaBridge:
                 found_document_id = document_id
                 found_nodes = nodes
 
-            if found_document_id is None:
-                return
+            if found_document_id is None or found_nodes is None:
+                continue
 
-            if found_nodes is None:
-                return
+            node_list = docker.node_list
+            node_list_id = id(node_list)
+            if node_list_id not in self._connected_node_lists:
+                node_list.node_state_changed.connect(self._publish_node_state)
+                self._connected_node_lists.add(node_list_id)
 
             docker.update_title(workflows_request.name, found_document_id)
             docker.update_node_list(found_nodes, window, active_document, found_document_id)
+            docker.set_active_document(window, active_document, found_document_id)
 
     def send_krita_state(self) -> None:
-        pass
+        if not self.comfy_ws.is_connected or self.comfy_ws.sid is None:
+            return
+
+        from . import ComfyUIExtension  # noqa: PLC0415
+
+        for docker, _window in ComfyUIExtension.get_comfyui_window_docker_pairs():
+            node_list = docker.node_list
+            node_list_id = id(node_list)
+            if node_list_id not in self._connected_node_lists:
+                node_list.node_state_changed.connect(self._publish_node_state)
+                self._connected_node_lists.add(node_list_id)
+
+            for state in node_list.previous_node_states.values():
+                if isinstance(state, SaveImageState):
+                    self._send_save_image_state(state)
+
+        # Also flush tombstones/updates that accumulated while disconnected.
+        self._start_pending_node_state_upload()
+
+    def _publish_node_state(self, update: dict) -> None:
+        if update.get("deleted", False):
+            document_id = update.get("document_id")
+            node_id = update.get("id")
+            node_type = update.get("type")
+            if not isinstance(document_id, str) or not isinstance(node_id, int) or not isinstance(node_type, str):
+                LOGGER.warning("Ignoring an incomplete deleted Krita node-state update")
+                return
+            key = (document_id, node_id, node_type)
+            payload = {
+                "deleted": True,
+                "document_id": document_id,
+                "id": node_id,
+                "type": node_type,
+            }
+        else:
+            state = update.get("state")
+            if not isinstance(state, SaveImageState):
+                return
+            key = (state.document_id, state.id, state.type)
+            payload = {"deleted": False, "state": self._serialize_save_image_state(state)}
+
+        # Keep updates even while disconnected. On reconnect the status flow
+        # refreshes the document mapping and calls send_krita_state().
+        with self._node_state_upload_lock:
+            self._pending_node_state_updates[key] = payload
+            self._node_state_upload_attempts.pop(key, None)
+
+        self._start_pending_node_state_upload()
+
+    def _start_pending_node_state_upload(self) -> None:
+        with self._node_state_upload_lock:
+            if self._node_state_upload_running or not self._pending_node_state_updates:
+                return
+            if self.comfy_ws.sid is None or not self.comfy_ws.is_connected:
+                return
+            self._node_state_upload_running = True
+
+        self._state_upload_pool.start(_NodeStateUploadTask(self))
+
+    def drain_node_state_updates(self) -> None:
+        while True:
+            batch = self._take_pending_node_state_batch()
+            if not batch:
+                return
+
+            for index, (key, payload) in enumerate(batch):
+                sid = self.comfy_ws.sid
+                if sid is None or not self.comfy_ws.is_connected:
+                    self._requeue_unsent_node_state_updates(batch[index:])
+                    return
+
+                if not self._upload_node_state(sid, payload):
+                    self._retry_unsent_node_state_updates(batch[index:])
+                    return
+
+                with self._node_state_upload_lock:
+                    self._node_state_upload_attempts.pop(key, None)
+
+    def _take_pending_node_state_batch(self) -> list[tuple[tuple[str, int, str], dict]]:
+        with self._node_state_upload_lock:
+            if not self._pending_node_state_updates:
+                self._node_state_upload_running = False
+                return []
+            batch = list(self._pending_node_state_updates.items())
+            self._pending_node_state_updates.clear()
+            return batch
+
+    def _requeue_unsent_node_state_updates(
+        self,
+        updates: list[tuple[tuple[str, int, str], dict]],
+    ) -> None:
+        with self._node_state_upload_lock:
+            for key, payload in updates:
+                self._pending_node_state_updates.setdefault(key, payload)
+            self._node_state_upload_running = False
+
+    def _upload_node_state(self, sid: str, payload: dict) -> bool:
+        try:
+            self.comfy_ws.put(f"/krita/{sid}/nodes/state", payload)
+        except Exception:  # noqa: BLE001
+            LOGGER.exception("Could not synchronize Krita output-node state with ComfyUI")
+            return False
+        return True
+
+    def _retry_unsent_node_state_updates(
+        self,
+        updates: list[tuple[tuple[str, int, str], dict]],
+    ) -> None:
+        with self._node_state_upload_lock:
+            for key, payload in updates:
+                if key in self._pending_node_state_updates:
+                    continue
+                attempts = self._node_state_upload_attempts.get(key, 0) + 1
+                self._node_state_upload_attempts[key] = attempts
+                if attempts <= MAX_NODE_STATE_UPLOAD_ATTEMPTS:
+                    self._pending_node_state_updates[key] = payload
+            self._node_state_upload_running = False
+            should_retry = bool(self._pending_node_state_updates)
+
+        if should_retry:
+            self._state_upload_retry_requested.emit()
+
+    @pyqtSlot()
+    def _schedule_node_state_upload_retry(self) -> None:
+        QTimer.singleShot(500, self._start_pending_node_state_upload)
+
+    def _send_save_image_state(self, state: SaveImageState) -> None:
+        self._publish_node_state({"deleted": False, "state": state})
+
+    @staticmethod
+    def _serialize_save_image_state(state: SaveImageState) -> dict:
+        return {
+            "id": state.id,
+            "type": state.type,
+            "document_id": state.document_id,
+            "insert_direction": state.insert_direction,
+            "layer_name": state.layer_name,
+            "path": [
+                {
+                    "quuid": str(token.quuid) if token.quuid is not None else None,
+                    "type": token.type,
+                }
+                for token in state.path
+            ],
+        }
+
+    def _download_layer_image(self, notification: LayerCreateNotification) -> None:
+        if notification.transfer_id in self._image_downloads:
+            LOGGER.warning("Ignoring duplicate generated image transfer %s", notification.transfer_id)
+            return
+
+        task = _ImageDownloadTask(self.comfy_ws, notification)
+        task.signals.completed.connect(self._on_image_downloaded, Qt.ConnectionType.QueuedConnection)
+        task.signals.failed.connect(self._on_image_download_failed, Qt.ConnectionType.QueuedConnection)
+        self._image_downloads[notification.transfer_id] = task
+        self._download_pool.start(task)
+
+    @pyqtSlot(object, bytes)
+    def _on_image_downloaded(self, notification: LayerCreateNotification, image_data: bytes) -> None:
+        self._image_downloads.pop(notification.transfer_id, None)
+        state = notification.state
+
+        opened_documents = self.document_monitor.get_opened_documents()
+        document = self.document_monitor.mapping.get(state.document_id)
+        if document is None:
+            LOGGER.error(
+                "Fetched generated image %s (%d bytes), but Krita has no document mapping for ID %s",
+                notification.transfer_id,
+                len(image_data),
+                state.document_id,
+            )
+            return
+
+        if document not in opened_documents:
+            LOGGER.error(
+                "Fetched generated image %s (%d bytes), but target document %s is not open",
+                notification.transfer_id,
+                len(image_data),
+                state.document_id,
+            )
+            return
+
+        layer_name = f"ComfyUI Output {state.id}"
+        if notification.batch_size > 1:
+            layer_name += f" ({notification.batch_index + 1}/{notification.batch_size})"
+
+        try:
+            insert_png_image(document, image_data, state.path, layer_name)
+        except Exception as error:  # noqa: BLE001
+            LOGGER.exception(
+                "Generated image %s was fetched but could not be inserted into document %s",
+                notification.transfer_id,
+                state.document_id,
+            )
+            return
+
+    @pyqtSlot(object, str)
+    def _on_image_download_failed(self, notification: LayerCreateNotification, error: str) -> None:
+        self._image_downloads.pop(notification.transfer_id, None)
+        LOGGER.error("Could not download generated image %s: %s", notification.transfer_id, error)

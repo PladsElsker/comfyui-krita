@@ -89,6 +89,22 @@ class ComfyWebsocket(QObject):
     def get(self, route: str) -> str:
         return self._request("GET", route)
 
+    def get_bytes(self, route: str) -> bytes:
+        assert self.http_base is not None  # noqa: S101
+
+        url = f"{self.http_base.rstrip('/')}/{route.lstrip('/')}"
+        response = self._http.request(
+            method="GET",
+            url=url,
+            timeout=urllib3.Timeout(total=30),
+        )
+
+        if response.status >= HTTPStatus.BAD_REQUEST.value:
+            message = f"HTTP {response.status}: {response.data.decode('utf-8', 'replace')}"
+            raise RuntimeError(message)
+
+        return bytes(response.data)
+
     def _attempt_reconnect(self) -> None:
         if not self.is_connected and self.http_base is not None:
             self.connect(self.http_base)
@@ -128,6 +144,10 @@ class ComfyWebsocket(QObject):
 
     @pyqtSlot()
     def _emit_open(self) -> None:
+        # Every successful websocket handshake gets a server-issued SID.
+        # Clear the previous one until the initial status event supplies the
+        # new session identifier.
+        self.sid = None
         self.is_connected = True
         self.on_open.emit(self.ws_url)
 

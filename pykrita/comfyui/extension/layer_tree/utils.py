@@ -57,13 +57,13 @@ class LayerUtils:
             if str(token.quuid) != target_id:
                 continue
 
+            # Krita childNodes() is ordered bottom-most to top-most. The
+            # target marker is therefore placed before a layer for "below"
+            # and after it for "above".
             if token.type == "layer":
-                return index if direction == "above" else index + 1
+                return index if direction == "below" else index + 1
 
             if token.type == "group_start":
-                if direction == "above":
-                    return index
-
                 group_end = next(
                     (
                         end_index
@@ -76,7 +76,7 @@ class LayerUtils:
                     message = f"Could not find the closing token for group {target_id}"
                     raise ValueError(message)
 
-                return group_end + 1
+                return index if direction == "below" else group_end + 1
 
         message = f"Target {target_id} is not present in the layer snapshot"
         raise ValueError(message)
@@ -125,6 +125,17 @@ class LayerUtils:
             (node for node in cls.flatten_tree(document.topLevelNodes()) if str(node.uniqueId()) == target_id),
             None,
         )
+
+    @classmethod
+    def insert_node(cls, document: Document, node: Node, path: list[FlatLayerToken]) -> None:
+        relative_path = cls.rebase_path(document, path)
+        if relative_path is None:
+            message = "The rebased output insertion parent no longer exists"
+            raise ValueError(message)
+
+        if not relative_path.parent.addChildNode(node, relative_path.sibling):
+            message = "Krita rejected the generated layer insertion"
+            raise RuntimeError(message)
 
     @classmethod
     def rebase_path(cls, document: "Document", path: list[FlatLayerToken]) -> "LayerRelativePath | None":
