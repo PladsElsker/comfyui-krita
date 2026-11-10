@@ -58,6 +58,12 @@ class SaveImageState(UiNodeState):
     layer_name: str
 
 
+class LoadImageState(UiNodeState):
+    layer_ids: list[str]
+    layer_names: list[str]
+    snapshot_revision: str
+
+
 KritaLayerType = Literal[
     "paintlayer",
     "vectorlayer",
