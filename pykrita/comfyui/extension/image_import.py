@@ -73,25 +73,45 @@ def _create_populated_layer(
         message = "Krita could not prepare an sRGB color space for the generated layer"
         raise RuntimeError(message)
 
-    pixel_write = node.setPixelData(pixel_data, 0, 0, width, height)
+    pixel_write_result = node.setPixelData(pixel_data, 0, 0, width, height)
     qWarning(
-        f"[ComfyUI Krita Image] setPixelData returned {pixel_write}; " f"layer color={node.colorModel()}/{node.colorDepth()}/{node.colorProfile()}"
+        f"[ComfyUI Krita Image] setPixelData returned {pixel_write_result!r} "
+        f"(type={type(pixel_write_result).__name__}); "
+        f"layer color={node.colorModel()}/{node.colorDepth()}/{node.colorProfile()}"
     )
-    if not pixel_write:
-        qCritical("[ComfyUI Krita Image] PIXEL WRITE FAILED: Node.setPixelData returned false")
+    # Krita 5.2.x shipped a SIP declaration that exposed this bool-returning
+    # C++ method as void, so Python receives None even when the write succeeds.
+    # Only an explicit False is a failed write; None must be verified by readback.
+    if pixel_write_result is False:
+        qCritical("[ComfyUI Krita Image] PIXEL WRITE FAILED: Krita explicitly returned False")
         message = "Krita rejected the generated image pixel buffer"
         raise RuntimeError(message)
 
-    written_pixels = node.pixelData(0, 0, width, height)
+    written_pixels = bytes(node.pixelData(0, 0, width, height))
     expected_bytes = width * height * 4
     qWarning(
         f"[ComfyUI Krita Image] Pixel readback: byte_count={len(written_pixels)}, "
-        f"expected={expected_bytes}, contains_nonzero_data={any(written_pixels)}"
+        f"expected={expected_bytes}, matches_input={written_pixels == pixel_data}, "
+        f"contains_nonzero_data={any(written_pixels)}"
     )
     if len(written_pixels) != expected_bytes:
         qCritical(f"[ComfyUI Krita Image] PIXEL READBACK FAILED: actual={len(written_pixels)}, " f"expected={expected_bytes}")
         message = f"Krita stored {len(written_pixels)} bytes for the generated layer; expected {expected_bytes}"
         raise RuntimeError(message)
+
+    if written_pixels != pixel_data:
+        first_mismatch = next(
+            (index for index, (actual, expected) in enumerate(zip(written_pixels, pixel_data, strict=True)) if actual != expected),
+            None,
+        )
+        qCritical(
+            f"[ComfyUI Krita Image] PIXEL CONTENT MISMATCH: first_different_byte={first_mismatch}, "
+            f"actual_length={len(written_pixels)}, expected_length={len(pixel_data)}"
+        )
+        message = "Krita pixel readback does not match the generated PNG pixel buffer"
+        raise RuntimeError(message)
+
+    qWarning("[ComfyUI Krita Image] Pixel write verified byte-for-byte")
 
     return node
 
