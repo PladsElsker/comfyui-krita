@@ -369,7 +369,7 @@ class ComfyKritaBridge(QObject):
             layer_name += f" ({notification.batch_index + 1}/{notification.batch_size})"
 
         try:
-            node = insert_png_image(document, image_data, state.path, layer_name)
+            insert_png_image(document, image_data, state.path, layer_name)
         except Exception as error:  # noqa: BLE001
             LOGGER.exception(
                 "Generated image %s was fetched but could not be inserted into document %s",
