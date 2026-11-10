@@ -46,6 +46,7 @@ MAX_LOAD_IMAGE_REVISION_LENGTH = 128
 class LoadImageSnapshot:
     state: LoadImageState
     data: bytes
+    preview: dict[str, str]
     updated_at: float
 
 
@@ -147,6 +148,17 @@ def _write_snapshot_preview(image_data: bytes) -> dict[str, str]:
     return {"filename": filename, "subfolder": "", "type": "temp"}
 
 
+def _delete_snapshot_preview(preview: dict[str, str]) -> None:
+    filename = preview.get("filename")
+    if not filename or Path(filename).name != filename:
+        return
+    filepath = Path(folder_paths.get_temp_directory()) / filename
+    try:
+        filepath.unlink(missing_ok=True)
+    except OSError:
+        LOGGER.warning("Could not remove stale Krita preview file %s", filepath, exc_info=True)
+
+
 class KritaApi:
     def __init__(self) -> None:
         self.registered_documents: dict[str, set[str]] = {}
@@ -229,7 +241,6 @@ class KritaApi:
         key = (state.document_id, state.id, state.type)
         existing = self.load_image_snapshots.get(key)
         changed = existing is None or existing.state.snapshot_revision != revision
-        preview = _write_snapshot_preview(image_data) if changed else None
         total_bytes = sum(len(snapshot.data) for snapshot in self.load_image_snapshots.values())
         if existing is not None:
             total_bytes -= len(existing.data)
@@ -245,23 +256,40 @@ class KritaApi:
                 key=lambda item: self.load_image_snapshots[item].updated_at,
             )
             oldest = self.load_image_snapshots.pop(oldest_key)
+            _delete_snapshot_preview(oldest.preview)
             total_bytes -= len(oldest.data)
 
         if total_bytes + len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES:
             message = "The ComfyUI Krita snapshot cache is full"
             raise ValueError(message)
 
+        preview = (
+            _write_snapshot_preview(image_data)
+            if changed
+            else existing.preview
+        )
+        if existing is not None and changed:
+            _delete_snapshot_preview(existing.preview)
+
         self.load_image_snapshots[key] = LoadImageSnapshot(
             state=canonical_state,
             data=image_data,
+            preview=preview,
             updated_at=time.monotonic(),
         )
         self.node_states.setdefault(sid, {})[key] = canonical_state
-        event = {"deleted": False, "state": canonical_state.model_dump()}
-        if preview is not None:
-            event["preview"] = preview
+        event = {
+            "deleted": False,
+            "state": canonical_state.model_dump(),
+            "preview": preview,
+        }
         await PromptServer.instance.send("krita::nodes::update", event)
         return {"snapshot_revision": revision, "changed": changed}
+
+    def _remove_load_image_snapshot(self, key: tuple[str, int, str]) -> None:
+        snapshot = self._remove_load_image_snapshot(key)
+        if snapshot is not None:
+            _delete_snapshot_preview(snapshot.preview)
 
     def has_load_image_snapshot(self, state: LoadImageState) -> bool:
         snapshot = self.load_image_snapshots.get((state.document_id, state.id, state.type))
@@ -416,7 +444,7 @@ class KritaApi:
 
             deleted_key = (update.document_id, update.id, update.type)
             sid_states.pop(deleted_key, None)
-            self.load_image_snapshots.pop(deleted_key, None)
+            self._remove_load_image_snapshot(deleted_key)
             await PromptServer.instance.send(
                 "krita::nodes::update",
                 {
@@ -488,10 +516,7 @@ class KritaApi:
                 del self.registered_documents[sid]
                 self.document_mappings.pop(sid, None)
                 for state in self.node_states.pop(sid, {}).values():
-                    self.load_image_snapshots.pop(
-                        (state.document_id, state.id, state.type),
-                        None,
-                    )
+                    self._remove_load_image_snapshot((state.document_id, state.id, state.type))
                     await self._broadcast_deleted_node_state(state)
                 has_changed = True
 
@@ -551,7 +576,7 @@ class KritaApi:
             del self.registered_documents[sid]
             self.document_mappings.pop(sid, None)
             for state in self.node_states.pop(sid, {}).values():
-                self.load_image_snapshots.pop((state.document_id, state.id, state.type), None)
+                self._remove_load_image_snapshot((state.document_id, state.id, state.type))
                 await self._broadcast_deleted_node_state(state)
 
     def _document_id_to_sid(self, document_id: str) -> str | None:
