@@ -279,9 +279,7 @@ class ComfyKritaBridge(QObject):
             node_list_id = id(node_list)
             if node_list_id not in self._connected_node_lists:
                 node_list.node_state_changed.connect(self._publish_node_state)
-                node_list.snapshot_upload_requested.connect(
-                    self._queue_load_image_snapshot_upload
-                )
+                node_list.snapshot_upload_requested.connect(self._queue_load_image_snapshot_upload)
                 self._connected_node_lists.add(node_list_id)
 
             for state in node_list.previous_node_states.values():
@@ -340,7 +338,6 @@ class ComfyKritaBridge(QObject):
             self._node_state_upload_attempts.pop(key, None)
 
         self._start_pending_node_state_upload()
-
 
     def _queue_load_image_snapshot_upload(
         self,
