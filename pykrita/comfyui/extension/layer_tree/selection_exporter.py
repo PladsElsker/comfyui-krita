@@ -124,9 +124,8 @@ def _render_scratch_projection(
     scratch_document: Document,
     keep_ids: set[str],
 ) -> QImage:
-    _warn("[Load Image export] configuring scratch document")
+    _warn("[Load Image export] configuring scratch document (batch mode)")
     scratch_document.setBatchmode(True)
-    scratch_document.setAutosave(False)
 
     cloned_nodes = _nodes_by_id(scratch_document.rootNode())
     missing_ids = keep_ids - cloned_nodes.keys()
