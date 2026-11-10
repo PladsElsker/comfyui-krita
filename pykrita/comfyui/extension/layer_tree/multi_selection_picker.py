@@ -4,8 +4,11 @@ from krita import Document, Node, View, Window
 from PyQt5.QtCore import QEvent, QItemSelectionModel, QModelIndex, QObject, Qt, pyqtSignal
 from PyQt5.QtWidgets import QApplication, QAbstractItemView, QTreeView
 
-from .target_picker import TargetSelectionUnavailableError
-from .utils import LayerUtils
+from .target_picker import (
+    TargetSelectionUnavailableError,
+    claim_selection_session,
+    release_selection_session,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -60,6 +63,7 @@ class LayerMultiSelectionPicker(QObject):
         if selection_model is None:
             raise TargetSelectionUnavailableError("Krita's Layers Docker has no selection model")
 
+        claim_selection_session(self)
         self._view = view
         self._layer_view = layer_view
         self._selection_model = selection_model
@@ -115,13 +119,12 @@ class LayerMultiSelectionPicker(QObject):
             raise RuntimeError("The Layers Docker selection model disappeared during layer selection")
 
         selected_indexes = selection_model.selectedRows(0)
-        selected_index_set = set(selected_indexes)
         # Preserve the document's layer-stack order rather than the order in
         # which the user clicked rows.
         selected_nodes = [
             node
             for node in self._walk_nodes(self.document.rootNode())
-            if node.type() in SUPPORTED_LAYER_TYPES and self._index_for_node(node) in selected_index_set
+            if node.type() in SUPPORTED_LAYER_TYPES and self._index_for_node(node) in selected_indexes
         ]
         if not selected_nodes:
             raise ValueError("Select at least one layer before accepting")
@@ -259,3 +262,4 @@ class LayerMultiSelectionPicker(QObject):
         self._previous_selection_ids = []
         self._previous_active_node_id = None
         self._previous_selection_mode = None
+        release_selection_session(self)
