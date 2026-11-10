@@ -1,9 +1,7 @@
 import logging
 
 from krita import Document, Node
-from PyQt5.QtCore import QEventLoop
 from PyQt5.QtGui import QImage
-from PyQt5.QtWidgets import QApplication
 
 LOGGER = logging.getLogger(__name__)
 
@@ -89,9 +87,6 @@ def _get_required_node_ids(selected_roots: list[Node]) -> set[str]:
 
 
 def _clone_document(document: Document) -> Document:
-    LOGGER.info("[Load Image export] processing pending UI events")
-    QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
-
     LOGGER.info("[Load Image export] waiting for source document jobs")
     document.waitForDone()
 
