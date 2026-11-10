@@ -6,6 +6,7 @@ from .constants import KRITA_IO_NODE_TYPES, KRITA_OUTPUT_NODE_TYPES
 from .krita_api import api
 from .models import (
     DocumentMappingResponse,
+    KritaNodeStateUpdate,
     UpdateKritaDocumentsRequest,
     UpdateWorkflowsRequest,
 )
@@ -17,6 +18,12 @@ def define_routes() -> None:
 
 
 def _define_krita_routes() -> None:
+    _define_document_routes()
+    _define_node_state_routes()
+    _define_image_transfer_routes()
+
+
+def _define_document_routes() -> None:
     @PromptServer.instance.routes.put("/krita/{sid}/documents")
     async def update_documents(request: Request) -> Response:
         sid = request.match_info["sid"]
@@ -29,6 +36,7 @@ def _define_krita_routes() -> None:
             local_document_mapping = await api.update_documents(
                 update_request.sid,
                 update_request.documents,
+                update_request.previous_mappings,
             )
             mapping_response = DocumentMappingResponse(mapping=local_document_mapping)
             return web.json_response(mapping_response.model_dump())
@@ -43,6 +51,43 @@ def _define_krita_routes() -> None:
             return web.json_response(krita_workflows.model_dump() if krita_workflows is not None else None)
         except Exception:  # noqa: BLE001
             return web.json_response(status=400)
+
+
+def _define_node_state_routes() -> None:
+    @PromptServer.instance.routes.put("/krita/{sid}/nodes/state")
+    async def update_node_state(request: Request) -> Response:
+        sid = request.match_info["sid"]
+        try:
+            update = KritaNodeStateUpdate.model_validate(await request.json())
+            await api.update_node_state(sid, update)
+        except LookupError:
+            return web.json_response(status=404)
+        except Exception:  # noqa: BLE001
+            return web.json_response(status=400)
+        return web.json_response()
+
+    @PromptServer.instance.routes.get("/krita/nodes/states")
+    async def get_node_states(request: Request) -> Response:  # noqa: ARG001
+        try:
+            await api.prune_stale_sids_async()
+            states = [state.model_dump() for state in api.get_node_states()]
+            return web.json_response({"states": states})
+        except Exception:  # noqa: BLE001
+            return web.json_response(status=400)
+
+
+def _define_image_transfer_routes() -> None:
+    @PromptServer.instance.routes.get("/krita/images/{transfer_id}")
+    async def get_generated_image(request: Request) -> Response:
+        transfer_id = request.match_info["transfer_id"]
+        image_data = api.get_staged_image(transfer_id)
+        if image_data is None:
+            return web.Response(status=404)
+        return web.Response(
+            body=image_data,
+            content_type="image/png",
+            headers={"Cache-Control": "no-store"},
+        )
 
 
 def _define_comfy_routes() -> None:

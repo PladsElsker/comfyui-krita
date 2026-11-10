@@ -79,11 +79,11 @@ def test__given_default_page_loaded__when_get_app_graph__then_app_graph_is_not_n
         """
         async () => {
             const app = (await import('../../../scripts/app.js')).app;
-            return app.graph;
+            return app.graph !== undefined && app.graph !== null;
         }
         """,
     )
-    assert app_graph is not None, "app.graph is not defined"
+    assert app_graph is True, "app.graph is not defined"
 
 
 def test__given_default_page_loaded__when_get_app_graph_nodes__then_app_graph_nodes_are_not_none(default_page: Page) -> None:
@@ -91,11 +91,11 @@ def test__given_default_page_loaded__when_get_app_graph_nodes__then_app_graph_no
         """
         async () => {
             const app = (await import('../../../scripts/app.js')).app;
-            return app.graph.nodes;
+            return Array.isArray(app.graph?.nodes);
         }
         """,
     )
-    assert app_graph is not None, "app.graph.nodes is not defined"
+    assert app_graph is True, "app.graph.nodes is not defined"
 
 
 def test__given_si1_workflow__when_serialize_node__then_serialized_node_is_not_none(si1_workflow: Page) -> None:
@@ -139,11 +139,11 @@ def test__given_si1_workflow__when_get_internal_krita_nodes__then_1_node_is_retu
         """
         async () => {
             const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
-            return workflow_actions_module.getInternalKritaNodes();
+            return workflow_actions_module.getInternalKritaNodes().length;
         }
         """,
     )
-    assert len(internal_krita_nodes) == 1, "expected exactly 1 internal krita node for si1 workflow"
+    assert internal_krita_nodes == 1, "expected exactly 1 internal krita node for si1 workflow"
 
 
 def test__given_si3_workflow__when_get_internal_krita_nodes__then_3_nodes_are_returned(si3_workflow: Page) -> None:
@@ -151,12 +151,12 @@ def test__given_si3_workflow__when_get_internal_krita_nodes__then_3_nodes_are_re
         """
         async () => {
             const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
-            return workflow_actions_module.getInternalKritaNodes();
+            return workflow_actions_module.getInternalKritaNodes().length;
         }
         """,
     )
     assert (
-        len(internal_krita_nodes) == SI3_AMOUNT_OF_INTERNAL_KRITA_NODES
+        internal_krita_nodes == SI3_AMOUNT_OF_INTERNAL_KRITA_NODES
     ), f"expected exactly {SI3_AMOUNT_OF_INTERNAL_KRITA_NODES} internal krita nodes for si3 workflow"
 
 
@@ -330,3 +330,167 @@ def test__given_si5r_workflow__when_modify_documents__then_document_ids_are_modi
         assert all(document_id in document_map.root for document_id in ["candy"]), "expected document id 'candy' in the map"
     except ValidationError:
         pytest.fail("getDocumentIdsNodeMap() returned a bad model")
+
+
+def test__given_krita_output_node__when_krita_state_updates__then_metadata_widget_is_updated(si1_workflow: Page) -> None:
+    updated_state = si1_workflow.evaluate(
+        """
+        async () => {
+            const workflow_actions_module = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const node = workflow_actions_module.getInternalKritaNodes()[0];
+            const document_widget = node.widgets.find(w => w.label === "document");
+            const metadata_widget = node.widgets.find(w => w.label === "_meta-15347");
+
+            document_widget.value = "krita-document-1";
+            const state = {
+                id: node.id,
+                type: "KritaSaveImage-15347",
+                document_id: "krita-document-1",
+                insert_direction: "above",
+                layer_name: "Background",
+                path: [
+                    { quuid: "layer-uuid", type: "target" }
+                ]
+            };
+
+            workflow_actions_module.applyKritaNodeState(state);
+            return JSON.parse(metadata_widget.value);
+        }
+        """,
+    )
+
+    assert updated_state["document_id"] == "krita-document-1"
+    assert updated_state["insert_direction"] == "above"
+    assert updated_state["path"] == [{"quuid": "layer-uuid", "type": "target"}]
+
+
+def test__given_nested_subgraph__when_get_internal_krita_nodes__then_nested_node_is_found(
+    default_page: Page,
+) -> None:
+    node_ids = default_page.evaluate(
+        """
+        async () => {
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const nestedGraph = { nodes: [] };
+            const nestedKritaNode = { id: 42, type: "KritaSaveImage-15347" };
+            nestedGraph.nodes.push(nestedKritaNode);
+            const rootGraph = {
+                nodes: [
+                    { id: 1, type: "Reroute", subgraph: nestedGraph },
+                    { id: 2, type: "Reroute", subgraph: nestedGraph },
+                ]
+            };
+            nestedGraph.nodes.push({ id: 3, type: "Reroute", subgraph: nestedGraph });
+            return workflow.getInternalKritaNodes(rootGraph).map(node => node.id);
+        }
+        """,
+    )
+    assert node_ids == [42], "nested Krita nodes should be found exactly once"
+
+
+def test__given_nested_subgraph__when_fix_krita_node_ui__then_nested_metadata_widget_is_hidden(
+    default_page: Page,
+) -> None:
+    metadata_widget = default_page.evaluate(
+        """
+        async () => {
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const metadataWidget = { label: "_meta-15347", hidden: false };
+            const nestedNode = {
+                type: "KritaSaveImage-15347",
+                inputs: [{ name: "_meta-15347" }, { name: "document" }],
+                widgets: [metadataWidget],
+            };
+            workflow.fixKritaNodeUi({
+                type: "Reroute",
+                subgraph: { nodes: [nestedNode] },
+            });
+            return {
+                hidden: metadataWidget.hidden,
+                remainingInputs: nestedNode.inputs.length,
+            };
+        }
+        """,
+    )
+    assert metadata_widget == {"hidden": True, "remainingInputs": 0}
+
+
+def test__given_krita_document_names__when_updating_document_widget_values__then_dynamic_combo_contains_selected_document(
+    si1_workflow: Page,
+) -> None:
+    dropdown_state = si1_workflow.evaluate(
+        """
+        async () => {
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const node = workflow.getInternalKritaNodes()[0];
+            await workflow.updateDocumentWidgetValues(["Unnamed"]);
+            const dropdown = node.widgets.find(widget => widget.label === "document");
+            return {
+                options: dropdown.options.values,
+                value: dropdown.value,
+            };
+        }
+        """,
+    )
+    assert dropdown_state == {"options": ["Unnamed"], "value": "Unnamed"}
+
+
+def test__given_krita_node__when_hiding_metadata_widget__then_widget_remains_serializable_but_not_visible(
+    default_page: Page,
+) -> None:
+    metadata_state = default_page.evaluate(
+        """
+        async () => {
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const metadataWidget = {
+                name: "_meta-15347",
+                value: '{"document_id":"Unnamed"}',
+                hidden: false,
+                options: {},
+            };
+            const node = {
+                type: "KritaSaveImage-15347",
+                inputs: [{ name: "_meta-15347" }, { name: "document" }],
+                widgets: [metadataWidget],
+                setDirtyCanvas() {},
+            };
+            workflow.fixKritaNodeUi(node);
+            return {
+                hidden: metadataWidget.hidden,
+                optionsHidden: metadataWidget.options.hidden,
+                value: metadataWidget.value,
+                remainingInputs: node.inputs.length,
+            };
+        }
+        """,
+    )
+    assert metadata_state == {
+        "hidden": True,
+        "optionsHidden": True,
+        "value": '{"document_id":"Unnamed"}',
+        "remainingInputs": 0,
+    }
+
+
+def test__given_krita_output_node__when_metadata_input_is_created__then_metadata_widget_is_hidden(si1_workflow: Page) -> None:
+    metadata_state = si1_workflow.evaluate(
+        """
+        async () => {
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const node = workflow.getInternalKritaNodes()[0];
+            const widget = node.widgets.find(
+                item => item.name === "_meta-15347" || item.label === "_meta-15347"
+            );
+            return {
+                found: Boolean(widget),
+                hidden: widget?.hidden ?? false,
+                optionsHidden: widget?.options?.hidden ?? false,
+            };
+        }
+        """,
+    )
+    assert metadata_state == {
+        "found": True,
+        "hidden": True,
+        "optionsHidden": True,
+    }

@@ -6,7 +6,7 @@ const DOCUMENT_WIDGET_LABEL = "document";
 const META_WIDGET_LABEL = "_meta-15347";
 const KRITA_DOCUMENT_GRAPH_USAGE_REFRESH_RATE = 300;
 export const COMFY_TABS_CONTAINER_SELECTOR = ".workflow-tabs-container";
-export const COMFY_ACTIVE_TAB_SELECTOR = ".p-togglebutton.p-component.p-togglebutton-checked .workflow-label";
+export const COMFY_ACTIVE_TAB_SELECTOR = '[role="tab"][aria-selected="true"] .workflow-label';
 const KRITA_CUSTOM_IO_NODE_TYPES = [
     KRITA_SAVE_IMAGE_NODE_TYPE
 ];
@@ -15,6 +15,9 @@ const EXTENSION_NAME = "Krita.WorkflowSync";
 let baseUrl = null;
 let previousTabName = null;
 let previousDocumentIdLists = {};
+let websocketRoutesSetup = false;
+const kritaNodeStateCache = new Map();
+const kritaNodeStateEventRevisions = new Map();
 
 
 export const api = (() => {
@@ -55,56 +58,177 @@ export const api = (() => {
 export const extension = { 
     name: EXTENSION_NAME,
     async afterConfigureGraph() {
-        await updateDocumentWidgetValues();
-        await setupAdditionalWebsocketRoutes();
-        await sendWorkflow(true);
-        await sendWorkflowOnChanges();
-
-        for(const node of app.graph.nodes) {
+        for(const node of getGraphNodesRecursive()) {
             fixKritaNodeUi(node);
         }
+
+        setupAdditionalWebsocketRoutes();
+        await updateDocumentWidgetValues();
+        await loadKritaNodeStates();
+        applyCachedKritaNodeStates();
+        await sendWorkflow(true);
+        await sendWorkflowOnChanges();
     },
     async nodeCreated(node) {
         fixKritaNodeUi(node);
+        applyCachedKritaNodeStates();
     },
 };
 
 
-export function fixKritaNodeUi(node) {
-    if(node.type && !KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)) return;
+export function fixKritaNodeUi(node, visitedNodes=new Set()) {
+    if(!node || visitedNodes.has(node)) return;
+    visitedNodes.add(node);
 
-    const metaWidget = node.widgets?.find(w => w.label === META_WIDGET_LABEL);
-    const metaSlot = node.inputs.find(i => i.name === META_WIDGET_LABEL);
-    const documentSlot = node.inputs.find(i => i.name === DOCUMENT_WIDGET_LABEL);
-    if(documentSlot) {
-        const slotIndex = node.inputs.indexOf(documentSlot);
-        node.inputs.splice(slotIndex, 1);
-    }
-    if(metaSlot) {
-        const slotIndex = node.inputs.indexOf(metaSlot);
-        node.inputs.splice(slotIndex, 1);
-    }
-    if(metaWidget) {
-        metaWidget.hidden = true;
+    if(KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)) {
+        const inputs = node.inputs ?? [];
+        const metaSlot = inputs.find(i => i.name === META_WIDGET_LABEL);
+        const documentSlot = inputs.find(i => i.name === DOCUMENT_WIDGET_LABEL);
+
+        if(documentSlot) inputs.splice(inputs.indexOf(documentSlot), 1);
+        if(metaSlot) inputs.splice(inputs.indexOf(metaSlot), 1);
+        hideKritaMetadataWidget(node);
     }
 
-    if(node.subgraph) {
-        for(const subnode of node.subgraph.nodes) {
-            fixKritaNodeUi(subnode);
-        }
+    // Ordinary ComfyUI nodes can own subgraphs that contain Krita nodes.
+    for(const subnode of (node.subgraph?.nodes ?? [])) {
+        fixKritaNodeUi(subnode, visitedNodes);
     }
 }
 
 
+function findKritaWidget(node, name) {
+    return node.widgets?.find(widget =>
+        widget.name === name || widget.label === name
+    ) ?? null;
+}
+
+
+function hideKritaMetadataWidget(node) {
+    const widget = findKritaWidget(node, META_WIDGET_LABEL);
+    if(!widget) return;
+
+    // V3 schema-level hidden flag is authoritative; keep matching widget flags
+    // here for workflows loaded from older node definitions.
+    widget.options = widget.options ?? {};
+    widget.hidden = true;
+    widget.options.hidden = true;
+    node.setDirtyCanvas?.(true, true);
+}
+
+
 export function setupAdditionalWebsocketRoutes() {
+    if(websocketRoutesSetup) return;
+    websocketRoutesSetup = true;
+
     app.api.socket.addEventListener('message', async event => {
-        const data = JSON.parse(event.data);
-        switch(data.type) {
-            case "krita::documents::update":
-                updateDocumentWidgetValues(data.data.documents);
-                await sendWorkflow();
+        if(typeof event.data !== "string") return;
+
+        try {
+            const data = JSON.parse(event.data);
+            switch(data.type) {
+                case "krita::documents::update":
+                    await updateDocumentWidgetValues(data.data.documents);
+                    await sendWorkflow();
+                    break;
+                case "krita::nodes::update":
+                    if(data.data.deleted) {
+                        removeKritaNodeState(data.data);
+                    }
+                    else if(data.data.state) {
+                        applyKritaNodeState(data.data.state);
+                    }
+                    break;
+            }
+        }
+        catch(error) {
+            console.error("Could not process a Krita integration websocket event", error);
         }
     });
+}
+
+
+function kritaNodeStateKey(documentId, nodeId, nodeType=KRITA_SAVE_IMAGE_NODE_TYPE) {
+    return `${documentId}::${nodeType}::${nodeId}`;
+}
+
+
+export function applyKritaNodeState(state) {
+    if(!state || state.type !== KRITA_SAVE_IMAGE_NODE_TYPE || !state.document_id) return;
+
+    const key = kritaNodeStateKey(state.document_id, state.id, state.type);
+    kritaNodeStateEventRevisions.set(key, (kritaNodeStateEventRevisions.get(key) ?? 0) + 1);
+    kritaNodeStateCache.set(key, state);
+    applyCachedKritaNodeStates();
+}
+
+
+function removeKritaNodeState(deleted) {
+    if(!deleted?.document_id || deleted.id === undefined || !deleted.type) return;
+
+    const key = kritaNodeStateKey(deleted.document_id, deleted.id, deleted.type);
+    kritaNodeStateEventRevisions.set(key, (kritaNodeStateEventRevisions.get(key) ?? 0) + 1);
+    kritaNodeStateCache.delete(key);
+    applyCachedKritaNodeStates();
+}
+
+
+export async function loadKritaNodeStates() {
+    const revisionsAtRequest = new Map(kritaNodeStateEventRevisions);
+    try {
+        const response = await api.get('/krita/nodes/states');
+        for(const state of (response.states ?? [])) {
+            if(state.type !== KRITA_SAVE_IMAGE_NODE_TYPE || !state.document_id) continue;
+
+            const key = kritaNodeStateKey(state.document_id, state.id, state.type);
+            if((kritaNodeStateEventRevisions.get(key) ?? 0) !== (revisionsAtRequest.get(key) ?? 0)) continue;
+
+            kritaNodeStateCache.set(key, state);
+        }
+        applyCachedKritaNodeStates();
+    }
+    catch(error) {
+        console.error("Could not load the current Krita output-node state", error);
+    }
+}
+
+
+export function applyCachedKritaNodeStates() {
+    for(const node of getInternalKritaNodes()) {
+        const documentWidget = findKritaWidget(node, DOCUMENT_WIDGET_LABEL);
+        const metaWidget = findKritaWidget(node, META_WIDGET_LABEL);
+        hideKritaMetadataWidget(node);
+        if(!metaWidget) continue;
+
+        const documentId = documentWidget?.value;
+        const state = documentId
+            ? kritaNodeStateCache.get(kritaNodeStateKey(documentId, node.id, node.type))
+            : null;
+
+        if(state) {
+            setNodeMetadataValue(node, metaWidget, state);
+            continue;
+        }
+
+        setNodeMetadataValue(node, metaWidget, {
+            id: node.id,
+            type: node.type,
+            document_id: "",
+            insert_direction: "below",
+            path: [{ quuid: null, type: "target" }],
+            layer_name: "Not set",
+        });
+    }
+}
+
+
+function setNodeMetadataValue(node, widget, value) {
+    const serialized = typeof value === "string" ? value : JSON.stringify(value);
+    if(widget.value === serialized) return;
+
+    widget.value = serialized;
+    node.graph?.change?.();
+    node.setDirtyCanvas?.(true, true);
 }
 
 
@@ -114,13 +238,14 @@ export async function updateDocumentWidgetValues(documentNames=null) {
     if(documentNames === null) documentNames = (await api.get('/krita/documents')).documents;
 
     for(const node of internalKritaNodes) {
-        const dropdownWidget = node.widgets.find(w => w.label === DOCUMENT_WIDGET_LABEL);
+        const dropdownWidget = findKritaWidget(node, DOCUMENT_WIDGET_LABEL);
         if(!dropdownWidget) {
             console.warn(`Could not find document widget in krita node: ${node}.`);
             continue;
         }
 
-        const array = dropdownWidget.options.values;
+        dropdownWidget.options = dropdownWidget.options ?? {};
+        const array = dropdownWidget.options.values ?? (dropdownWidget.options.values = []);
         array.splice(0, array.length);
         documentNames.forEach(d => array.push(d));
         if(!documentNames.includes(dropdownWidget.value)) {
@@ -130,6 +255,8 @@ export async function updateDocumentWidgetValues(documentNames=null) {
             dropdownWidget.value = documentNames[0]
         }
     }
+
+    applyCachedKritaNodeStates();
 }
 
 
@@ -144,6 +271,7 @@ export async function sendWorkflowOnChanges() {
 
 
 export async function sendWorkflow(skipCondition=false) {
+    applyCachedKritaNodeStates();
     const tabName = getActiveTabName();
     if(!tabName) return;
 
@@ -174,7 +302,7 @@ export async function sendWorkflow(skipCondition=false) {
 export function getActiveTabName() {
     const tabGroupElement = document.querySelector(COMFY_TABS_CONTAINER_SELECTOR);
     const tabElements = tabGroupElement?.querySelector(COMFY_ACTIVE_TAB_SELECTOR);
-    return tabElements?.innerHTML ?? previousTabName;
+    return tabElements?.textContent?.trim() ?? previousTabName;
 }
 
 
@@ -221,45 +349,35 @@ export function wsToHttpBase(wsUrl) {
 }
 
 
-export function getInternalKritaNodes() {
-    const internalKritaNodes = [];
-    const nodes = getGraphNodesRecursive();
-
-    for(const node of nodes) {
-        if(KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)) {
-            internalKritaNodes.push(node);
-        }
-    }
-
-    return internalKritaNodes;
+export function getInternalKritaNodes(rootGraph=app.graph) {
+    return getGraphNodesRecursive(rootGraph).filter(
+        node => KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)
+    );
 }
 
 
-export function generateActiveKritaNodes() {
-    const kritaNodes = [];
+export function generateActiveKritaNodes(rootGraph=app.graph) {
     const customKritaNodeFactory = new CustomKritaNodeFactory();
 
-    const nodePairs = getGraphNodesRecursive();
-
-    for(const internalNode of nodePairs) {
-        if(!KRITA_CUSTOM_IO_NODE_TYPES.includes(internalNode.type)) continue;
-        if(internalNode.mode !== 0) continue;
-
-        const customKritaNode = customKritaNodeFactory.create(internalNode);
-        kritaNodes.push(customKritaNode.dump());
-    }
-
-    return kritaNodes;
+    return getInternalKritaNodes(rootGraph)
+        .filter(internalNode => internalNode.mode === 0)
+        .map(internalNode => customKritaNodeFactory.create(internalNode).dump());
 }
 
 
-export function getGraphNodesRecursive(rootGraph) {
-    if(!rootGraph) rootGraph = app.graph;
+export function getGraphNodesRecursive(rootGraph=app.graph, visitedGraphs=new Set(), visitedNodes=new Set()) {
+    if(!rootGraph || visitedGraphs.has(rootGraph)) return [];
+    visitedGraphs.add(rootGraph);
 
     const nodes = [];
-    for(const node of rootGraph.nodes) {
+    for(const node of (rootGraph.nodes ?? [])) {
+        if(!node || visitedNodes.has(node)) continue;
+        visitedNodes.add(node);
         nodes.push(node);
-        if(node.subgraph) getGraphNodesRecursive(node.subgraph).forEach(n => nodes.push(n));
+
+        if(node.subgraph) {
+            nodes.push(...getGraphNodesRecursive(node.subgraph, visitedGraphs, visitedNodes));
+        }
     }
 
     return nodes;
