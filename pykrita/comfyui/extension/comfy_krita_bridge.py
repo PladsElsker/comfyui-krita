@@ -435,11 +435,11 @@ class ComfyKritaBridge(QObject):
             state.id,
             error,
         )
-        if widget is not None and hasattr(widget, "snapshot_upload_failed"):
-            with suppress(RuntimeError):
-                widget.snapshot_upload_failed(state, error)
         if attempts < MAX_NODE_STATE_UPLOAD_ATTEMPTS:
             QTimer.singleShot(1000, self._start_pending_load_image_snapshot_uploads)
+        elif widget is not None and hasattr(widget, "snapshot_upload_failed"):
+            with suppress(RuntimeError):
+                widget.snapshot_upload_failed(state, error)
 
     def _start_pending_node_state_upload(self) -> None:
         with self._node_state_upload_lock:
