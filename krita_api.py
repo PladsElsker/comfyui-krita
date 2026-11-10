@@ -34,6 +34,9 @@ MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES = 256 * 1024 * 1024
 MAX_LOAD_IMAGE_SNAPSHOTS = 128
 MAX_LOAD_IMAGE_PIXELS = 16_000_000
 MAX_LOAD_IMAGE_LAYERS = 512
+MAX_LOAD_IMAGE_LAYER_ID_LENGTH = 256
+MAX_LOAD_IMAGE_LAYER_NAME_LENGTH = 512
+MAX_LOAD_IMAGE_REVISION_LENGTH = 128
 
 
 @dataclass
@@ -67,6 +70,61 @@ def prune_sids(f: Callable) -> Callable:
         return f(self, *args, **kwargs)
 
     return wrapper
+
+
+def _validate_snapshot_owner(api: "KritaApi", sid: str, state: LoadImageState) -> None:
+    if sid not in api.registered_documents:
+        message = "The Krita websocket session is not registered"
+        raise LookupError(message)
+    if state.document_id not in api.registered_documents[sid]:
+        message = "The image snapshot does not belong to a document registered by this Krita session"
+        raise ValueError(message)
+
+
+def _validate_snapshot_metadata(api: "KritaApi", state: LoadImageState) -> None:
+    if (
+        not state.layer_ids
+        or len(state.layer_ids) != len(state.layer_names)
+        or len(state.layer_ids) > MAX_LOAD_IMAGE_LAYERS
+        or len(set(state.layer_ids)) != len(state.layer_ids)
+    ):
+        message = "The image snapshot must contain a bounded, unique set of matching layer IDs and names"
+        raise ValueError(message)
+    if any(not layer_id or len(layer_id) > MAX_LOAD_IMAGE_LAYER_ID_LENGTH for layer_id in state.layer_ids):
+        message = "The image snapshot contains an invalid layer ID"
+        raise ValueError(message)
+    if any(len(layer_name) > MAX_LOAD_IMAGE_LAYER_NAME_LENGTH for layer_name in state.layer_names):
+        message = "The image snapshot contains an excessively long layer name"
+        raise ValueError(message)
+    if not state.snapshot_revision or len(state.snapshot_revision) > MAX_LOAD_IMAGE_REVISION_LENGTH:
+        message = "The image snapshot revision is missing or invalid"
+        raise ValueError(message)
+
+    current_workflow_nodes = api._last_workflows_request.workflows.get(state.document_id, [])
+    if not any(node.id == state.id and node.type == state.type for node in current_workflow_nodes):
+        message = "The Load Image node is no longer present in the current ComfyUI workflow"
+        raise ValueError(message)
+
+
+def _validate_snapshot_png(image_data: bytes) -> None:
+    try:
+        image = PILImage.open(BytesIO(image_data))
+    except Exception as error:  # noqa: BLE001
+        message = "The Krita image snapshot is not a valid PNG"
+        raise ValueError(message) from error
+
+    with image:
+        if image.format != "PNG" or image.mode not in ("RGBA", "RGB"):
+            message = "The Krita image snapshot must be an RGB or RGBA PNG"
+            raise ValueError(message)
+        if image.width * image.height > MAX_LOAD_IMAGE_PIXELS:
+            message = "The Krita image snapshot exceeds the supported pixel count"
+            raise ValueError(message)
+        try:
+            image.load()
+        except Exception as error:  # noqa: BLE001
+            message = "The Krita image snapshot is not a valid PNG"
+            raise ValueError(message) from error
 
 
 class KritaApi:
@@ -138,39 +196,12 @@ class KritaApi:
         state: LoadImageState,
         image_data: bytes,
     ) -> None:
-        if sid not in self.registered_documents:
-            raise LookupError("The Krita websocket session is not registered")
-        if state.document_id not in self.registered_documents[sid]:
-            raise ValueError("The image snapshot does not belong to a document registered by this Krita session")
-        if (
-            not state.layer_ids
-            or len(state.layer_ids) != len(state.layer_names)
-            or len(state.layer_ids) > MAX_LOAD_IMAGE_LAYERS
-            or len(set(state.layer_ids)) != len(state.layer_ids)
-        ):
-            raise ValueError("The image snapshot must contain a bounded, unique set of matching layer IDs and names")
-        if any(not layer_id or len(layer_id) > 256 for layer_id in state.layer_ids):
-            raise ValueError("The image snapshot contains an invalid layer ID")
-        if any(len(layer_name) > 512 for layer_name in state.layer_names):
-            raise ValueError("The image snapshot contains an excessively long layer name")
-        if not state.snapshot_revision or len(state.snapshot_revision) > 128:
-            raise ValueError("The image snapshot revision is missing or invalid")
-
-        current_workflow_nodes = self._last_workflows_request.workflows.get(state.document_id, [])
-        if not any(node.id == state.id and node.type == state.type for node in current_workflow_nodes):
-            raise ValueError("The Load Image node is no longer present in the current ComfyUI workflow")
+        _validate_snapshot_owner(self, sid, state)
+        _validate_snapshot_metadata(self, state)
         if len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_BYTES:
-            raise ValueError(f"The Krita image snapshot exceeds the {MAX_LOAD_IMAGE_SNAPSHOT_BYTES}-byte limit")
-
-        try:
-            with PILImage.open(BytesIO(image_data)) as image:
-                if image.format != "PNG" or image.mode not in ("RGBA", "RGB"):
-                    raise ValueError("The Krita image snapshot must be an RGB or RGBA PNG")
-                if image.width * image.height > MAX_LOAD_IMAGE_PIXELS:
-                    raise ValueError("The Krita image snapshot exceeds the supported pixel count")
-                image.load()
-        except Exception as error:
-            raise ValueError("The Krita image snapshot is not a valid PNG") from error
+            message = f"The Krita image snapshot exceeds the {MAX_LOAD_IMAGE_SNAPSHOT_BYTES}-byte limit"
+            raise ValueError(message)
+        _validate_snapshot_png(image_data)
 
         key = (state.document_id, state.id, state.type)
         existing = self.load_image_snapshots.get(key)
@@ -179,7 +210,7 @@ class KritaApi:
             total_bytes -= len(existing.data)
 
         while (
-            len(self.load_image_snapshots) >= MAX_LOAD_IMAGE_SNAPSHOTS and existing is None
+            (len(self.load_image_snapshots) >= MAX_LOAD_IMAGE_SNAPSHOTS and existing is None)
             or total_bytes + len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES
         ):
             candidates = [item for item in self.load_image_snapshots if item != key]
@@ -190,7 +221,8 @@ class KritaApi:
             total_bytes -= len(oldest.data)
 
         if total_bytes + len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES:
-            raise ValueError("The ComfyUI Krita snapshot cache is full")
+            message = "The ComfyUI Krita snapshot cache is full"
+            raise ValueError(message)
 
         self.load_image_snapshots[key] = LoadImageSnapshot(
             state=state,
