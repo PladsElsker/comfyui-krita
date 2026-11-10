@@ -14,22 +14,22 @@ class TargetSelectionUnavailableError(RuntimeError):
     """Raised when Krita's Layers Docker cannot host a target-editing session."""
 
 
-_active_selection_picker: object | None = None
+_selection_session: dict[str, object | None] = {"active_picker": None}
 
 
 def claim_selection_session(picker: object) -> None:
-    global _active_selection_picker
-    if _active_selection_picker is not None and _active_selection_picker is not picker:
-        is_editing = getattr(_active_selection_picker, "is_editing", False)
+    active_picker = _selection_session["active_picker"]
+    if active_picker is not None and active_picker is not picker:
+        is_editing = getattr(active_picker, "is_editing", False)
         if is_editing:
-            raise TargetSelectionUnavailableError("Another Krita layer-selection session is already active")
-    _active_selection_picker = picker
+            message = "Another Krita layer-selection session is already active"
+            raise TargetSelectionUnavailableError(message)
+    _selection_session["active_picker"] = picker
 
 
 def release_selection_session(picker: object) -> None:
-    global _active_selection_picker
-    if _active_selection_picker is picker:
-        _active_selection_picker = None
+    if _selection_session["active_picker"] is picker:
+        _selection_session["active_picker"] = None
 
 
 class LayerTargetPicker(QObject):
