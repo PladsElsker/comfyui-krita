@@ -105,12 +105,16 @@ class ComfyKritaBridge(QObject):
         self.document_monitor = document_monitor
         self._connected_node_lists: set[int] = set()
         self._image_downloads: dict[str, _ImageDownloadTask] = {}
-        self._load_image_snapshots: dict[tuple[str, int, str], bytes] = {}
+        self._load_image_snapshots: dict[
+            tuple[str, int, str],
+            tuple[LoadImageState, bytes],
+        ] = {}
         self._pending_load_image_snapshots: dict[
             tuple[str, int, str],
             tuple[object, LoadImageState, bytes],
         ] = {}
         self._active_load_image_snapshot_uploads: set[tuple[str, int, str]] = set()
+        self._load_image_upload_attempts: dict[tuple[str, int, str, str], int] = {}
 
         self._download_pool = QThreadPool(self)
         self._download_pool.setMaxThreadCount(1)
@@ -252,9 +256,13 @@ class ComfyKritaBridge(QObject):
                     self._send_save_image_state(state)
                 elif isinstance(state, LoadImageState):
                     key = (state.document_id, state.id, state.type)
-                    image_data = self._load_image_snapshots.get(key)
-                    if image_data is not None and state.snapshot_revision:
-                        self._queue_load_image_snapshot_upload(None, state, image_data)
+                    pending = self._pending_load_image_snapshots.get(key)
+                    if pending is not None and pending[1].snapshot_revision == state.snapshot_revision:
+                        continue
+
+                    cached = self._load_image_snapshots.get(key)
+                    if cached is not None and cached[0].snapshot_revision == state.snapshot_revision and state.snapshot_revision:
+                        self._queue_load_image_snapshot_upload(None, state, cached[1])
                     elif not state.snapshot_revision:
                         self._publish_node_state({"deleted": False, "state": state})
 
@@ -308,6 +316,9 @@ class ComfyKritaBridge(QObject):
         image_data: bytes,
     ) -> None:
         key = (state.document_id, state.id, state.type)
+        previous = self._pending_load_image_snapshots.get(key)
+        if previous is None or previous[1].snapshot_revision != state.snapshot_revision:
+            self._load_image_upload_attempts.pop((*key, state.snapshot_revision), None)
         self._pending_load_image_snapshots[key] = (widget, state, image_data)
         self._start_pending_load_image_snapshot_uploads()
 
@@ -318,6 +329,9 @@ class ComfyKritaBridge(QObject):
 
         for key, (widget, state, image_data) in list(self._pending_load_image_snapshots.items()):
             if key in self._active_load_image_snapshot_uploads:
+                continue
+            attempts_key = (*key, state.snapshot_revision)
+            if self._load_image_upload_attempts.get(attempts_key, 0) >= MAX_NODE_STATE_UPLOAD_ATTEMPTS:
                 continue
 
             task = _LoadImageUploadTask(self.comfy_ws, sid, widget, state, image_data)
@@ -343,12 +357,19 @@ class ComfyKritaBridge(QObject):
         self._active_load_image_snapshot_uploads.discard(key)
         pending = self._pending_load_image_snapshots.get(key)
         if pending is None or pending[1].snapshot_revision != state.snapshot_revision:
+            self._start_pending_load_image_snapshot_uploads()
             return
 
         self._pending_load_image_snapshots.pop(key, None)
-        self._load_image_snapshots[key] = image_data
+        self._load_image_snapshots[key] = (state, image_data)
+        self._load_image_upload_attempts.pop((*key, state.snapshot_revision), None)
         if widget is not None and hasattr(widget, "snapshot_uploaded"):
-            widget.snapshot_uploaded(state)
+            try:
+                widget.snapshot_uploaded(state)
+            except RuntimeError:
+                # The user may have switched documents while this worker was
+                # uploading; the accepted state is already retained in NodeList.
+                pass
 
         self._start_pending_load_image_snapshot_uploads()
 
@@ -356,9 +377,17 @@ class ComfyKritaBridge(QObject):
     def _on_load_image_snapshot_upload_failed(self, widget: object, state: LoadImageState, error: str) -> None:
         key = (state.document_id, state.id, state.type)
         self._active_load_image_snapshot_uploads.discard(key)
+        attempts_key = (*key, state.snapshot_revision)
+        attempts = self._load_image_upload_attempts.get(attempts_key, 0) + 1
+        self._load_image_upload_attempts[attempts_key] = attempts
         LOGGER.error("Could not upload Krita input snapshot for node %s: %s", state.id, error)
         if widget is not None and hasattr(widget, "snapshot_upload_failed"):
-            widget.snapshot_upload_failed(state, error)
+            try:
+                widget.snapshot_upload_failed(state, error)
+            except RuntimeError:
+                pass
+        if attempts < MAX_NODE_STATE_UPLOAD_ATTEMPTS:
+            QTimer.singleShot(1000, self._start_pending_load_image_snapshot_uploads)
 
     def _start_pending_node_state_upload(self) -> None:
         with self._node_state_upload_lock:
