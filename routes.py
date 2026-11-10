@@ -95,7 +95,7 @@ async def _upload_load_image_snapshot(request: Request) -> Response:
     try:
         package_data = await _read_load_image_package(request)
         state, image_data = _parse_load_image_package(package_data)
-        await api.store_load_image_snapshot(sid, state, image_data)
+        result = await api.store_load_image_snapshot(sid, state, image_data)
     except LoadImagePackageTooLargeError:
         return web.json_response(
             {"error": "The layer snapshot package is too large"},
@@ -110,7 +110,7 @@ async def _upload_load_image_snapshot(request: Request) -> Response:
             {"error": "Could not store the Krita layer snapshot"},
             status=400,
         )
-    return web.json_response()
+    return web.json_response(result)
 
 
 class LoadImagePackageTooLargeError(ValueError):
