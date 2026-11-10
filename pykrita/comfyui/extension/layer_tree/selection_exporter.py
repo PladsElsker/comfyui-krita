@@ -103,7 +103,8 @@ def _render_scratch_projection(
 
 
 def _nodes_by_id(root: Node) -> dict[str, Node]:
-    return {str(node.uniqueId()): node for node in _walk_nodes(root)}
+    nodes = [root, *_walk_nodes(root)]
+    return {str(node.uniqueId()): node for node in nodes}
 
 
 def _walk_nodes(parent: Node) -> list[Node]:
