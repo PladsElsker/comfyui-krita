@@ -7,7 +7,7 @@ DEFAULT_KRITA_NODE_STATE = (
 )
 DEFAULT_KRITA_LOAD_IMAGE_STATE = (
     '{"id":0,"type":"KritaLoadImage-15348","document_id":"",'
-    '"layer_ids":[],"layer_names":[]}'
+    '"layer_ids":[],"layer_names":[],"snapshot_revision":""}'
 )
 KRITA_SAVE_IMAGE_NODE_TYPE = "KritaSaveImage-15347"
 KRITA_LOAD_IMAGE_NODE_TYPE = "KritaLoadImage-15348"
