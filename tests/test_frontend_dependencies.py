@@ -494,3 +494,93 @@ def test__given_krita_output_node__when_metadata_input_is_created__then_metadata
         "hidden": True,
         "optionsHidden": True,
     }
+
+
+def test__given_krita_load_image_node__when_fix_krita_node_ui__then_document_and_metadata_widgets_are_hidden(
+    default_page: Page,
+) -> None:
+    node_ui = default_page.evaluate(
+        """
+        async () => {
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const metadataWidget = {
+                name: "_meta-15348",
+                label: "_meta-15348",
+                value: '{"document_id":"document-1"}',
+                hidden: false,
+                options: {},
+            };
+            const node = {
+                id: 90,
+                type: "KritaLoadImage-15348",
+                inputs: [{ name: "_meta-15348" }, { name: "document" }],
+                widgets: [
+                    { name: "document", label: "document", value: "document-1" },
+                    metadataWidget,
+                ],
+                setDirtyCanvas() {},
+            };
+
+            workflow.fixKritaNodeUi(node);
+            return {
+                isRegistered: workflow.KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type),
+                hidden: metadataWidget.hidden,
+                optionsHidden: metadataWidget.options.hidden,
+                remainingInputs: node.inputs.length,
+                metadataValue: metadataWidget.value,
+            };
+        }
+        """,
+    )
+    assert node_ui == {
+        "isRegistered": True,
+        "hidden": True,
+        "optionsHidden": True,
+        "remainingInputs": 0,
+        "metadataValue": '{"document_id":"document-1"}',
+    }
+
+
+def test__given_krita_load_image_node__when_state_updates__then_input_metadata_widget_is_updated(
+    default_page: Page,
+) -> None:
+    updated_state = default_page.evaluate(
+        """
+        async () => {
+            const { app } = await import('../../../scripts/app.js');
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const node = {
+                id: 99001,
+                type: "KritaLoadImage-15348",
+                inputs: [],
+                widgets: [
+                    { name: "document", label: "document", value: "document-1" },
+                    { name: "_meta-15348", label: "_meta-15348", value: "" },
+                ],
+                setDirtyCanvas() {},
+            };
+            app.graph.nodes.push(node);
+
+            workflow.applyKritaNodeState({
+                id: 99001,
+                type: "KritaLoadImage-15348",
+                document_id: "document-1",
+                layer_ids: ["layer-1", "layer-2"],
+                layer_names: ["Background", "Line Art"],
+                snapshot_revision: "revision-1",
+            });
+
+            const value = JSON.parse(node.widgets[1].value);
+            app.graph.nodes.splice(app.graph.nodes.indexOf(node), 1);
+            return value;
+        }
+        """,
+    )
+    assert updated_state == {
+        "id": 99001,
+        "type": "KritaLoadImage-15348",
+        "document_id": "document-1",
+        "layer_ids": ["layer-1", "layer-2"],
+        "layer_names": ["Background", "Line Art"],
+        "snapshot_revision": "revision-1",
+    }
