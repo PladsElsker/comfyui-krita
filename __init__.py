@@ -135,7 +135,11 @@ class KritaSaveImage(io.ComfyNode):
         return True
 
     @classmethod
-    def execute(cls, image: Tensor, **kwargs: dict | list | float | str | None) -> io.NodeOutput:  # type: ignore
+    def execute(
+        cls,
+        image: Tensor,
+        **kwargs: dict | list | float | str | None,
+    ) -> io.NodeOutput:  # type: ignore
         document_value = kwargs.get(KRITA_DOCUMENT_DROPDOWN_LABEL)
         if not isinstance(document_value, str) or not document_value:
             message = "Select a Krita document before running this output node"
@@ -149,7 +153,13 @@ class KritaSaveImage(io.ComfyNode):
         images = _to_pil_images(image)
         batch_size = len(images)
         for index, pil_image in enumerate(images):
-            api.create_layer(document_value, meta, pil_image, batch_index=index, batch_size=batch_size)
+            api.create_layer(
+                document_value,
+                meta,
+                pil_image,
+                batch_index=index,
+                batch_size=batch_size,
+            )
 
         return io.NodeOutput()
 
@@ -212,7 +222,10 @@ class KritaLoadImage(io.ComfyNode):
         return True
 
     @classmethod
-    def execute(cls, **kwargs: dict | list | float | str | None) -> io.NodeOutput:  # type: ignore
+    def execute(
+        cls,
+        **kwargs: dict | list | float | str | None,
+    ) -> io.NodeOutput:  # type: ignore
         document_value = kwargs.get(KRITA_DOCUMENT_DROPDOWN_LABEL)
         meta = kwargs.get(LOAD_IMAGE_META_WIDGET_LABEL)
         if not isinstance(document_value, str) or not isinstance(meta, str):
