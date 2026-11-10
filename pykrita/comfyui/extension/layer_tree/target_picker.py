@@ -171,25 +171,7 @@ class LayerTargetPicker(QObject):
             self._initial_target_id = str(target.uniqueId()) if target is not None else None
             self._editing = True
 
-            if target is not None:
-                self.document.setActiveNode(target)
-                target_index = self._index_for_node(target)
-                selection_model.setCurrentIndex(target_index, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
-                layer_view.scrollTo(target_index)
-            else:
-                # With no target, clear both selection and current index so the
-                # user can choose even the layer that was previously active.
-                selection_model.clearSelection()
-                selection_model.setCurrentIndex(QModelIndex(), QItemSelectionModel.NoUpdate)
-
-            selection_model.currentChanged.connect(self._schedule_commit)
-            self._selection_connected = True
-            self.window.activeViewChanged.connect(self._on_active_view_changed)
-            self._active_view_connected = True
-            app = QApplication.instance()
-            if app is not None:
-                app.installEventFilter(self)
-                self._event_filter_installed = True
+            self._activate_selection(target, layer_view, selection_model)
         except Exception:  # noqa: BLE001 - clean up the partial session, then re-raise
             try:
                 if self._editing:
@@ -200,6 +182,32 @@ class LayerTargetPicker(QObject):
                 message = "Target editing failed and the previous Krita selection could not be restored"
                 raise RuntimeError(message) from cleanup_error
             raise
+
+    def _activate_selection(
+        self,
+        target: Node | None,
+        layer_view: QTreeView,
+        selection_model: QItemSelectionModel,
+    ) -> None:
+        if target is not None:
+            self.document.setActiveNode(target)
+            target_index = self._index_for_node(target)
+            selection_model.setCurrentIndex(target_index, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
+            layer_view.scrollTo(target_index)
+        else:
+            # With no target, clear both selection and current index so the
+            # user can choose even the layer that was previously active.
+            selection_model.clearSelection()
+            selection_model.setCurrentIndex(QModelIndex(), QItemSelectionModel.NoUpdate)
+
+        selection_model.currentChanged.connect(self._schedule_commit)
+        self._selection_connected = True
+        self.window.activeViewChanged.connect(self._on_active_view_changed)
+        self._active_view_connected = True
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+            self._event_filter_installed = True
 
     def cancel(self) -> None:
         if not self._editing:
