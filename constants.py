@@ -1,5 +1,4 @@
 META_WIDGET_LABEL = "_meta-15347"
-LOAD_IMAGE_META_WIDGET_LABEL = "_meta-15348"
 DEFAULT_KRITA_NODE_STATE = (
     '{"id":0,"type":"KritaSaveImage-15347","document_id":"",'
     '"insert_direction":"below","path":[{"quuid":null,"type":"target"}],'
