@@ -28,7 +28,11 @@ def claim_selection_session(picker: object) -> None:
             if not callable(cancel):
                 message = "The active Krita edit session cannot be cancelled"
                 raise SelectionSessionUnavailableError(message)
-            cancel()
+            try:
+                cancel()
+            except Exception as error:  # noqa: BLE001 - do not start over a partially restored selection
+                message = "The active Krita edit session could not restore the previous layer selection"
+                raise SelectionSessionUnavailableError(message) from error
         else:
             release_selection_session(active_picker)
 
