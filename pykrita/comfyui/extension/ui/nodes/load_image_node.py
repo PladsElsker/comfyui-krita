@@ -335,7 +335,7 @@ class LoadImageNode(ComfyUiNode):
                 try:
                     class_name = current.metaObject().className()
                 except RuntimeError:
-                    return False
+                    break
                 if class_name in self.CANVAS_WIDGET_TYPES or class_name in {
                     "QMenu",
                     "QMenuBar",
