@@ -264,11 +264,7 @@ class KritaApi:
             message = "The ComfyUI Krita snapshot cache is full"
             raise ValueError(message)
 
-        preview = (
-            await asyncio.to_thread(_write_snapshot_preview, image_data)
-            if changed
-            else existing.preview
-        )
+        preview = await asyncio.to_thread(_write_snapshot_preview, image_data) if changed else existing.preview
         if existing is not None and changed:
             _delete_snapshot_preview(existing.preview)
 
