@@ -200,7 +200,12 @@ class LoadImageNode(ComfyUiNode):
         try:
             projection = capture_selected_layers_projection(self.document, selected_nodes)
         except Exception as error:  # noqa: BLE001
-            LOGGER.exception("Could not render the selected Krita layers")
+            LOGGER.exception(
+                "[Load Image node] capture failed document=%r node_id=%s selected=%s",
+                self.document.name(),
+                self.id,
+                [(str(node.uniqueId()), node.name(), node.type()) for node in selected_nodes],
+            )
             self.layer_info_text.setToolTip(str(error))
             self.set_info_text("Layer capture failed")
             return
