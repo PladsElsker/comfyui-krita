@@ -5,16 +5,16 @@ from krita import Document, Node, View, Window
 from PyQt5.QtCore import QAbstractItemModel, QEvent, QItemSelectionModel, QModelIndex, QObject, Qt, QTimer, pyqtSignal
 from PyQt5.QtWidgets import QApplication, QTreeView
 
-from .utils import LayerUtils
-
-LOGGER = logging.getLogger(__name__)
-
-
 from .selection_session import (
     SelectionSessionUnavailableError as TargetSelectionUnavailableError,
     claim_selection_session,
     release_selection_session,
 )
+from .utils import LayerUtils
+
+LOGGER = logging.getLogger(__name__)
+
+
 
 
 class LayerTargetPicker(QObject):
