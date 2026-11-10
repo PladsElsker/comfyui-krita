@@ -35,7 +35,7 @@ def _get_selected_roots(document: Document, selected_nodes: list[Node]) -> list[
     source_nodes = _nodes_by_id(document.rootNode())
     missing_ids = selected_ids - source_nodes.keys()
     if missing_ids:
-        message = "Selected Krita layers no longer exist: " f"{', '.join(sorted(missing_ids))}"
+        message = f"Selected Krita layers no longer exist: {', '.join(sorted(missing_ids))}"
         raise ValueError(message)
 
     roots = [node for node in selected_nodes if (not _has_selected_ancestor(node, selected_ids) and _is_effectively_visible(node))]
