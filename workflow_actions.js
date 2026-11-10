@@ -331,7 +331,10 @@ async function updateKritaLoadImagePreview(state, preview) {
         }
 
         const locatorId = getKritaNodeLocatorId(node);
-        const pinia = app.vueApp?._context?.provides?.pinia;
+        const provides = app.vueApp?._context?.provides;
+        const pinia = provides?.pinia ?? Object.getOwnPropertySymbols(provides ?? {})
+            .map(symbol => provides[symbol])
+            .find(candidate => candidate?._s?.get);
         const nodeOutputStore = pinia?._s?.get?.("nodeOutput");
         if(typeof nodeOutputStore?.setNodePreviewsByLocatorId === "function") {
             // Use the already-instantiated ComfyUI store when the Vue frontend
