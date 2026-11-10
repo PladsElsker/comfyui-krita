@@ -1,3 +1,4 @@
+import hashlib
 import inspect
 import io
 import logging
@@ -7,7 +8,9 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from io import BytesIO
+from pathlib import Path
 
+import folder_paths
 from PIL import Image as PILImage
 from PIL.Image import Image
 from server import PromptServer
@@ -105,7 +108,7 @@ def _validate_snapshot_metadata(api: "KritaApi", state: LoadImageState) -> None:
         raise ValueError(message)
 
 
-def _validate_snapshot_png(image_data: bytes) -> None:
+def _load_snapshot_pixels(image_data: bytes) -> tuple[bytes, tuple[int, int]]:
     try:
         image = PILImage.open(BytesIO(image_data))
     except Exception as error:  # noqa: BLE001
@@ -116,14 +119,32 @@ def _validate_snapshot_png(image_data: bytes) -> None:
         if image.format != "PNG" or image.mode not in ("RGBA", "RGB"):
             message = "The Krita image snapshot must be an RGB or RGBA PNG"
             raise ValueError(message)
-        if image.width * image.height > MAX_LOAD_IMAGE_PIXELS:
+        if image.width < 1 or image.height < 1 or image.width * image.height > MAX_LOAD_IMAGE_PIXELS:
             message = "The Krita image snapshot exceeds the supported pixel count"
             raise ValueError(message)
         try:
-            image.load()
+            rgba = image.convert("RGBA")
+            return rgba.tobytes(), rgba.size
         except Exception as error:  # noqa: BLE001
             message = "The Krita image snapshot is not a valid PNG"
             raise ValueError(message) from error
+
+
+def _snapshot_revision(image_data: bytes) -> str:
+    pixels, dimensions = _load_snapshot_pixels(image_data)
+    digest = hashlib.sha256()
+    digest.update(dimensions[0].to_bytes(4, "big"))
+    digest.update(dimensions[1].to_bytes(4, "big"))
+    digest.update(pixels)
+    return digest.hexdigest()
+
+
+def _write_snapshot_preview(image_data: bytes) -> dict[str, str]:
+    filename = f"krita_{secrets.token_hex(12)}.png"
+    filepath = Path(folder_paths.get_temp_directory()) / filename
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    filepath.write_bytes(image_data)
+    return {"filename": filename, "subfolder": "", "type": "temp"}
 
 
 class KritaApi:
@@ -202,10 +223,13 @@ class KritaApi:
         if len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_BYTES:
             message = f"The Krita image snapshot exceeds the {MAX_LOAD_IMAGE_SNAPSHOT_BYTES}-byte limit"
             raise ValueError(message)
-        _validate_snapshot_png(image_data)
+        revision = _snapshot_revision(image_data)
+        canonical_state = state.model_copy(update={"snapshot_revision": revision})
 
         key = (state.document_id, state.id, state.type)
         existing = self.load_image_snapshots.get(key)
+        changed = existing is None or existing.state.snapshot_revision != revision
+        preview = _write_snapshot_preview(image_data) if changed else None
         total_bytes = sum(len(snapshot.data) for snapshot in self.load_image_snapshots.values())
         if existing is not None:
             total_bytes -= len(existing.data)
@@ -228,15 +252,16 @@ class KritaApi:
             raise ValueError(message)
 
         self.load_image_snapshots[key] = LoadImageSnapshot(
-            state=state,
+            state=canonical_state,
             data=image_data,
             updated_at=time.monotonic(),
         )
-        self.node_states.setdefault(sid, {})[key] = state
-        await PromptServer.instance.send(
-            "krita::nodes::update",
-            {"deleted": False, "state": state.model_dump()},
-        )
+        self.node_states.setdefault(sid, {})[key] = canonical_state
+        event = {"deleted": False, "state": canonical_state.model_dump()}
+        if preview is not None:
+            event["preview"] = preview
+        await PromptServer.instance.send("krita::nodes::update", event)
+        return {"snapshot_revision": revision, "changed": changed}
 
     def has_load_image_snapshot(self, state: LoadImageState) -> bool:
         snapshot = self.load_image_snapshots.get((state.document_id, state.id, state.type))
