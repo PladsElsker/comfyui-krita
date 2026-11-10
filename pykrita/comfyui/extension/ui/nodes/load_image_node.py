@@ -1,10 +1,12 @@
+import hashlib
 import logging
 import traceback
-import uuid
 from typing import ClassVar, cast
 
 from krita import DockWidget, Document, Node as KritaNode, Window
 from PyQt5.QtCore import (
+    QEvent,
+    QTimer,
     qWarning,
     QByteArray,
     QSize,
@@ -19,7 +21,7 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtGui import QIcon, QImage, QPalette
 from PyQt5.QtSvg import QSvgRenderer
-from PyQt5.QtWidgets import QToolButton
+from PyQt5.QtWidgets import QApplication, QToolButton, QWidget
 
 from comfyui.extension.layer_tree.multi_selection_picker import LayerMultiSelectionPicker
 from comfyui.extension.layer_tree.selection_exporter import capture_selected_layers_projection
@@ -78,9 +80,24 @@ class _ProjectionExportTask(QRunnable):
         self.signals.completed.emit(self, self.state, image_data)
 
 
+def _projection_revision(projection: QImage) -> str:
+    normalized = projection.convertToFormat(QImage.Format.Format_RGBA8888)
+    byte_count = normalized.bytesPerLine() * normalized.height()
+    pixel_buffer = normalized.bits()
+    pixel_buffer.setsize(byte_count)
+
+    digest = hashlib.sha256()
+    digest.update(normalized.width().to_bytes(4, "big"))
+    digest.update(normalized.height().to_bytes(4, "big"))
+    digest.update(bytes(pixel_buffer))
+    return digest.hexdigest()
+
+
 class LoadImageNode(ComfyUiNode):
     type: ClassVar[str] = "KritaLoadImage-15347"
     snapshot_ready = cast("pyqtBoundSignal", pyqtSignal(object, bytes))
+    CANVAS_WIDGET_TYPES: ClassVar[set[str]] = {"KisOpenGLCanvas2", "KisQPainterCanvas"}
+    LIVE_REFRESH_DEBOUNCE_MS: ClassVar[int] = 450
 
     def __init__(
         self,
@@ -101,6 +118,12 @@ class LoadImageNode(ComfyUiNode):
         self._pending_state: LoadImageState | None = None
         self._composition_pool = QThreadPool.globalInstance()
         self._composition_tasks: set[_ProjectionExportTask] = set()
+        self._refresh_requested = False
+        self._live_refresh_timer = QTimer(self)
+        self._live_refresh_timer.setSingleShot(True)
+        self._live_refresh_timer.setInterval(self.LIVE_REFRESH_DEBOUNCE_MS)
+        self._live_refresh_timer.timeout.connect(self._refresh_selected_projection)
+        self._event_filter_installed = False
 
         self.set_title_text(node.name)
         self._update_layer_info()
@@ -128,6 +151,14 @@ class LoadImageNode(ComfyUiNode):
         self.layer_picker = LayerMultiSelectionPicker(window, document, self)
         self.layer_picker.cancelled.connect(self._reset_edit_controls)
         self.layer_picker.selection_accepted.connect(self._selection_accepted)
+
+        # Krita does not expose a public document-pixels-changed signal.
+        # Observe input on its actual canvas widgets, then capture once the
+        # stroke or canvas command has settled.
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+            self._event_filter_installed = True
 
     def _create_action_button(self, icon_renderer: QSvgRenderer, tooltip: str) -> QToolButton:
         button = QToolButton(self)
@@ -159,6 +190,12 @@ class LoadImageNode(ComfyUiNode):
         self.state_changed.emit(state)
 
     def cleanup(self) -> None:
+        self._live_refresh_timer.stop()
+        app = QApplication.instance()
+        if self._event_filter_installed and app is not None:
+            app.removeEventFilter(self)
+        self._event_filter_installed = False
+
         if self.layer_picker.is_editing:
             self.layer_picker.cancel()
 
@@ -218,9 +255,65 @@ class LoadImageNode(ComfyUiNode):
     def _reset_edit_controls(self) -> None:
         self.set_action_buttons([self.edit_button])
 
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if self._is_canvas_input_event(watched, event):
+            self._schedule_live_refresh()
+        return super().eventFilter(watched, event)
+
+    def _is_canvas_input_event(self, watched: QObject, event: QEvent) -> bool:
+        if self.layer_picker.is_editing:
+            return False
+        active_view = self.window.activeView()
+        if active_view is None or active_view.document() != self.document:
+            return False
+        if event.type() not in {
+            QEvent.Type.MouseButtonRelease,
+            QEvent.Type.TabletRelease,
+            QEvent.Type.TouchEnd,
+            QEvent.Type.KeyRelease,
+        }:
+            return False
+
+        current = watched
+        while current is not None:
+            if isinstance(current, QWidget):
+                try:
+                    class_name = current.metaObject().className()
+                except RuntimeError:
+                    return False
+                if class_name in self.CANVAS_WIDGET_TYPES:
+                    return True
+                current = current.parentWidget()
+            else:
+                current = current.parent()
+        return False
+
+    def _schedule_live_refresh(self) -> None:
+        if not self.layer_ids or self.layer_picker.is_editing:
+            return
+        self._live_refresh_timer.start()
+
+    def _refresh_selected_projection(self) -> None:
+        if not self.layer_ids or self.layer_picker.is_editing:
+            return
+        if self._pending_state is not None or self._composition_tasks:
+            self._refresh_requested = True
+            return
+
+        selected_id_set = set(self.layer_ids)
+        selected_nodes = [
+            node
+            for node in self.layer_picker._walk_nodes(self.document.rootNode())
+            if str(node.uniqueId()) in selected_id_set
+        ]
+        if selected_nodes:
+            self._capture_selected_nodes(selected_nodes)
+
     def _selection_accepted(self, selected_nodes: list[KritaNode]) -> None:
         self._reset_edit_controls()
+        self._capture_selected_nodes(selected_nodes)
 
+    def _capture_selected_nodes(self, selected_nodes: list[KritaNode]) -> None:
         try:
             projection = capture_selected_layers_projection(self.document, selected_nodes)
         except Exception as error:  # noqa: BLE001
@@ -236,14 +329,24 @@ class LoadImageNode(ComfyUiNode):
 
         layer_ids = [str(layer.uniqueId()) for layer in selected_nodes]
         layer_names = [layer.name() for layer in selected_nodes]
+        revision = _projection_revision(projection)
         state = LoadImageState(
             id=self.id,
             type=self.type,
             document_id=self.document_id,
             layer_ids=layer_ids,
             layer_names=layer_names,
-            snapshot_revision=uuid.uuid4().hex,
+            snapshot_revision=revision,
         )
+        if revision == self.snapshot_revision:
+            # Selection metadata may have changed while the composed pixels
+            # stayed identical. Synchronize the UI state without uploading or
+            # changing the ComfyUI execution-cache token.
+            self._apply_state(state)
+            self.state_changed.emit(state)
+            self.set_info_text(f"{len(layer_names)} selected layer(s) — unchanged")
+            return
+
         self._pending_state = state
         self.set_info_text(f"Encoding {len(layer_names)} selected layer(s)…")
 
@@ -286,6 +389,7 @@ class LoadImageNode(ComfyUiNode):
         self.layer_info_text.setToolTip(error)
         self.set_info_text("Layer export failed")
         LOGGER.error("Could not export the selected Krita layer projection: %s", error)
+        self._resume_requested_refresh()
 
     def snapshot_uploaded(self, state: LoadImageState) -> None:
         if self._pending_state is None or self._pending_state.snapshot_revision != state.snapshot_revision:
@@ -294,6 +398,13 @@ class LoadImageNode(ComfyUiNode):
         self._apply_state(state)
         self._pending_state = None
         self.state_changed.emit(state)
+        self._resume_requested_refresh()
+
+    def _resume_requested_refresh(self) -> None:
+        if not self._refresh_requested:
+            return
+        self._refresh_requested = False
+        self._live_refresh_timer.start(100)
 
     def snapshot_upload_failed(self, state: LoadImageState, error: str) -> None:
         if self._pending_state is None or self._pending_state.snapshot_revision != state.snapshot_revision:
@@ -303,6 +414,7 @@ class LoadImageNode(ComfyUiNode):
         self.layer_info_text.setToolTip(error)
         self.set_info_text("Upload failed — edit selection to retry")
         LOGGER.error("Could not upload the Krita layer snapshot: %s", error)
+        self._resume_requested_refresh()
 
     def _update_layer_info(self) -> None:
         if not self.layer_ids:
