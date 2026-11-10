@@ -22,7 +22,7 @@ from .constants import (
 )
 from .krita_api import api
 from .load_image_helpers import decode_composited_png
-from .models import LoadImageState, SaveImageState
+from .models import LoadImageExecutionState, SaveImageState
 from .routes import define_routes
 
 WEB_DIRECTORY = "."
@@ -194,7 +194,7 @@ class KritaLoadImage(io.ComfyNode):
                 return message
 
         try:
-            state = LoadImageState.model_validate_json(meta)
+            state = LoadImageExecutionState.model_validate_json(meta)
         except ValidationError:
             return "Krita input-node metadata is invalid; reconnect Krita to synchronize it."
 
@@ -204,7 +204,7 @@ class KritaLoadImage(io.ComfyNode):
                 "The selected Krita document does not match the synchronized input-node state.",
             ),
             (
-                not state.layer_ids or not state.snapshot_revision,
+                not state.snapshot_revision,
                 "Select one or more layers in Krita and accept the selection.",
             ),
             (
@@ -228,7 +228,7 @@ class KritaLoadImage(io.ComfyNode):
             message = "Select a Krita document and confirm a layer selection before running this node."
             raise TypeError(message)
 
-        state = LoadImageState.model_validate_json(meta)
+        state = LoadImageExecutionState.model_validate_json(meta)
         if state.document_id != document_value:
             message = "The selected Krita document does not match the synchronized input-node state."
             raise ValueError(message)
