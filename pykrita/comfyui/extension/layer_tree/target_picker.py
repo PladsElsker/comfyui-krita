@@ -15,8 +15,6 @@ from .utils import LayerUtils
 LOGGER = logging.getLogger(__name__)
 
 
-
-
 class LayerTargetPicker(QObject):
     """Temporarily uses Krita's Layers Docker to choose an output target.
 
