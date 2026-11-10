@@ -58,9 +58,7 @@ def _define_document_routes() -> None:
         sid = request.match_info["sid"]
         try:
             krita_workflows = api.get_registered_workflows_by_sid(sid)
-            return web.json_response(
-                krita_workflows.model_dump() if krita_workflows is not None else None
-            )
+            return web.json_response(krita_workflows.model_dump() if krita_workflows is not None else None)
         except Exception:  # noqa: BLE001
             return web.json_response(status=400)
 
@@ -90,9 +88,7 @@ def _define_node_state_routes() -> None:
 
 
 def _define_input_image_routes() -> None:
-    PromptServer.instance.routes.put("/krita/{sid}/nodes/load-image")(
-        _upload_load_image_snapshot
-    )
+    PromptServer.instance.routes.put("/krita/{sid}/nodes/load-image")(_upload_load_image_snapshot)
 
 
 async def _upload_load_image_snapshot(request: Request) -> Response:
@@ -123,10 +119,7 @@ class LoadImagePackageTooLargeError(ValueError):
 
 
 async def _read_load_image_package(request: Request) -> bytes:
-    if (
-        request.content_length is not None
-        and request.content_length > MAX_LOAD_IMAGE_UPLOAD_BYTES
-    ):
+    if request.content_length is not None and request.content_length > MAX_LOAD_IMAGE_UPLOAD_BYTES:
         raise LoadImagePackageTooLargeError
 
     package_buffer = bytearray()
@@ -183,13 +176,9 @@ def _define_comfy_routes() -> None:
 
             for document_id, nodes in workflows.items():
                 for node in nodes:
-                    node.direction = (
-                        "output" if node.type in KRITA_OUTPUT_NODE_TYPES else "input"
-                    )
+                    node.direction = "output" if node.type in KRITA_OUTPUT_NODE_TYPES else "input"
 
-                workflows[document_id] = [
-                    node for node in nodes if node.type in KRITA_IO_NODE_TYPES
-                ]
+                workflows[document_id] = [node for node in nodes if node.type in KRITA_IO_NODE_TYPES]
 
             await api.update_workflows(workflows_request)
         except Exception:  # noqa: BLE001
