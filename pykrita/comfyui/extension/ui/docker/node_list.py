@@ -42,6 +42,9 @@ class NodeListWidget(QScrollArea):
         incoming_keys = comfyui_node_mapping.keys()
         existing_keys = current_node_mapping.keys()
 
+        to_delete_keys = existing_keys - incoming_keys
+        to_create_keys = incoming_keys - existing_keys
+
         for cached_key in list(self.previous_node_states):
             if cached_key[2] != document_id or cached_key in incoming_keys:
                 continue
@@ -55,9 +58,6 @@ class NodeListWidget(QScrollArea):
                     "type": previous_state.type,
                 }
             )
-
-        to_delete_keys = existing_keys - incoming_keys
-        to_create_keys = incoming_keys - existing_keys
 
         self._clear_main_layout()
 
