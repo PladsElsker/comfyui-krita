@@ -67,10 +67,14 @@ class NodeListWidget(QScrollArea):
             if isinstance(widget, ComfyUiNode):
                 message = f"[Krita Docker] removing node widget type={widget.type} " f"id={widget.id} visible={widget.isVisible()}"
                 qWarning(message)
-                # Hide before cleanup: picker cancellation can synchronously
-                # update the old node's action buttons. deleteLater() is deferred.
+                # Remove the row from the layout and hide it before cleanup:
+                # picker cancellation can synchronously update action controls.
                 widget.hide()
                 widget.cleanup()
+
+                # QWidget.deleteLater() is deferred. Detach the obsolete row now
+                # so no old child control can keep its previous docker geometry.
+                widget.setParent(None)
                 widget.deleteLater()
                 self.node_widgets.remove(widget)
 
