@@ -43,7 +43,6 @@ class _ImageDownloadTask(QRunnable):
 
     def run(self) -> None:
         transfer_id = self.notification.transfer_id
-        state = self.notification.state
         route = f"/krita/images/{transfer_id}"
         try:
             image_data = self.comfy_ws.get_bytes(route)
@@ -51,7 +50,6 @@ class _ImageDownloadTask(QRunnable):
             self.signals.failed.emit(self.notification, str(error))
             return
 
-        is_png = image_data.startswith(bytes((137, 80, 78, 71, 13, 10, 26, 10)))
         self.signals.completed.emit(self.notification, image_data)
 
 
@@ -100,7 +98,6 @@ class ComfyKritaBridge(QObject):
         def create_layer(data: dict) -> None:
             try:
                 notification = LayerCreateNotification.model_validate(data)
-                state = notification.state
                 self._download_layer_image(notification)
             except Exception as error:  # noqa: BLE001
                 LOGGER.exception("Received an invalid generated-layer notification")
@@ -332,7 +329,6 @@ class ComfyKritaBridge(QObject):
         }
 
     def _download_layer_image(self, notification: LayerCreateNotification) -> None:
-        state = notification.state
         if notification.transfer_id in self._image_downloads:
             LOGGER.warning("Ignoring duplicate generated image transfer %s", notification.transfer_id)
             return
@@ -381,9 +377,6 @@ class ComfyKritaBridge(QObject):
                 state.document_id,
             )
             return
-
-        parent = node.parentNode()
-        top_level_nodes = document.topLevelNodes()
 
     @pyqtSlot(object, str)
     def _on_image_download_failed(self, notification: LayerCreateNotification, error: str) -> None:
