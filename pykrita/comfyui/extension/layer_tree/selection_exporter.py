@@ -1,10 +1,12 @@
 import logging
 import os
 import tempfile
+import uuid
 from pathlib import Path
 
 from krita import Document, InfoObject, Node
 
+from ..document_monitor import INTERNAL_DOCUMENT_NAME_PREFIX
 from .multi_selection_picker import SUPPORTED_LAYER_TYPES
 
 LOGGER = logging.getLogger(__name__)
@@ -39,6 +41,8 @@ def export_selected_layers(document: Document, selected_layer_ids: list[str]) ->
     Path(temp_path).unlink(missing_ok=True)
 
     try:
+        clone.setName(f"{INTERNAL_DOCUMENT_NAME_PREFIX}{uuid.uuid4().hex}")
+        clone.setAutosave(False)
         clone.setBatchmode(True)
         _hide_unselected_nodes(clone.rootNode(), (), selected_paths)
 
