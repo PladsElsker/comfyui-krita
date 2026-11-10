@@ -2,14 +2,45 @@ import { app } from "../../../scripts/app.js";
 
 
 const KRITA_SAVE_IMAGE_NODE_TYPE = "KritaSaveImage-15347";
+const KRITA_LOAD_IMAGE_NODE_TYPE = "KritaLoadImage-15348";
 const DOCUMENT_WIDGET_LABEL = "document";
 const META_WIDGET_LABEL = "_meta-15347";
+const LOAD_IMAGE_META_WIDGET_LABEL = "_meta-15348";
 const KRITA_DOCUMENT_GRAPH_USAGE_REFRESH_RATE = 300;
 export const COMFY_TABS_CONTAINER_SELECTOR = ".workflow-tabs-container";
 export const COMFY_ACTIVE_TAB_SELECTOR = '[role="tab"][aria-selected="true"] .workflow-label';
-const KRITA_CUSTOM_IO_NODE_TYPES = [
-    KRITA_SAVE_IMAGE_NODE_TYPE
+export const KRITA_CUSTOM_IO_NODE_TYPES = [
+    KRITA_SAVE_IMAGE_NODE_TYPE,
+    KRITA_LOAD_IMAGE_NODE_TYPE,
 ];
+
+function getMetadataWidgetLabel(nodeType) {
+    if(nodeType === KRITA_SAVE_IMAGE_NODE_TYPE) return META_WIDGET_LABEL;
+    if(nodeType === KRITA_LOAD_IMAGE_NODE_TYPE) return LOAD_IMAGE_META_WIDGET_LABEL;
+    return null;
+}
+
+function createDefaultNodeState(node) {
+    if(node.type === KRITA_LOAD_IMAGE_NODE_TYPE) {
+        return {
+            id: node.id,
+            type: node.type,
+            document_id: "",
+            layer_ids: [],
+            layer_names: [],
+            snapshot_revision: "",
+        };
+    }
+
+    return {
+        id: node.id,
+        type: node.type,
+        document_id: "",
+        insert_direction: "below",
+        path: [{ quuid: null, type: "target" }],
+        layer_name: "Not set",
+    };
+}
 const EXTENSION_NAME = "Krita.WorkflowSync";
 
 let baseUrl = null;
@@ -80,14 +111,15 @@ export function fixKritaNodeUi(node, visitedNodes=new Set()) {
     if(!node || visitedNodes.has(node)) return;
     visitedNodes.add(node);
 
-    if(KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)) {
+    const metadataWidgetLabel = getMetadataWidgetLabel(node.type);
+    if(metadataWidgetLabel !== null) {
         const inputs = node.inputs ?? [];
-        const metaSlot = inputs.find(i => i.name === META_WIDGET_LABEL);
+        const metaSlot = inputs.find(i => i.name === metadataWidgetLabel);
         const documentSlot = inputs.find(i => i.name === DOCUMENT_WIDGET_LABEL);
 
         if(documentSlot) inputs.splice(inputs.indexOf(documentSlot), 1);
         if(metaSlot) inputs.splice(inputs.indexOf(metaSlot), 1);
-        hideKritaMetadataWidget(node);
+        hideKritaMetadataWidget(node, metadataWidgetLabel);
     }
 
     // Ordinary ComfyUI nodes can own subgraphs that contain Krita nodes.
@@ -104,8 +136,9 @@ function findKritaWidget(node, name) {
 }
 
 
-function hideKritaMetadataWidget(node) {
-    const widget = findKritaWidget(node, META_WIDGET_LABEL);
+function hideKritaMetadataWidget(node, label=getMetadataWidgetLabel(node.type)) {
+    if(label === null) return;
+    const widget = findKritaWidget(node, label);
     if(!widget) return;
 
     // V3 schema-level hidden flag is authoritative; keep matching widget flags
@@ -154,7 +187,7 @@ function kritaNodeStateKey(documentId, nodeId, nodeType=KRITA_SAVE_IMAGE_NODE_TY
 
 
 export function applyKritaNodeState(state) {
-    if(!state || state.type !== KRITA_SAVE_IMAGE_NODE_TYPE || !state.document_id) return;
+    if(!state || !KRITA_CUSTOM_IO_NODE_TYPES.includes(state.type) || !state.document_id) return;
 
     const key = kritaNodeStateKey(state.document_id, state.id, state.type);
     kritaNodeStateEventRevisions.set(key, (kritaNodeStateEventRevisions.get(key) ?? 0) + 1);
@@ -178,7 +211,7 @@ export async function loadKritaNodeStates() {
     try {
         const response = await api.get('/krita/nodes/states');
         for(const state of (response.states ?? [])) {
-            if(state.type !== KRITA_SAVE_IMAGE_NODE_TYPE || !state.document_id) continue;
+            if(!KRITA_CUSTOM_IO_NODE_TYPES.includes(state.type) || !state.document_id) continue;
 
             const key = kritaNodeStateKey(state.document_id, state.id, state.type);
             if((kritaNodeStateEventRevisions.get(key) ?? 0) !== (revisionsAtRequest.get(key) ?? 0)) continue;
@@ -196,8 +229,9 @@ export async function loadKritaNodeStates() {
 export function applyCachedKritaNodeStates() {
     for(const node of getInternalKritaNodes()) {
         const documentWidget = findKritaWidget(node, DOCUMENT_WIDGET_LABEL);
-        const metaWidget = findKritaWidget(node, META_WIDGET_LABEL);
-        hideKritaMetadataWidget(node);
+        const metadataLabel = getMetadataWidgetLabel(node.type);
+        const metaWidget = metadataLabel === null ? null : findKritaWidget(node, metadataLabel);
+        hideKritaMetadataWidget(node, metadataLabel);
         if(!metaWidget) continue;
 
         const documentId = documentWidget?.value;
@@ -210,14 +244,7 @@ export function applyCachedKritaNodeStates() {
             continue;
         }
 
-        setNodeMetadataValue(node, metaWidget, {
-            id: node.id,
-            type: node.type,
-            document_id: "",
-            insert_direction: "below",
-            path: [{ quuid: null, type: "target" }],
-            layer_name: "Not set",
-        });
+        setNodeMetadataValue(node, metaWidget, createDefaultNodeState(node));
     }
 }
 
