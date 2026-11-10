@@ -1,5 +1,6 @@
 import { app } from "../../../scripts/app.js";
 import { useNodeOutputStore } from "../../../stores/nodeOutputStore.js";
+import { useWorkflowStore } from "../../../platform/workflow/management/stores/workflowStore.js";
 
 
 const KRITA_SAVE_IMAGE_NODE_TYPE = "KritaSaveImage-15347";
@@ -315,7 +316,8 @@ async function updateKritaLoadImagePreview(state, preview) {
 
     try {
         const outputStore = useNodeOutputStore();
-        outputStore.setNodePreviewsByLocatorId(outputStore.nodeToNodeLocatorId(node), [objectUrl]);
+        const { nodeToNodeLocatorId } = useWorkflowStore();
+        outputStore.setNodePreviewsByLocatorId(nodeToNodeLocatorId(node), [objectUrl]);
         kritaLoadImagePreviewRevisions.set(key, state.snapshot_revision);
     }
     catch(error) {
