@@ -190,7 +190,6 @@ class KritaApi:
         )
         return transfer_id
 
-
     @prune_sids
     async def store_load_image_snapshot(
         self,
