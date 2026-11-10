@@ -365,12 +365,7 @@ class LoadImageNode(ComfyUiNode):
         self._start_latest_projection_capture()
 
     def _start_latest_projection_capture(self) -> None:
-        if (
-            self._disposed
-            or self._capture_active
-            or self._pending_state is not None
-            or self._latest_capture is None
-        ):
+        if self._disposed or self._capture_active or self._pending_state is not None or self._latest_capture is None:
             return
 
         capture_token, layer_ids, layer_names = self._latest_capture
