@@ -3,11 +3,12 @@ import uuid
 from typing import ClassVar, cast
 
 from krita import DockWidget, Document, Node as KritaNode, Window
-from PyQt5.QtCore import Qt, pyqtBoundSignal, pyqtSignal
+from PyQt5.QtCore import Qt, QRunnable, QThreadPool, pyqtBoundSignal, pyqtSignal
 from PyQt5.QtWidgets import QToolButton
 
+from comfyui.extension.layer_tree.layer_compositor import composite_layer_snapshots
 from comfyui.extension.layer_tree.multi_selection_picker import LayerMultiSelectionPicker
-from comfyui.extension.layer_tree.selection_exporter import export_selected_layers
+from comfyui.extension.layer_tree.selection_exporter import capture_selected_layer_pixels
 from comfyui.extension.layer_tree.target_picker import TargetSelectionUnavailableError
 from comfyui.extension.models import LoadImageState, Node, UiNodeState
 from comfyui.extension.ui.icons import LAYERS_ICON
@@ -16,6 +17,47 @@ from comfyui.extension.ui.micro.buttons import TargetEditButton
 from .comfyui_node import ComfyUiNode
 
 LOGGER = logging.getLogger(__name__)
+
+
+class _CompositeSignals:
+    completed = cast("pyqtBoundSignal", pyqtSignal(object, object, bytes))
+    failed = cast("pyqtBoundSignal", pyqtSignal(object, object, str))
+
+
+class _CompositeTask(QRunnable):
+    def __init__(
+        self,
+        state: LoadImageState,
+        canvas_width: int,
+        canvas_height: int,
+        snapshots: list,
+    ) -> None:
+        super().__init__()
+        self.state = state
+        self.canvas_width = canvas_width
+        self.canvas_height = canvas_height
+        self.snapshots = snapshots
+        # A QObject is required as the actual signal owner.
+        from PyQt5.QtCore import QObject  # noqa: PLC0415
+
+        class Signals(QObject):
+            completed = pyqtSignal(object, object, bytes)
+            failed = pyqtSignal(object, object, str)
+
+        self.signals = Signals()
+
+    def run(self) -> None:
+        try:
+            image_data = composite_layer_snapshots(
+                self.canvas_width,
+                self.canvas_height,
+                self.snapshots,
+            )
+        except Exception as error:  # noqa: BLE001
+            self.signals.failed.emit(self, self.state, str(error))
+            return
+
+        self.signals.completed.emit(self, self.state, image_data)
 
 
 class LoadImageNode(ComfyUiNode):
@@ -32,7 +74,8 @@ class LoadImageNode(ComfyUiNode):
         self.layer_names: list[str] = []
         self.snapshot_revision = ""
         self._pending_state: LoadImageState | None = None
-        self._applying_state = False
+        self._composition_pool = QThreadPool.globalInstance()
+        self._composition_tasks: set[_CompositeTask] = set()
 
         self.set_title_text(node.name)
         self._update_layer_info()
@@ -59,7 +102,7 @@ class LoadImageNode(ComfyUiNode):
         self.layer_picker.selection_accepted.connect(self._selection_accepted)
 
     def initialize_state(self) -> None:
-        if self._pending_state is not None:
+        if self.layer_ids or self.snapshot_revision:
             return
 
         state = LoadImageState(
@@ -76,19 +119,18 @@ class LoadImageNode(ComfyUiNode):
     def cleanup(self) -> None:
         if self.layer_picker.is_editing:
             self.layer_picker.cancel()
+        # Workers own only immutable Python buffers. Let any in-flight
+        # compositor finish, but ignore its result after this node is removed.
+        self._pending_state = None
 
     def apply(self, node_state: UiNodeState) -> None:
         self._apply_state(cast("LoadImageState", node_state))
 
     def _apply_state(self, state: LoadImageState) -> None:
-        self._applying_state = True
-        try:
-            self.layer_ids = list(state.layer_ids)
-            self.layer_names = list(state.layer_names)
-            self.snapshot_revision = state.snapshot_revision
-            self._update_layer_info()
-        finally:
-            self._applying_state = False
+        self.layer_ids = list(state.layer_ids)
+        self.layer_names = list(state.layer_names)
+        self.snapshot_revision = state.snapshot_revision
+        self._update_layer_info()
 
     def _toggle_editing(self, _checked: bool) -> None:
         if self.layer_picker.is_editing:
@@ -120,17 +162,23 @@ class LoadImageNode(ComfyUiNode):
 
     def _selection_accepted(self, selected_nodes: list[KritaNode]) -> None:
         self._reset_edit_controls()
-        layer_ids = [str(layer.uniqueId()) for layer in selected_nodes]
-        layer_names = [layer.name() for layer in selected_nodes]
 
         try:
-            image_data = export_selected_layers(self.document, layer_ids)
+            canvas_width, canvas_height, snapshots = capture_selected_layer_pixels(
+                self.document,
+                selected_nodes,
+            )
         except Exception as error:  # noqa: BLE001
-            LOGGER.exception("Could not export the selected Krita layers")
+            LOGGER.exception("Could not copy the selected Krita layer pixels")
             self.layer_info_text.setToolTip(str(error))
-            self.set_info_text("Layer export failed")
+            self.set_info_text("Layer capture failed")
             return
 
+        # Store the exact user selection for the picker, including the selected
+        # group/child rows, even though the exporter removes redundant child
+        # projections from the compositor input.
+        layer_ids = [str(layer.uniqueId()) for layer in selected_nodes]
+        layer_names = [layer.name() for layer in selected_nodes]
         state = LoadImageState(
             id=self.id,
             type=self.type,
@@ -140,8 +188,31 @@ class LoadImageNode(ComfyUiNode):
             snapshot_revision=uuid.uuid4().hex,
         )
         self._pending_state = state
-        self.set_info_text(f"Uploading {len(layer_names)} selected layer(s)…")
+        self.set_info_text(f"Compositing {len(layer_names)} selected layer(s)…")
+
+        task = _CompositeTask(state, canvas_width, canvas_height, snapshots)
+        task.signals.completed.connect(self._on_composite_completed, Qt.ConnectionType.QueuedConnection)
+        task.signals.failed.connect(self._on_composite_failed, Qt.ConnectionType.QueuedConnection)
+        self._composition_tasks.add(task)
+        self._composition_pool.start(task)
+
+    def _on_composite_completed(self, task: _CompositeTask, state: LoadImageState, image_data: bytes) -> None:
+        self._composition_tasks.discard(task)
+        if self._pending_state is None or self._pending_state.snapshot_revision != state.snapshot_revision:
+            return
+
+        self.set_info_text(f"Uploading {len(state.layer_names)} selected layer(s)…")
         self.snapshot_ready.emit(state, image_data)
+
+    def _on_composite_failed(self, task: _CompositeTask, state: LoadImageState, error: str) -> None:
+        self._composition_tasks.discard(task)
+        if self._pending_state is None or self._pending_state.snapshot_revision != state.snapshot_revision:
+            return
+
+        self._pending_state = None
+        self.layer_info_text.setToolTip(error)
+        self.set_info_text("Layer compositing failed")
+        LOGGER.exception("Could not composite the selected Krita layers: %s", error)
 
     def snapshot_uploaded(self, state: LoadImageState) -> None:
         if self._pending_state is None or self._pending_state.snapshot_revision != state.snapshot_revision:
@@ -149,7 +220,6 @@ class LoadImageNode(ComfyUiNode):
 
         self._apply_state(state)
         self._pending_state = None
-        self._update_layer_info()
         self.state_changed.emit(state)
 
     def snapshot_upload_failed(self, state: LoadImageState, error: str) -> None:
