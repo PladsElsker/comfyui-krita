@@ -164,13 +164,14 @@ class KritaApi:
         if existing is not None:
             total_bytes -= len(existing.data)
 
-        while self.load_image_snapshots and (
+        while (
             len(self.load_image_snapshots) >= MAX_LOAD_IMAGE_SNAPSHOTS and existing is None
             or total_bytes + len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES
         ):
-            oldest_key = min(self.load_image_snapshots, key=lambda item: self.load_image_snapshots[item].updated_at)
-            if oldest_key == key and len(self.load_image_snapshots) == 1:
+            candidates = [item for item in self.load_image_snapshots if item != key]
+            if not candidates:
                 break
+            oldest_key = min(candidates, key=lambda item: self.load_image_snapshots[item].updated_at)
             oldest = self.load_image_snapshots.pop(oldest_key)
             total_bytes -= len(oldest.data)
 
