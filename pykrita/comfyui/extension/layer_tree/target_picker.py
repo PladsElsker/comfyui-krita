@@ -158,17 +158,19 @@ class LayerTargetPicker(QObject):
             raise TargetSelectionUnavailableError(message)
 
         self._ensure_model_watch()
-        self._view = view
-        self._layer_view = layer_view
-        self._selection_model = selection_model
-        self._previous_selection_ids = [str(node.uniqueId()) for node in view.selectedNodes()]
-        active_node = self.document.activeNode()
-        self._previous_active_node_id = str(active_node.uniqueId()) if active_node is not None else None
-        self._initial_target_id = str(target.uniqueId()) if target is not None else None
         claim_selection_session(self)
-        self._editing = True
 
         try:
+            self._view = view
+            self._layer_view = layer_view
+            self._selection_model = selection_model
+            # Snapshot only after the previous editor has restored its selection.
+            self._previous_selection_ids = [str(node.uniqueId()) for node in view.selectedNodes()]
+            active_node = self.document.activeNode()
+            self._previous_active_node_id = str(active_node.uniqueId()) if active_node is not None else None
+            self._initial_target_id = str(target.uniqueId()) if target is not None else None
+            self._editing = True
+
             if target is not None:
                 self.document.setActiveNode(target)
                 target_index = self._index_for_node(target)
@@ -190,7 +192,10 @@ class LayerTargetPicker(QObject):
                 self._event_filter_installed = True
         except Exception:  # noqa: BLE001 - clean up the partial session, then re-raise
             try:
-                self._finish(restore_selection=True)
+                if self._editing:
+                    self._finish(restore_selection=True)
+                else:
+                    self._clear_session()
             except Exception as cleanup_error:  # noqa: BLE001 - cleanup failure must remain visible
                 message = "Target editing failed and the previous Krita selection could not be restored"
                 raise RuntimeError(message) from cleanup_error
