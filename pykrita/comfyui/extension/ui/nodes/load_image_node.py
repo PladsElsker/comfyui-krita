@@ -3,7 +3,7 @@ import uuid
 from typing import ClassVar, cast
 
 from krita import DockWidget, Document, Node as KritaNode, Window
-from PyQt5.QtCore import Qt, QRunnable, QThreadPool, pyqtBoundSignal, pyqtSignal
+from PyQt5.QtCore import QObject, Qt, QRunnable, QThreadPool, pyqtBoundSignal, pyqtSignal
 from PyQt5.QtWidgets import QToolButton
 
 from comfyui.extension.layer_tree.layer_compositor import composite_layer_snapshots
@@ -19,7 +19,7 @@ from .comfyui_node import ComfyUiNode
 LOGGER = logging.getLogger(__name__)
 
 
-class _CompositeSignals:
+class _CompositeSignals(QObject):
     completed = cast("pyqtBoundSignal", pyqtSignal(object, object, bytes))
     failed = cast("pyqtBoundSignal", pyqtSignal(object, object, str))
 
@@ -37,14 +37,7 @@ class _CompositeTask(QRunnable):
         self.canvas_width = canvas_width
         self.canvas_height = canvas_height
         self.snapshots = snapshots
-        # A QObject is required as the actual signal owner.
-        from PyQt5.QtCore import QObject  # noqa: PLC0415
-
-        class Signals(QObject):
-            completed = pyqtSignal(object, object, bytes)
-            failed = pyqtSignal(object, object, str)
-
-        self.signals = Signals()
+        self.signals = _CompositeSignals()
 
     def run(self) -> None:
         try:
@@ -212,7 +205,7 @@ class LoadImageNode(ComfyUiNode):
         self._pending_state = None
         self.layer_info_text.setToolTip(error)
         self.set_info_text("Layer compositing failed")
-        LOGGER.exception("Could not composite the selected Krita layers: %s", error)
+        LOGGER.error("Could not composite the selected Krita layers: %s", error)
 
     def snapshot_uploaded(self, state: LoadImageState) -> None:
         if self._pending_state is None or self._pending_state.snapshot_revision != state.snapshot_revision:
