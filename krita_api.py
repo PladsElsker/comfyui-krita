@@ -33,6 +33,7 @@ MAX_LOAD_IMAGE_SNAPSHOT_BYTES = 64 * 1024 * 1024
 MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES = 256 * 1024 * 1024
 MAX_LOAD_IMAGE_SNAPSHOTS = 128
 MAX_LOAD_IMAGE_PIXELS = 16_000_000
+MAX_LOAD_IMAGE_LAYERS = 512
 
 
 @dataclass
@@ -141,10 +142,23 @@ class KritaApi:
             raise LookupError("The Krita websocket session is not registered")
         if state.document_id not in self.registered_documents[sid]:
             raise ValueError("The image snapshot does not belong to a document registered by this Krita session")
-        if not state.layer_ids or len(state.layer_ids) != len(state.layer_names):
-            raise ValueError("The image snapshot must contain matching, non-empty layer IDs and names")
-        if not state.snapshot_revision:
-            raise ValueError("The image snapshot revision is missing")
+        if (
+            not state.layer_ids
+            or len(state.layer_ids) != len(state.layer_names)
+            or len(state.layer_ids) > MAX_LOAD_IMAGE_LAYERS
+            or len(set(state.layer_ids)) != len(state.layer_ids)
+        ):
+            raise ValueError("The image snapshot must contain a bounded, unique set of matching layer IDs and names")
+        if any(not layer_id or len(layer_id) > 256 for layer_id in state.layer_ids):
+            raise ValueError("The image snapshot contains an invalid layer ID")
+        if any(len(layer_name) > 512 for layer_name in state.layer_names):
+            raise ValueError("The image snapshot contains an excessively long layer name")
+        if not state.snapshot_revision or len(state.snapshot_revision) > 128:
+            raise ValueError("The image snapshot revision is missing or invalid")
+
+        current_workflow_nodes = self._last_workflows_request.workflows.get(state.document_id, [])
+        if not any(node.id == state.id and node.type == state.type for node in current_workflow_nodes):
+            raise ValueError("The Load Image node is no longer present in the current ComfyUI workflow")
         if len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_BYTES:
             raise ValueError(f"The Krita image snapshot exceeds the {MAX_LOAD_IMAGE_SNAPSHOT_BYTES}-byte limit")
 

@@ -76,6 +76,9 @@ def test__given_valid_snapshot__when_storing__then_state_and_pixels_are_cached_t
 
     api = KRITA_API_MODULE.KritaApi()
     api.registered_documents["test-sid"] = {"document-1"}
+    api._last_workflows_request.workflows["document-1"] = [
+        KRITA_API_MODULE.Node(id=42, type="KritaLoadImage-15348", name="Load Image")
+    ]
     state = _load_state()
     image_data = _rgba_png()
 
@@ -95,6 +98,9 @@ def test__given_replacement_snapshot__when_storing__then_old_revision_is_invalid
 
     api = KRITA_API_MODULE.KritaApi()
     api.registered_documents["test-sid"] = {"document-1"}
+    api._last_workflows_request.workflows["document-1"] = [
+        KRITA_API_MODULE.Node(id=42, type="KritaLoadImage-15348", name="Load Image")
+    ]
     old_state = _load_state("revision-1")
     new_state = _load_state("revision-2")
     asyncio.run(api.store_load_image_snapshot("test-sid", old_state, _rgba_png()))
@@ -118,3 +124,10 @@ def test__given_unknown_session__when_storing__then_rejects() -> None:
 
     with pytest.raises(LookupError, match="not registered"):
         asyncio.run(api.store_load_image_snapshot("missing-sid", _load_state(), _rgba_png()))
+
+def test__given_node_removed_from_active_workflow__when_uploading_snapshot__then_rejects() -> None:
+    api = KRITA_API_MODULE.KritaApi()
+    api.registered_documents["test-sid"] = {"document-1"}
+
+    with pytest.raises(ValueError, match="no longer present"):
+        asyncio.run(api.store_load_image_snapshot("test-sid", _load_state(), _rgba_png()))
