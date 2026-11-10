@@ -244,6 +244,7 @@ class ComfyKritaBridge(QObject):
             node_list_id = id(node_list)
             if node_list_id not in self._connected_node_lists:
                 node_list.node_state_changed.connect(self._publish_node_state)
+                node_list.snapshot_upload_requested.connect(self._queue_load_image_snapshot_upload)
                 self._connected_node_lists.add(node_list_id)
 
             for state in node_list.previous_node_states.values():
@@ -257,7 +258,9 @@ class ComfyKritaBridge(QObject):
                     elif not state.snapshot_revision:
                         self._publish_node_state({"deleted": False, "state": state})
 
-        # Also flush tombstones/updates that accumulated while disconnected.
+        # Also flush tombstones, image snapshots, and state updates that
+        # accumulated while disconnected.
+        self._start_pending_load_image_snapshot_uploads()
         self._start_pending_node_state_upload()
 
     def _publish_node_state(self, update: dict) -> None:
