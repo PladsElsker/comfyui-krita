@@ -174,7 +174,6 @@ class LayerTargetPicker(QObject):
             message = "Krita's Layers Docker has no selection model"
             raise TargetSelectionUnavailableError(message)
 
-        claim_selection_session(self)
         self._ensure_model_watch()
         self._view = view
         self._layer_view = layer_view
@@ -183,6 +182,7 @@ class LayerTargetPicker(QObject):
         active_node = self.document.activeNode()
         self._previous_active_node_id = str(active_node.uniqueId()) if active_node is not None else None
         self._initial_target_id = str(target.uniqueId()) if target is not None else None
+        claim_selection_session(self)
         self._editing = True
 
         try:
