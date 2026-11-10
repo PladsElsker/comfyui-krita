@@ -6,7 +6,7 @@ from krita import DockWidget, Document, Node as KritaNode, Window
 from PyQt5.QtCore import QObject, Qt, QRunnable, QThreadPool, pyqtBoundSignal, pyqtSignal
 from PyQt5.QtWidgets import QToolButton
 
-from comfyui.extension.layer_tree.layer_compositor import composite_layer_snapshots
+from comfyui.extension.layer_tree.layer_compositor import LayerPixelSnapshot, composite_layer_snapshots
 from comfyui.extension.layer_tree.multi_selection_picker import LayerMultiSelectionPicker
 from comfyui.extension.layer_tree.selection_exporter import capture_selected_layer_pixels
 from comfyui.extension.layer_tree.target_picker import TargetSelectionUnavailableError
@@ -30,7 +30,7 @@ class _CompositeTask(QRunnable):
         state: LoadImageState,
         canvas_width: int,
         canvas_height: int,
-        snapshots: list,
+        snapshots: list[LayerPixelSnapshot],
     ) -> None:
         super().__init__()
         self.state = state

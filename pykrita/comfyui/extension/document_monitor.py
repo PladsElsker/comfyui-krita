@@ -4,9 +4,6 @@ from krita import Document, Krita
 from PyQt5.QtCore import QObject, QTimer, pyqtBoundSignal, pyqtSignal
 
 
-INTERNAL_DOCUMENT_NAME_PREFIX = "__ComfyUI_InternalSnapshot__"
-
-
 class DocumentMonitor(QObject):
     on_documents_changed = cast("pyqtBoundSignal", pyqtSignal())
     on_active_document_changed = cast("pyqtBoundSignal", pyqtSignal())
@@ -84,14 +81,8 @@ class DocumentMonitor(QObject):
         self._check_for_changes()
 
     def _check_for_changes(self) -> None:
-        current_documents = tuple(
-            document
-            for document in self._krita.documents()
-            if not document.name().startswith(INTERNAL_DOCUMENT_NAME_PREFIX)
-        )
+        current_documents = tuple(self._krita.documents())
         current_active_document = self._krita.activeDocument()
-        if current_active_document is not None and current_active_document not in current_documents:
-            current_active_document = None
 
         have_documents_changed = False
         has_active_document_changed = False

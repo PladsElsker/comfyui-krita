@@ -113,7 +113,7 @@ class ComfyKritaBridge(QObject):
             tuple[str, int, str],
             tuple[object, LoadImageState, bytes],
         ] = {}
-        self._active_load_image_snapshot_uploads: set[tuple[str, int, str]] = set()
+        self._active_load_image_snapshot_uploads: dict[tuple[str, int, str], _LoadImageUploadTask] = {}
         self._load_image_upload_attempts: dict[tuple[str, int, str, str], int] = {}
 
         self._download_pool = QThreadPool(self)
@@ -343,7 +343,7 @@ class ComfyKritaBridge(QObject):
                 self._on_load_image_snapshot_upload_failed,
                 Qt.ConnectionType.QueuedConnection,
             )
-            self._active_load_image_snapshot_uploads.add(key)
+            self._active_load_image_snapshot_uploads[key] = task
             self._load_image_upload_pool.start(task)
 
     @pyqtSlot(object, object, bytes)
@@ -354,7 +354,7 @@ class ComfyKritaBridge(QObject):
         image_data: bytes,
     ) -> None:
         key = (state.document_id, state.id, state.type)
-        self._active_load_image_snapshot_uploads.discard(key)
+        self._active_load_image_snapshot_uploads.pop(key, None)
         pending = self._pending_load_image_snapshots.get(key)
         if pending is None or pending[1].snapshot_revision != state.snapshot_revision:
             self._start_pending_load_image_snapshot_uploads()
