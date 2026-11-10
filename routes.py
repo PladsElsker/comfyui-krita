@@ -86,7 +86,6 @@ def _define_node_state_routes() -> None:
             return web.json_response(status=400)
 
 
-
 def _define_input_image_routes() -> None:
     PromptServer.instance.routes.put("/krita/{sid}/nodes/load-image")(_upload_load_image_snapshot)
 
@@ -133,6 +132,7 @@ async def _read_load_image_package(request: Request) -> bytes:
         raise ValueError(message)
     return bytes(package_buffer)
 
+
 def _parse_load_image_package(package_data: bytes) -> tuple[LoadImageState, bytes]:
     with ZipFile(BytesIO(package_data)) as archive:
         infos = archive.infolist()
@@ -150,6 +150,7 @@ def _parse_load_image_package(package_data: bytes) -> tuple[LoadImageState, byte
         state = LoadImageState.model_validate_json(archive.read("state.json"))
         image_data = archive.read("composite.png")
     return state, image_data
+
 
 def _define_image_transfer_routes() -> None:
     @PromptServer.instance.routes.get("/krita/images/{transfer_id}")
