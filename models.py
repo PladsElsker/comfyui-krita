@@ -47,9 +47,20 @@ class SaveImageState(BaseModel):
     layer_name: str
 
 
+class LoadImageState(BaseModel):
+    id: int
+    type: Literal["KritaLoadImage-15348"]
+    document_id: str
+    layer_ids: list[str] = Field(default_factory=list)
+    layer_names: list[str] = Field(default_factory=list)
+
+
+KritaNodeState = SaveImageState | LoadImageState
+
+
 class KritaNodeStateUpdate(BaseModel):
     deleted: bool = False
-    state: SaveImageState | None = None
+    state: KritaNodeState | None = None
     document_id: str | None = None
     id: int | None = None
     type: str | None = None
