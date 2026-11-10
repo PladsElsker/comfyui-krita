@@ -5,7 +5,6 @@ from PyQt5.QtCore import qWarning
 from PyQt5.QtGui import QImage
 
 
-
 def _warn(message: str, *args: object) -> None:
     """Send temporary diagnostics through Krita's Qt warning handler."""
     qWarning(message % args if args else message)
