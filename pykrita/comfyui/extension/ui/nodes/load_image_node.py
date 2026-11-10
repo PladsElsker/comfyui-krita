@@ -73,7 +73,14 @@ class LoadImageNode(ComfyUiNode):
     type: ClassVar[str] = "KritaLoadImage-15348"
     snapshot_ready = cast("pyqtBoundSignal", pyqtSignal(object, bytes))
 
-    def __init__(self, docker: DockWidget, node: Node, window: Window, document: Document, document_id: str) -> None:
+    def __init__(
+        self,
+        docker: DockWidget,
+        node: Node,
+        window: Window,
+        document: Document,
+        document_id: str,
+    ) -> None:
         super().__init__(docker, node, LAYERS_ICON, document_id)
         self.setObjectName("LoadImageNode")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, on=True)
@@ -194,12 +201,23 @@ class LoadImageNode(ComfyUiNode):
         self.set_info_text(f"Encoding {len(layer_names)} selected layer(s)…")
 
         task = _ProjectionExportTask(state, projection)
-        task.signals.completed.connect(self._on_projection_export_completed, Qt.ConnectionType.QueuedConnection)
-        task.signals.failed.connect(self._on_projection_export_failed, Qt.ConnectionType.QueuedConnection)
+        task.signals.completed.connect(
+            self._on_projection_export_completed,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        task.signals.failed.connect(
+            self._on_projection_export_failed,
+            Qt.ConnectionType.QueuedConnection,
+        )
         self._composition_tasks.add(task)
         self._composition_pool.start(task)
 
-    def _on_projection_export_completed(self, task: _ProjectionExportTask, state: LoadImageState, image_data: bytes) -> None:
+    def _on_projection_export_completed(
+        self,
+        task: _ProjectionExportTask,
+        state: LoadImageState,
+        image_data: bytes,
+    ) -> None:
         self._composition_tasks.discard(task)
         if self._pending_state is None or self._pending_state.snapshot_revision != state.snapshot_revision:
             return
@@ -207,7 +225,12 @@ class LoadImageNode(ComfyUiNode):
         self.set_info_text(f"Uploading {len(state.layer_names)} selected layer(s)…")
         self.snapshot_ready.emit(state, image_data)
 
-    def _on_projection_export_failed(self, task: _ProjectionExportTask, state: LoadImageState, error: str) -> None:
+    def _on_projection_export_failed(
+        self,
+        task: _ProjectionExportTask,
+        state: LoadImageState,
+        error: str,
+    ) -> None:
         self._composition_tasks.discard(task)
         if self._pending_state is None or self._pending_state.snapshot_revision != state.snapshot_revision:
             return
