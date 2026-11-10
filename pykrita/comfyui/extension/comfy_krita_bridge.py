@@ -162,9 +162,7 @@ class ComfyKritaBridge(QObject):
                 status_request = StatusRequest.model_validate(data)
                 self.status_statement(status_request)
             except Exception:  # noqa: BLE001
-                LOGGER.exception(
-                    "Could not register the Krita websocket session with ComfyUI"
-                )
+                LOGGER.exception("Could not register the Krita websocket session with ComfyUI")
 
         @self.comfy_ws.handler("krita::workflows::update")
         def update_workflows(data: dict) -> None:
@@ -258,9 +256,7 @@ class ComfyKritaBridge(QObject):
             node_list_id = id(node_list)
             if node_list_id not in self._connected_node_lists:
                 node_list.node_state_changed.connect(self._publish_node_state)
-                node_list.snapshot_upload_requested.connect(
-                    self._queue_load_image_snapshot_upload
-                )
+                node_list.snapshot_upload_requested.connect(self._queue_load_image_snapshot_upload)
                 self._connected_node_lists.add(node_list_id)
 
             docker.update_title(workflows_request.name, found_document_id)
@@ -294,18 +290,11 @@ class ComfyKritaBridge(QObject):
                 elif isinstance(state, LoadImageState):
                     key = (state.document_id, state.id, state.type)
                     pending = self._pending_load_image_snapshots.get(key)
-                    if (
-                        pending is not None
-                        and pending[1].snapshot_revision == state.snapshot_revision
-                    ):
+                    if pending is not None and pending[1].snapshot_revision == state.snapshot_revision:
                         continue
 
                     cached = self._load_image_snapshots.get(key)
-                    if (
-                        cached is not None
-                        and cached[0].snapshot_revision == state.snapshot_revision
-                        and state.snapshot_revision
-                    ):
+                    if cached is not None and cached[0].snapshot_revision == state.snapshot_revision and state.snapshot_revision:
                         self._queue_load_image_snapshot_upload(None, state, cached[1])
                     elif not state.snapshot_revision:
                         self._publish_node_state({"deleted": False, "state": state})
@@ -320,11 +309,7 @@ class ComfyKritaBridge(QObject):
             document_id = update.get("document_id")
             node_id = update.get("id")
             node_type = update.get("type")
-            if (
-                not isinstance(document_id, str)
-                or not isinstance(node_id, int)
-                or not isinstance(node_type, str)
-            ):
+            if not isinstance(document_id, str) or not isinstance(node_id, int) or not isinstance(node_type, str):
                 LOGGER.warning("Ignoring an incomplete deleted Krita node-state update")
                 return
             key = (document_id, node_id, node_type)
@@ -375,16 +360,11 @@ class ComfyKritaBridge(QObject):
         if sid is None or not self.comfy_ws.is_connected:
             return
 
-        for key, (widget, state, image_data) in list(
-            self._pending_load_image_snapshots.items()
-        ):
+        for key, (widget, state, image_data) in list(self._pending_load_image_snapshots.items()):
             if key in self._active_load_image_snapshot_uploads:
                 continue
             attempts_key = (*key, state.snapshot_revision)
-            if (
-                self._load_image_upload_attempts.get(attempts_key, 0)
-                >= MAX_NODE_STATE_UPLOAD_ATTEMPTS
-            ):
+            if self._load_image_upload_attempts.get(attempts_key, 0) >= MAX_NODE_STATE_UPLOAD_ATTEMPTS:
                 continue
 
             task = _LoadImageUploadTask(self.comfy_ws, sid, widget, state, image_data)
@@ -498,9 +478,7 @@ class ComfyKritaBridge(QObject):
         try:
             self.comfy_ws.put(f"/krita/{sid}/nodes/state", payload)
         except Exception:  # noqa: BLE001
-            LOGGER.exception(
-                "Could not synchronize Krita output-node state with ComfyUI"
-            )
+            LOGGER.exception("Could not synchronize Krita output-node state with ComfyUI")
             return False
         return True
 
@@ -580,8 +558,7 @@ class ComfyKritaBridge(QObject):
         document = self.document_monitor.mapping.get(state.document_id)
         if document is None:
             LOGGER.error(
-                "Fetched generated image %s (%d bytes), but "
-                "Krita has no document mapping for ID %s",
+                "Fetched generated image %s (%d bytes), but " "Krita has no document mapping for ID %s",
                 notification.transfer_id,
                 len(image_data),
                 state.document_id,
@@ -590,8 +567,7 @@ class ComfyKritaBridge(QObject):
 
         if document not in opened_documents:
             LOGGER.error(
-                "Fetched generated image %s (%d bytes), but "
-                "target document %s is not open",
+                "Fetched generated image %s (%d bytes), but " "target document %s is not open",
                 notification.transfer_id,
                 len(image_data),
                 state.document_id,
@@ -606,8 +582,7 @@ class ComfyKritaBridge(QObject):
             insert_png_image(document, image_data, state.path, layer_name)
         except Exception as error:  # noqa: BLE001
             LOGGER.exception(
-                "Generated image %s was fetched but could not be "
-                "inserted into document %s",
+                "Generated image %s was fetched but could not be " "inserted into document %s",
                 notification.transfer_id,
                 state.document_id,
             )
