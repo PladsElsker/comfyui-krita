@@ -287,7 +287,7 @@ class KritaApi:
         return {"snapshot_revision": revision, "changed": changed}
 
     def _remove_load_image_snapshot(self, key: tuple[str, int, str]) -> None:
-        snapshot = self._remove_load_image_snapshot(key)
+        snapshot = self.load_image_snapshots.pop(key, None)
         if snapshot is not None:
             _delete_snapshot_preview(snapshot.preview)
 
@@ -418,7 +418,7 @@ class KritaApi:
         removed_keys = [key for key, state in sid_states.items() if state.document_id not in registered_ids]
         for key in removed_keys:
             state = sid_states.pop(key)
-            self.load_image_snapshots.pop(key, None)
+            self._remove_load_image_snapshot(key)
             await self._broadcast_deleted_node_state(state)
 
         krita_documents = self.get_registered_documents().model_dump()
