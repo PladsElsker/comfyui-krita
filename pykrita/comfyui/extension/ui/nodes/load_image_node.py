@@ -26,10 +26,10 @@ from comfyui.extension.models import LoadImageState, Node, UiNodeState
 from comfyui.extension.ui.icons import (
     CANCEL_ICON,
     CHECK_ICON,
-    LAYERS_ICON,
     STACKS_ICON,
     render_svg_to_pixmap,
 )
+from comfyui.extension.ui.micro.buttons import TargetEditButton
 
 from .comfyui_node import ComfyUiNode
 
@@ -88,7 +88,7 @@ class LoadImageNode(ComfyUiNode):
         document: Document,
         document_id: str,
     ) -> None:
-        super().__init__(docker, node, LAYERS_ICON, document_id)
+        super().__init__(docker, node, STACKS_ICON, document_id)
         self.setObjectName("LoadImageNode")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, on=True)
         self.window = window
@@ -103,7 +103,9 @@ class LoadImageNode(ComfyUiNode):
         self.set_title_text(node.name)
         self._update_layer_info()
 
-        self.edit_button = self._create_action_button(STACKS_ICON, "Select layers")
+        # The node's primary icon is STACKS_ICON; the action on the right stays
+        # the standard pen/edit button and is swapped out only while selecting.
+        self.edit_button = TargetEditButton()
         self.edit_button.clicked.connect(self._toggle_editing)
 
         self.accept_button = self._create_action_button(CHECK_ICON, "Accept selected layers")
