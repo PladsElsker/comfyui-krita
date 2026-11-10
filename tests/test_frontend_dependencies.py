@@ -586,7 +586,6 @@ def test__given_krita_load_image_node__when_state_updates__then_input_metadata_w
     }
 
 
-
 def test__given_both_krita_node_types__when_document_widgets_are_refreshed__then_both_use_the_same_document_ids(
     default_page: Page,
 ) -> None:
@@ -648,7 +647,6 @@ def test__given_both_krita_node_types__when_document_widgets_are_refreshed__then
             "value": "document-1",
         },
     ]
-
 
 
 def test__given_non_krita_node__when_fix_krita_node_ui__then_document_and_metadata_widgets_are_untouched(
