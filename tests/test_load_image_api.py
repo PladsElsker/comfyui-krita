@@ -32,6 +32,7 @@ class _PromptServer:
 
 
 FAKE_SERVER.PromptServer = _PromptServer
+_ORIGINAL_SERVER_MODULE = sys.modules.get("server")
 sys.modules["server"] = FAKE_SERVER
 
 SPEC = importlib.util.spec_from_file_location(
@@ -42,15 +43,13 @@ assert SPEC is not None and SPEC.loader is not None
 KRITA_API_MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = KRITA_API_MODULE
 SPEC.loader.exec_module(KRITA_API_MODULE)
+if _ORIGINAL_SERVER_MODULE is None:
+    sys.modules.pop("server", None)
+else:
+    sys.modules["server"] = _ORIGINAL_SERVER_MODULE
 
-MODELS_SPEC = importlib.util.spec_from_file_location(
-    f"{PACKAGE_NAME}.models",
-    REPOSITORY_ROOT / "models.py",
-)
-assert MODELS_SPEC is not None and MODELS_SPEC.loader is not None
-MODELS_MODULE = importlib.util.module_from_spec(MODELS_SPEC)
-sys.modules[MODELS_SPEC.name] = MODELS_MODULE
-MODELS_SPEC.loader.exec_module(MODELS_MODULE)
+MODELS_MODULE = sys.modules[f"{PACKAGE_NAME}.models"]
+LoadImageState = MODELS_MODULE.LoadImageState
 
 
 def _rgba_png() -> bytes:
@@ -60,7 +59,7 @@ def _rgba_png() -> bytes:
     return buffer.getvalue()
 
 
-def _load_state(revision: str = "revision-1"):
+def _load_state(revision: str = "revision-1") -> LoadImageState:
     return MODELS_MODULE.LoadImageState(
         id=42,
         type="KritaLoadImage-15348",

@@ -59,6 +59,7 @@ def _write_preview_image(image_data: bytes) -> dict[str, str]:
         preview_file.write(image_data)
     return {"filename": filename, "subfolder": "", "type": "temp"}
 
+
 class KritaSaveImage(io.ComfyNode):
     @classmethod
     def define_schema(cls) -> io.Schema:
