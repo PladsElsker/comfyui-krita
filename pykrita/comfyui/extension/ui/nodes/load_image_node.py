@@ -153,6 +153,14 @@ class LoadImageNode(ComfyUiNode):
     def cleanup(self) -> None:
         if self.layer_picker.is_editing:
             self.layer_picker.cancel()
+
+        # The node may remain alive until Qt processes deleteLater(). Remove
+        # its action controls synchronously so none can outlive the node row.
+        self.set_action_buttons([])
+        self.edit_button.hide()
+        self.accept_button.hide()
+        self.cancel_button.hide()
+
         # Workers own only a detached QImage. Ignore their results after this
         # node is removed; the scratch document has already been closed.
         self._pending_state = None
