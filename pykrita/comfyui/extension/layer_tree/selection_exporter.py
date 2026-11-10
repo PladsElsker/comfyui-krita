@@ -5,7 +5,6 @@ from krita import Document, Node
 from PyQt5.QtCore import qWarning
 from PyQt5.QtGui import QImage
 
-
 SOURCE_BARRIER_TIMEOUT_SECONDS = 30
 SOURCE_BARRIER_RETRY_SECONDS = 0.02
 
@@ -130,11 +129,7 @@ def _get_selected_roots(document: Document, selected_layer_ids: list[str]) -> li
         raise ValueError(message)
 
     selected_nodes = [source_nodes[node_id] for node_id in selected_layer_ids]
-    roots = [
-        node
-        for node in selected_nodes
-        if not _has_selected_ancestor(node, selected_ids) and _is_effectively_visible(node)
-    ]
+    roots = [node for node in selected_nodes if not _has_selected_ancestor(node, selected_ids) and _is_effectively_visible(node)]
     if not roots:
         message = "The selected layers are hidden or no longer available"
         raise ValueError(message)
