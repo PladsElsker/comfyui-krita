@@ -90,18 +90,31 @@ def _validate_snapshot_metadata(api: "KritaApi", state: LoadImageState) -> None:
     ):
         message = "The image snapshot must contain a bounded, unique set of matching layer IDs and names"
         raise ValueError(message)
-    if any(not layer_id or len(layer_id) > MAX_LOAD_IMAGE_LAYER_ID_LENGTH for layer_id in state.layer_ids):
+    if any(
+        not layer_id or len(layer_id) > MAX_LOAD_IMAGE_LAYER_ID_LENGTH
+        for layer_id in state.layer_ids
+    ):
         message = "The image snapshot contains an invalid layer ID"
         raise ValueError(message)
-    if any(len(layer_name) > MAX_LOAD_IMAGE_LAYER_NAME_LENGTH for layer_name in state.layer_names):
+    if any(
+        len(layer_name) > MAX_LOAD_IMAGE_LAYER_NAME_LENGTH
+        for layer_name in state.layer_names
+    ):
         message = "The image snapshot contains an excessively long layer name"
         raise ValueError(message)
-    if not state.snapshot_revision or len(state.snapshot_revision) > MAX_LOAD_IMAGE_REVISION_LENGTH:
+    if (
+        not state.snapshot_revision
+        or len(state.snapshot_revision) > MAX_LOAD_IMAGE_REVISION_LENGTH
+    ):
         message = "The image snapshot revision is missing or invalid"
         raise ValueError(message)
 
-    current_workflow_nodes = api._last_workflows_request.workflows.get(state.document_id, [])
-    if not any(node.id == state.id and node.type == state.type for node in current_workflow_nodes):
+    current_workflow_nodes = api._last_workflows_request.workflows.get(
+        state.document_id, []
+    )
+    if not any(
+        node.id == state.id and node.type == state.type for node in current_workflow_nodes
+    ):
         message = "The Load Image node is no longer present in the current ComfyUI workflow"
         raise ValueError(message)
 
@@ -134,7 +147,9 @@ class KritaApi:
         self.node_states: dict[str, dict[tuple[str, int, str], KritaNodeState]] = {}
         self.load_image_snapshots: dict[tuple[str, int, str], LoadImageSnapshot] = {}
         self._staged_images: dict[str, StagedImage] = {}
-        self._last_workflows_request: UpdateWorkflowsRequest = UpdateWorkflowsRequest.default()
+        self._last_workflows_request: UpdateWorkflowsRequest = (
+            UpdateWorkflowsRequest.default()
+        )
 
     def create_layer(
         self,
@@ -144,7 +159,11 @@ class KritaApi:
         batch_index: int = 0,
         batch_size: int = 1,
     ) -> str:
-        state = SaveImageState.model_validate_json(meta) if isinstance(meta, str) else SaveImageState.model_validate(meta)
+        state = (
+            SaveImageState.model_validate_json(meta)
+            if isinstance(meta, str)
+            else SaveImageState.model_validate(meta)
+        )
         if state.document_id != document_id:
             message = "The Save Image node metadata does not match its selected Krita document"
             raise ValueError(message)
@@ -163,9 +182,13 @@ class KritaApi:
         self._prune_staged_images()
         while self._staged_images and (
             len(self._staged_images) >= MAX_STAGED_IMAGES
-            or sum(len(staged.data) for staged in self._staged_images.values()) + len(image_data) > MAX_STAGED_TOTAL_BYTES
+            or sum(len(staged.data) for staged in self._staged_images.values()) + len(image_data)
+            > MAX_STAGED_TOTAL_BYTES
         ):
-            oldest_transfer = min(self._staged_images, key=lambda key: self._staged_images[key].expires_at)
+            oldest_transfer = min(
+                self._staged_images,
+                key=lambda key: self._staged_images[key].expires_at,
+            )
             self._staged_images.pop(oldest_transfer, None)
 
         transfer_id = secrets.token_urlsafe(24)
@@ -205,18 +228,26 @@ class KritaApi:
 
         key = (state.document_id, state.id, state.type)
         existing = self.load_image_snapshots.get(key)
-        total_bytes = sum(len(snapshot.data) for snapshot in self.load_image_snapshots.values())
+        total_bytes = sum(
+            len(snapshot.data) for snapshot in self.load_image_snapshots.values()
+        )
         if existing is not None:
             total_bytes -= len(existing.data)
 
         while (
-            (len(self.load_image_snapshots) >= MAX_LOAD_IMAGE_SNAPSHOTS and existing is None)
+            (
+                len(self.load_image_snapshots) >= MAX_LOAD_IMAGE_SNAPSHOTS
+                and existing is None
+            )
             or total_bytes + len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES
         ):
             candidates = [item for item in self.load_image_snapshots if item != key]
             if not candidates:
                 break
-            oldest_key = min(candidates, key=lambda item: self.load_image_snapshots[item].updated_at)
+            oldest_key = min(
+                candidates,
+                key=lambda item: self.load_image_snapshots[item].updated_at,
+            )
             oldest = self.load_image_snapshots.pop(oldest_key)
             total_bytes -= len(oldest.data)
 
@@ -236,8 +267,13 @@ class KritaApi:
         )
 
     def has_load_image_snapshot(self, state: LoadImageState) -> bool:
-        snapshot = self.load_image_snapshots.get((state.document_id, state.id, state.type))
-        return snapshot is not None and snapshot.state.snapshot_revision == state.snapshot_revision
+        snapshot = self.load_image_snapshots.get(
+            (state.document_id, state.id, state.type)
+        )
+        return (
+            snapshot is not None
+            and snapshot.state.snapshot_revision == state.snapshot_revision
+        )
 
     def get_load_image_snapshot(self, state: LoadImageState) -> bytes | None:
         snapshot = self.load_image_snapshots.get((state.document_id, state.id, state.type))
@@ -246,7 +282,10 @@ class KritaApi:
         snapshot.updated_at = time.monotonic()
         return snapshot.data
 
-    async def _send_layer_notification(self, notification: LayerCreateNotification) -> None:
+    async def _send_layer_notification(
+        self,
+        notification: LayerCreateNotification,
+    ) -> None:
         self._prune_staged_images()
         staged = self._staged_images.get(notification.transfer_id)
         if staged is None:
@@ -259,7 +298,8 @@ class KritaApi:
         if sid is None or sid not in PromptServer.instance.sockets:
             staged.notified_sid = None
             LOGGER.warning(
-                "Keeping generated image %s staged for Krita document %s; " "waiting for an active PromptServer session",
+                "Keeping generated image %s staged for Krita document %s; "
+                "waiting for an active PromptServer session",
                 notification.transfer_id,
                 staged.document_id,
             )
@@ -286,7 +326,10 @@ class KritaApi:
         # PromptServer.send_json silently skips unknown SIDs. Recheck the
         # socket after sending so a disconnect racing with dispatch does not
         # mark the notification as delivered.
-        if sid in PromptServer.instance.sockets and self._document_id_to_sid(staged.document_id) == sid:
+        if (
+            sid in PromptServer.instance.sockets
+            and self._document_id_to_sid(staged.document_id) == sid
+        ):
             staged.notified_sid = sid
         else:
             staged.notified_sid = None
@@ -314,7 +357,11 @@ class KritaApi:
 
     def _prune_staged_images(self) -> None:
         now = time.monotonic()
-        expired = [transfer_id for transfer_id, staged in self._staged_images.items() if staged.expires_at <= now]
+        expired = [
+            transfer_id
+            for transfer_id, staged in self._staged_images.items()
+            if staged.expires_at <= now
+        ]
         for transfer_id in expired:
             self._staged_images.pop(transfer_id, None)
 
@@ -341,7 +388,11 @@ class KritaApi:
                 (
                     candidate_id
                     for candidate_id, previous_name in previous_mappings.items()
-                    if previous_name == document_name and candidate_id not in occupied_ids and candidate_id not in document_mapping
+                    if (
+                        previous_name == document_name
+                        and candidate_id not in occupied_ids
+                        and candidate_id not in document_mapping
+                    )
                 ),
                 None,
             )
@@ -356,7 +407,9 @@ class KritaApi:
 
         registered_ids = set(document_mapping)
         sid_states = self.node_states.setdefault(sid, {})
-        removed_keys = [key for key, state in sid_states.items() if state.document_id not in registered_ids]
+        removed_keys = [
+            key for key, state in sid_states.items() if state.document_id not in registered_ids
+        ]
         for key in removed_keys:
             state = sid_states.pop(key)
             self.load_image_snapshots.pop(key, None)
@@ -413,12 +466,16 @@ class KritaApi:
         )
 
     def get_node_states(self) -> list[KritaNodeState]:
-        return [state for sid_states in self.node_states.values() for state in sid_states.values()]
+        return [
+            state for sid_states in self.node_states.values() for state in sid_states.values()
+        ]
 
     @prune_sids
     async def update_workflows(self, workflows_request: UpdateWorkflowsRequest) -> None:
         self._last_workflows_request = workflows_request
-        sid_map = self._split_update_workflows_request_per_sids(self._last_workflows_request)
+        sid_map = self._split_update_workflows_request_per_sids(
+            self._last_workflows_request
+        )
 
         for sid, request in sid_map.items():
             await PromptServer.instance.send(
@@ -428,13 +485,22 @@ class KritaApi:
             )
 
     @prune_sids
-    def get_registered_workflows_by_sid(self, sid: str) -> UpdateWorkflowsRequest | None:
-        return self._split_update_workflows_request_per_sids(self._last_workflows_request).get(sid, None)
+    def get_registered_workflows_by_sid(
+        self,
+        sid: str,
+    ) -> UpdateWorkflowsRequest | None:
+        return self._split_update_workflows_request_per_sids(
+            self._last_workflows_request
+        ).get(sid, None)
 
     def get_registered_documents(self) -> KritaDocuments:
         return KritaDocuments(
             documents=sorted(
-                [document_id for document_set in self.registered_documents.values() for document_id in document_set],
+                [
+                    document_id
+                    for document_set in self.registered_documents.values()
+                    for document_id in document_set
+                ],
             ),
         )
 
@@ -449,7 +515,10 @@ class KritaApi:
                 del self.registered_documents[sid]
                 self.document_mappings.pop(sid, None)
                 for state in self.node_states.pop(sid, {}).values():
-                    self.load_image_snapshots.pop((state.document_id, state.id, state.type), None)
+                    self.load_image_snapshots.pop(
+                        (state.document_id, state.id, state.type),
+                        None,
+                    )
                     await self._broadcast_deleted_node_state(state)
                 has_changed = True
 
@@ -483,7 +552,9 @@ class KritaApi:
                     workflows={},
                 )
 
-            sid_request_map[sid].workflows[document_id] = workflows_request.workflows.get(document_id, [])
+            sid_request_map[sid].workflows[document_id] = workflows_request.workflows.get(
+                document_id, []
+            )
 
         return sid_request_map
 
@@ -514,12 +585,21 @@ class KritaApi:
 
     def _document_id_to_sid(self, document_id: str) -> str | None:
         return next(
-            (sid for sid, document_set in self.registered_documents.items() for d in document_set if d == document_id),
+            (
+                sid
+                for sid, document_set in self.registered_documents.items()
+                for d in document_set
+                if d == document_id
+            ),
             None,
         )
 
     def _get_registered_document_ids(self) -> set[str]:
-        return {document_id for document_set in self.registered_documents.values() for document_id in document_set}
+        return {
+            document_id
+            for document_set in self.registered_documents.values()
+            for document_id in document_set
+        }
 
 
 def _ensure_unique_id(document_id: str, registered_documents: list[str]) -> str:
