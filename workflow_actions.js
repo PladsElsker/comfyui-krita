@@ -1,4 +1,5 @@
 import { app } from "../../../scripts/app.js";
+import { useNodeOutputStore } from "../../../stores/nodeOutputStore.js";
 
 
 const KRITA_SAVE_IMAGE_NODE_TYPE = "KritaSaveImage-15347";
@@ -168,6 +169,9 @@ export function setupAdditionalWebsocketRoutes() {
                     }
                     else if(data.data.state) {
                         applyKritaNodeState(data.data.state);
+                        if(data.data.preview) {
+                            await updateKritaLoadImagePreview(data.data.state, data.data.preview);
+                        }
                     }
                     break;
             }
@@ -248,12 +252,56 @@ export function applyCachedKritaNodeStates() {
 
 
 function setNodeMetadataValue(node, widget, value) {
-    const serialized = typeof value === "string" ? value : JSON.stringify(value);
+    // Layer IDs and names are Krita-side UI state, not execution inputs.
+    // Only the canonical pixel digest participates in ComfyUI's cache key.
+    const executionState = node.type === KRITA_LOAD_IMAGE_NODE_TYPE
+        ? {
+            id: value.id,
+            type: value.type,
+            document_id: value.document_id,
+            snapshot_revision: value.snapshot_revision,
+        }
+        : value;
+    const serialized = typeof executionState === "string"
+        ? executionState
+        : JSON.stringify(executionState);
     if(widget.value === serialized) return;
 
     widget.value = serialized;
     node.graph?.change?.();
     node.setDirtyCanvas?.(true, true);
+}
+
+
+async function updateKritaLoadImagePreview(state, preview) {
+    if(state?.type !== KRITA_LOAD_IMAGE_NODE_TYPE || !preview?.filename || baseUrl === null) return;
+
+    const node = getInternalKritaNodes().find(candidate => {
+        if(candidate.id !== state.id || candidate.type !== KRITA_LOAD_IMAGE_NODE_TYPE) return false;
+        return findKritaWidget(candidate, DOCUMENT_WIDGET_LABEL)?.value === state.document_id;
+    });
+    if(!node) return;
+
+    const params = new URLSearchParams({
+        filename: preview.filename,
+        subfolder: preview.subfolder ?? "",
+        type: preview.type ?? "temp",
+    });
+    const response = await fetch(new URL(`/view?${params.toString()}`, baseUrl), {
+        cache: "no-store",
+    });
+    if(!response.ok) {
+        throw new Error(`Could not fetch the updated Krita preview: HTTP ${response.status}`);
+    }
+
+    const objectUrl = URL.createObjectURL(await response.blob());
+    try {
+        useNodeOutputStore().setNodePreviewsByNodeId(node.id, [objectUrl]);
+    }
+    catch(error) {
+        URL.revokeObjectURL(objectUrl);
+        throw error;
+    }
 }
 
 
