@@ -211,13 +211,9 @@ class KritaApi:
         if existing is not None:
             total_bytes -= len(existing.data)
 
-        while (
-            (
-                len(self.load_image_snapshots) >= MAX_LOAD_IMAGE_SNAPSHOTS
-                and existing is None
-            )
-            or total_bytes + len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES
-        ):
+        while (len(self.load_image_snapshots) >= MAX_LOAD_IMAGE_SNAPSHOTS and existing is None) or total_bytes + len(
+            image_data
+        ) > MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES:
             candidates = [item for item in self.load_image_snapshots if item != key]
             if not candidates:
                 break
