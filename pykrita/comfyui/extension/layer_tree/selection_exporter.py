@@ -103,7 +103,7 @@ def _render_scratch_projection(
 
 
 def _nodes_by_id(root: Node) -> dict[str, Node]:
-    """Index the entire cloned layer tree, including Krita’s root node."""
+    """Index the entire cloned layer tree, including Krita's root node."""
     nodes = [root, *_walk_nodes(root)]
     return {str(node.uniqueId()): node for node in nodes}
 
