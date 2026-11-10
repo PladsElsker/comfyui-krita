@@ -402,6 +402,7 @@ class KritaApi:
                 del self.registered_documents[sid]
                 self.document_mappings.pop(sid, None)
                 for state in self.node_states.pop(sid, {}).values():
+                    self.load_image_snapshots.pop((state.document_id, state.id, state.type), None)
                     await self._broadcast_deleted_node_state(state)
                 has_changed = True
 
@@ -461,6 +462,7 @@ class KritaApi:
             del self.registered_documents[sid]
             self.document_mappings.pop(sid, None)
             for state in self.node_states.pop(sid, {}).values():
+                self.load_image_snapshots.pop((state.document_id, state.id, state.type), None)
                 await self._broadcast_deleted_node_state(state)
 
     def _document_id_to_sid(self, document_id: str) -> str | None:
