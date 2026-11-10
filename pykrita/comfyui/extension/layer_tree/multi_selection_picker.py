@@ -6,8 +6,8 @@ from krita import Document, Node, View, Window
 from PyQt5.QtCore import QEvent, QItemSelectionModel, QModelIndex, QObject, Qt, pyqtSignal
 from PyQt5.QtWidgets import QApplication, QAbstractItemView, QTreeView
 
-from .target_picker import (
-    TargetSelectionUnavailableError,
+from .selection_session import (
+    SelectionSessionUnavailableError as TargetSelectionUnavailableError,
     claim_selection_session,
     release_selection_session,
 )
@@ -172,16 +172,16 @@ class LayerMultiSelectionPicker(QObject):
                 self.cancelled.emit()
 
     def _finish(self, restore_selection: bool) -> None:
-        with suppress(TypeError, RuntimeError):
-            self.window.activeViewChanged.disconnect(self._on_active_view_changed)
-
-        if self._event_filter_installed:
-            app = QApplication.instance()
-            if app is not None:
-                app.removeEventFilter(self)
-            self._event_filter_installed = False
-
         try:
+            with suppress(TypeError, RuntimeError):
+                self.window.activeViewChanged.disconnect(self._on_active_view_changed)
+
+            if self._event_filter_installed:
+                app = QApplication.instance()
+                if app is not None:
+                    app.removeEventFilter(self)
+                self._event_filter_installed = False
+
             if self._layer_view is not None and self._previous_selection_mode is not None:
                 self._layer_view.setSelectionMode(self._previous_selection_mode)
             if restore_selection:
