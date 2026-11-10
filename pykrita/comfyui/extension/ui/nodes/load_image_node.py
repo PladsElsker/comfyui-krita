@@ -159,9 +159,17 @@ class LoadImageNode(ComfyUiNode):
         # The node may remain alive until Qt processes deleteLater(). Remove
         # its action controls synchronously so none can outlive the node row.
         self.set_action_buttons([])
-        self.edit_button.hide()
-        self.accept_button.hide()
-        self.cancel_button.hide()
+        action_buttons = self.findChildren(QToolButton)
+        for button in action_buttons:
+            qWarning(
+                f"[Krita Docker] disposing Load Image action button "
+                f"name={button.objectName()!r} text={button.text()!r} "
+                f"visible={button.isVisible()} geometry={button.geometry().getRect()}"
+            )
+            button.hide()
+            button.setEnabled(False)
+            button.setParent(None)
+            button.deleteLater()
 
         # Workers own only a detached QImage. Ignore their results after this
         # node is removed; the scratch document has already been closed.
