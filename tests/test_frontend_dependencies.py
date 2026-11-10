@@ -586,7 +586,7 @@ def test__given_krita_load_image_node__when_state_updates__then_input_metadata_w
     }
 
 
-def test__given_both_krita_node_types__when_document_widgets_are_refreshed__then_both_use_the_same_document_ids(
+def test__given_load_image_node__when_node_is_created__then_both_krita_dropdowns_use_the_same_document_ids(
     default_page: Page,
 ) -> None:
     dropdown_states = default_page.evaluate(
@@ -617,7 +617,10 @@ def test__given_both_krita_node_types__when_document_widgets_are_refreshed__then
             }));
             app.graph.nodes.push(...nodes);
 
-            await workflow.updateDocumentWidgetValues(["document-1", "document-2"]);
+            workflow.api.get = async () => ({
+                documents: ["document-1", "document-2"],
+            });
+            await workflow.extension.nodeCreated(nodes[1]);
 
             const result = nodes.map(node => {
                 const dropdown = node.widgets[0];
