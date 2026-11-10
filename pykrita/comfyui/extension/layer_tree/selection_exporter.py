@@ -1,108 +1,113 @@
-import logging
-import os
-import tempfile
-import uuid
-from pathlib import Path
+from krita import Document, Node
+from PyQt5.QtCore import QRect
 
-from krita import Document, InfoObject, Node
-
-from ..document_monitor import INTERNAL_DOCUMENT_NAME_PREFIX
-from .multi_selection_picker import SUPPORTED_LAYER_TYPES
-
-LOGGER = logging.getLogger(__name__)
+from .layer_compositor import LayerPixelSnapshot
 
 
-def export_selected_layers(document: Document, selected_layer_ids: list[str]) -> bytes:
-    """Export only selected layers, composited by Krita on a full-canvas clone."""
-    selected_ids = set(selected_layer_ids)
+def capture_selected_layer_pixels(
+    document: Document,
+    selected_nodes: list[Node],
+) -> tuple[list[Node], int, int, list[LayerPixelSnapshot]]:
+    """Copy only selected layer projections into detached, canvas-positioned buffers.
+
+    Krita document/node access is intentionally kept on the caller (UI) thread.
+    The returned byte buffers are independent copies suitable for worker-thread
+    compositing.
+    """
+    selected_ids = {str(node.uniqueId()) for node in selected_nodes}
     if not selected_ids:
         raise ValueError("Select at least one Krita layer")
 
-    original_paths = _node_paths(document.rootNode())
-    selected_paths = [path for node_id, path in original_paths.items() if node_id in selected_ids]
-    if len(selected_paths) != len(selected_ids):
-        missing = selected_ids - set(original_paths)
-        raise ValueError(f"Some selected Krita layers no longer exist: {', '.join(sorted(missing))}")
+    document_width = document.width()
+    document_height = document.height()
+    if document_width <= 0 or document_height <= 0:
+        raise ValueError("The Krita document has invalid canvas dimensions")
 
-    unsupported = [
-        node_id
-        for node_id in selected_ids
-        if _node_type_for_id(document.rootNode(), node_id) not in SUPPORTED_LAYER_TYPES
+    # Use the document's bottom-to-top tree order, and avoid double-counting
+    # selected descendants when their ancestor group is also selected.
+    ordered_nodes = [
+        node
+        for node in _walk_nodes(document.rootNode())
+        if str(node.uniqueId()) in selected_ids
     ]
-    if unsupported:
-        raise ValueError("One or more selected items are not image layers")
+    selected_node_ids = {str(node.uniqueId()) for node in ordered_nodes}
+    filtered_nodes = [
+        node
+        for node in ordered_nodes
+        if not _has_selected_ancestor(node, selected_node_ids)
+    ]
 
-    clone = document.clone()
-    if clone is None:
-        raise RuntimeError("Krita could not create a temporary document clone")
+    canvas = QRect(0, 0, document_width, document_height)
+    snapshots: list[LayerPixelSnapshot] = []
+    captured_nodes: list[Node] = []
 
-    fd, temp_path = tempfile.mkstemp(suffix=".png")
-    os.close(fd)
-    Path(temp_path).unlink(missing_ok=True)
+    for node in filtered_nodes:
+        if not _is_effectively_visible(node):
+            continue
 
-    try:
-        clone.setName(f"{INTERNAL_DOCUMENT_NAME_PREFIX}{uuid.uuid4().hex}")
-        clone.setAutosave(False)
-        clone.setBatchmode(True)
-        _hide_unselected_nodes(clone.rootNode(), (), selected_paths)
+        if node.colorModel() != "RGBA" or node.colorDepth() != "U8":
+            raise ValueError(
+                f"Layer {node.name()!r} uses {node.colorModel()} {node.colorDepth()}. "
+                "The current in-memory compositor requires RGBA U8 layer projections."
+            )
 
-        clone.refreshProjection()
-        clone.waitForDone()
+        clipped_bounds = node.bounds().intersected(canvas)
+        if clipped_bounds.isEmpty():
+            continue
 
-        configuration = InfoObject()
-        configuration.setProperty("alpha", True)
-        configuration.setProperty("compression", 1)
-        configuration.setProperty("forceSRGB", True)
-        configuration.setProperty("indexed", False)
-        configuration.setProperty("saveSRGBProfile", True)
+        x = clipped_bounds.x()
+        y = clipped_bounds.y()
+        width = clipped_bounds.width()
+        height = clipped_bounds.height()
+        pixel_data = bytes(node.projectionPixelData(x, y, width, height))
+        expected_size = width * height * 4
+        if len(pixel_data) != expected_size:
+            raise RuntimeError(
+                f"Krita returned {len(pixel_data)} bytes for layer {node.name()!r}; "
+                f"expected {expected_size} RGBA bytes"
+            )
 
-        if not clone.exportImage(temp_path, configuration):
-            raise RuntimeError("Krita could not export the selected layer composite as PNG")
+        snapshots.append(
+            LayerPixelSnapshot(
+                name=node.name(),
+                x=x,
+                y=y,
+                width=width,
+                height=height,
+                pixels=pixel_data,
+                opacity=node.opacity(),
+                blending_mode=node.blendingMode(),
+            )
+        )
+        captured_nodes.append(node)
 
-        image_data = Path(temp_path).read_bytes()
-        if not image_data:
-            raise RuntimeError("Krita exported an empty layer composite")
-        return image_data
-    finally:
-        Path(temp_path).unlink(missing_ok=True)
-        try:
-            clone.close()
-        except Exception:  # noqa: BLE001
-            LOGGER.exception("Could not close the temporary Krita document clone")
+    if not snapshots:
+        raise ValueError("The selected layers contain no visible pixels inside the document canvas")
 
-
-def _node_paths(root: Node) -> dict[str, tuple[int, ...]]:
-    result: dict[str, tuple[int, ...]] = {}
-
-    def visit(parent: Node, parent_path: tuple[int, ...]) -> None:
-        for index, child in enumerate(parent.childNodes()):
-            path = parent_path + (index,)
-            result[str(child.uniqueId())] = path
-            visit(child, path)
-
-    visit(root, ())
-    return result
-
-
-def _node_type_for_id(root: Node, node_id: str) -> str | None:
-    remaining = list(root.childNodes())
-    while remaining:
-        node = remaining.pop()
-        if str(node.uniqueId()) == node_id:
-            return node.type()
-        remaining.extend(node.childNodes())
-    return None
+    return captured_nodes, document_width, document_height, snapshots
 
 
-def _hide_unselected_nodes(
-    parent: Node,
-    parent_path: tuple[int, ...],
-    selected_paths: list[tuple[int, ...]],
-) -> None:
-    for index, node in enumerate(parent.childNodes()):
-        path = parent_path + (index,)
-        is_selected_or_ancestor = any(selected[: len(path)] == path for selected in selected_paths)
-        is_selected_descendant = any(path[: len(selected)] == selected for selected in selected_paths)
-        if not (is_selected_or_ancestor or is_selected_descendant):
-            node.setVisible(False)
-        _hide_unselected_nodes(node, path, selected_paths)
+def _walk_nodes(parent: Node) -> list[Node]:
+    nodes: list[Node] = []
+    for child in parent.childNodes():
+        nodes.append(child)
+        nodes.extend(_walk_nodes(child))
+    return nodes
+
+
+def _has_selected_ancestor(node: Node, selected_ids: set[str]) -> bool:
+    parent = node.parentNode()
+    while parent is not None:
+        if str(parent.uniqueId()) in selected_ids:
+            return True
+        parent = parent.parentNode()
+    return False
+
+
+def _is_effectively_visible(node: Node) -> bool:
+    current: Node | None = node
+    while current is not None:
+        if not current.visible():
+            return False
+        current = current.parentNode()
+    return True
