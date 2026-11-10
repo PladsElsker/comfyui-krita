@@ -62,10 +62,14 @@ class ComfyUiNode(QWidget):
 
     def set_action_buttons(self, buttons: list[QToolButton]) -> None:
         while self.action_buttons_container.count() > 0:
-            self.action_buttons_container.takeAt(0)
+            item = self.action_buttons_container.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
 
         for button in buttons:
             self.action_buttons_container.addWidget(button)
+            button.show()
 
     def update_node_data(self, node: Node) -> None: ...
 
