@@ -70,7 +70,7 @@ class _ProjectionExportTask(QRunnable):
 
 
 class LoadImageNode(ComfyUiNode):
-    type: ClassVar[str] = "KritaLoadImage-15348"
+    type: ClassVar[str] = "KritaLoadImage-15347"
     snapshot_ready = cast("pyqtBoundSignal", pyqtSignal(object, bytes))
 
     def __init__(
