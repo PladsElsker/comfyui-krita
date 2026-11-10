@@ -16,6 +16,7 @@ from PyQt5.QtCore import (
     pyqtSignal,
 )
 from PyQt5.QtGui import QIcon, QImage, QPalette
+from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import QToolButton
 
 from comfyui.extension.layer_tree.multi_selection_picker import LayerMultiSelectionPicker
@@ -117,10 +118,11 @@ class LoadImageNode(ComfyUiNode):
         self.layer_picker.cancelled.connect(self._reset_edit_controls)
         self.layer_picker.selection_accepted.connect(self._selection_accepted)
 
-    def _create_action_button(self, icon_renderer: object, tooltip: str) -> QToolButton:
+    def _create_action_button(self, icon_renderer: QSvgRenderer, tooltip: str) -> QToolButton:
         button = QToolButton(self)
         button.setAutoRaise(True)
         button.setContentsMargins(0, 0, 0, 0)
+        button.setFixedSize(QSize(24, 24))
         button.setToolTip(tooltip)
 
         color = button.palette().color(QPalette.ColorRole.ButtonText)
