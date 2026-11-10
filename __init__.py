@@ -15,6 +15,7 @@ from torchvision.transforms.functional import to_pil_image
 import folder_paths
 
 from .constants import (
+    DEFAULT_KRITA_LOAD_IMAGE_STATE,
     DEFAULT_KRITA_NODE_STATE,
     KRITA_DOCUMENT_DROPDOWN_LABEL,
     KRITA_LOAD_IMAGE_NODE_TYPE,
@@ -51,33 +52,43 @@ def _to_pil_images(image: Tensor) -> list[PilImage.Image]:
     return result
 
 
-def _decode_composited_png(image_data: bytes) -> tuple[Tensor, Tensor, PilImage.Image]:
+def _decode_composited_png(image_data: bytes) -> tuple[Tensor, Tensor]:
     try:
         with PilImage.open(BytesIO(image_data)) as image:
+            if image.format != "PNG":
+                raise ValueError("The Krita layer snapshot must be a PNG")
             rgba_image = image.convert("RGBA")
-            rgba = np.asarray(rgba_image, dtype=np.float32) / 255.0
-            preview = rgba_image.copy()
+            width, height = rgba_image.size
+            if width < 1 or height < 1 or width * height > 16_000_000:
+                raise ValueError("The Krita layer snapshot has unsupported dimensions")
+            pixel_data = rgba_image.tobytes()
     except Exception as error:
         raise ValueError("The Krita layer snapshot is not a valid image") from error
 
-    if rgba.ndim != 3 or rgba.shape[-1] != 4 or rgba.shape[0] < 1 or rgba.shape[1] < 1:
-        raise ValueError("The Krita layer snapshot must be a non-empty RGBA image")
+    # Pillow returns channel bytes in RGBA order. Keep the copied byte buffer
+    # uint8 until the final IMAGE and MASK tensors are formed to avoid building
+    # a full-size float32 RGBA array.
+    rgba = np.frombuffer(pixel_data, dtype=np.uint8).reshape(height, width, 4)
+    rgb = rgba[..., :3].astype(np.float32)
+    rgb *= 1.0 / 255.0
+    alpha = rgba[..., 3].astype(np.float32)
+    alpha *= 1.0 / 255.0
 
-    image_tensor = from_numpy(rgba[..., :3].copy()).unsqueeze(0)
+    image_tensor = from_numpy(rgb).unsqueeze(0)
     # ComfyUI masks use 1 for fully masked and 0 for fully kept pixels.
-    mask_tensor = (1.0 - from_numpy(rgba[..., 3].copy())).unsqueeze(0)
+    mask_tensor = (1.0 - from_numpy(alpha)).unsqueeze(0)
     device = model_management.intermediate_device()
     dtype = model_management.intermediate_dtype()
-    return image_tensor.to(device=device, dtype=dtype), mask_tensor.to(device=device, dtype=dtype), preview
+    return image_tensor.to(device=device, dtype=dtype), mask_tensor.to(device=device, dtype=dtype)
 
 
-def _write_preview_image(image: PilImage.Image) -> dict[str, str]:
+def _write_preview_image(image_data: bytes) -> dict[str, str]:
     filename = f"krita_{secrets.token_hex(12)}.png"
     filepath = os.path.join(folder_paths.get_temp_directory(), filename)
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    image.save(filepath, format="PNG")
+    with open(filepath, "wb") as preview_file:
+        preview_file.write(image_data)
     return {"filename": filename, "subfolder": "", "type": "temp"}
-
 
 class KritaSaveImage(io.ComfyNode):
     @classmethod
@@ -169,7 +180,7 @@ class KritaLoadImage(io.ComfyNode):
                 io.String.Input(
                     id=LOAD_IMAGE_META_WIDGET_LABEL,
                     display_name=LOAD_IMAGE_META_WIDGET_LABEL,
-                    default="",
+                    default=DEFAULT_KRITA_LOAD_IMAGE_STATE,
                     optional=True,
                     tooltip="Internal Krita input-node state.",
                     extra_dict={"hidden": True},
@@ -223,8 +234,8 @@ class KritaLoadImage(io.ComfyNode):
         if image_data is None:
             raise ValueError("The selected Krita layer snapshot is unavailable; reselect the layers in Krita.")
 
-        layers, mask, preview = _decode_composited_png(image_data)
-        preview_info = _write_preview_image(preview)
+        layers, mask = _decode_composited_png(image_data)
+        preview_info = _write_preview_image(image_data)
         return io.NodeOutput(layers, mask, ui={"images": [preview_info]})
 
 
