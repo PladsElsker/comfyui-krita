@@ -10,26 +10,11 @@ from .utils import LayerUtils
 LOGGER = logging.getLogger(__name__)
 
 
-class TargetSelectionUnavailableError(RuntimeError):
-    """Raised when Krita's Layers Docker cannot host a target-editing session."""
-
-
-_selection_session: dict[str, object | None] = {"active_picker": None}
-
-
-def claim_selection_session(picker: object) -> None:
-    active_picker = _selection_session["active_picker"]
-    if active_picker is not None and active_picker is not picker:
-        is_editing = getattr(active_picker, "is_editing", False)
-        if is_editing:
-            message = "Another Krita layer-selection session is already active"
-            raise TargetSelectionUnavailableError(message)
-    _selection_session["active_picker"] = picker
-
-
-def release_selection_session(picker: object) -> None:
-    if _selection_session["active_picker"] is picker:
-        _selection_session["active_picker"] = None
+from .selection_session import (
+    SelectionSessionUnavailableError as TargetSelectionUnavailableError,
+    claim_selection_session,
+    release_selection_session,
+)
 
 
 class LayerTargetPicker(QObject):
@@ -279,13 +264,13 @@ class LayerTargetPicker(QObject):
         self.target_selected.emit(target)
 
     def _finish(self, restore_selection: bool) -> None:
-        if self._event_filter_installed:
-            app = QApplication.instance()
-            if app is not None:
-                app.removeEventFilter(self)
-            self._event_filter_installed = False
-
         try:
+            if self._event_filter_installed:
+                app = QApplication.instance()
+                if app is not None:
+                    app.removeEventFilter(self)
+                self._event_filter_installed = False
+
             if self._selection_connected:
                 if self._selection_model is None:
                     message = "The Layers Docker selection model disappeared during target editing"
