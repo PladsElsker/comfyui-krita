@@ -1,7 +1,7 @@
 # ruff: noqa: S101
+import sys
 from io import BytesIO
 from pathlib import Path
-import sys
 
 import numpy as np
 import pytest
