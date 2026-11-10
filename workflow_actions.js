@@ -99,6 +99,7 @@ export const extension = {
     },
     async nodeCreated(node) {
         fixKritaNodeUi(node);
+        await updateDocumentWidgetValues();
         applyCachedKritaNodeStates();
     },
 };
