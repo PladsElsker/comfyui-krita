@@ -51,7 +51,8 @@ class LayerMultiSelectionPicker(QObject):
 
     def begin(self, selected_ids: list[str] | None = None) -> None:
         if self._editing:
-            raise RuntimeError("A layer selection is already active")
+            message = "A layer selection is already active"
+            raise RuntimeError(message)
 
         view = self.window.activeView()
         if view is None or view.document() != self.document:
