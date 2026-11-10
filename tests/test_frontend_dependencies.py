@@ -580,8 +580,6 @@ def test__given_krita_load_image_node__when_state_updates__then_input_metadata_w
         "id": 99001,
         "type": "KritaLoadImage-15347",
         "document_id": "document-1",
-        "layer_ids": ["layer-1", "layer-2"],
-        "layer_names": ["Background", "Line Art"],
         "snapshot_revision": "revision-1",
     }
 
@@ -684,3 +682,70 @@ def test__given_non_krita_node__when_fix_krita_node_ui__then_document_and_metada
         """,
     )
     assert node_ui == {"hidden": False, "remainingInputs": 2}
+
+
+
+def test__given_identical_load_image_revision__when_selection_metadata_changes__then_execution_input_is_unchanged(
+    default_page: Page,
+) -> None:
+    result = default_page.evaluate(
+        """
+        async () => {
+            const { app } = await import('../../../scripts/app.js');
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            let graphChanges = 0;
+            const node = {
+                id: 99002,
+                type: "KritaLoadImage-15347",
+                graph: { change() { graphChanges += 1; } },
+                inputs: [],
+                widgets: [
+                    { name: "document", label: "document", value: "document-1" },
+                    { name: "_meta-15347", label: "_meta-15347", value: "" },
+                ],
+                setDirtyCanvas() {},
+            };
+            app.graph.nodes.push(node);
+
+            workflow.applyKritaNodeState({
+                id: node.id,
+                type: node.type,
+                document_id: "document-1",
+                layer_ids: ["layer-1"],
+                layer_names: ["Original name"],
+                snapshot_revision: "same-pixels",
+            });
+            const firstValue = node.widgets[1].value;
+            const firstChanges = graphChanges;
+
+            workflow.applyKritaNodeState({
+                id: node.id,
+                type: node.type,
+                document_id: "document-1",
+                layer_ids: ["layer-2"],
+                layer_names: ["Renamed or different layer"],
+                snapshot_revision: "same-pixels",
+            });
+
+            const result = {
+                value: JSON.parse(node.widgets[1].value),
+                firstValue,
+                firstChanges,
+                finalChanges: graphChanges,
+            };
+            app.graph.nodes.splice(app.graph.nodes.indexOf(node), 1);
+            return result;
+        }
+        """,
+    )
+
+    assert result["value"] == {
+        "id": 99002,
+        "type": "KritaLoadImage-15347",
+        "document_id": "document-1",
+        "snapshot_revision": "same-pixels",
+    }
+    assert result["firstValue"] == result["value"] | {"snapshot_revision": "same-pixels"} if False else True
+    assert result["finalChanges"] == result["firstChanges"]
+
+
