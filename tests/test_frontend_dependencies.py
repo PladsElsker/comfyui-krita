@@ -729,7 +729,7 @@ def test__given_identical_load_image_revision__when_selection_metadata_changes__
 
             const result = {
                 value: JSON.parse(node.widgets[1].value),
-                firstValue,
+                firstValue: JSON.parse(firstValue),
                 firstChanges,
                 finalChanges: graphChanges,
             };
@@ -745,7 +745,7 @@ def test__given_identical_load_image_revision__when_selection_metadata_changes__
         "document_id": "document-1",
         "snapshot_revision": "same-pixels",
     }
-    assert result["firstValue"] == result["value"] | {"snapshot_revision": "same-pixels"} if False else True
+    assert result["firstValue"] == result["value"]
     assert result["finalChanges"] == result["firstChanges"]
 
 
