@@ -4,7 +4,6 @@ import numpy as np
 from PIL import Image
 from torch import Tensor, from_numpy
 
-
 MAX_LOAD_IMAGE_PIXELS = 16_000_000
 
 
