@@ -114,7 +114,7 @@ class LoadImageNode(ComfyUiNode):
         self.cancel_button = self._create_action_button(CANCEL_ICON, "Cancel layer selection")
         self.cancel_button.clicked.connect(self._cancel_editing)
 
-        self.set_action_buttons([self.edit_button])
+        self._set_layer_selection_buttons([self.edit_button])
 
         self.layer_picker = LayerMultiSelectionPicker(window, document, self)
         self.layer_picker.cancelled.connect(self._reset_edit_controls)
@@ -134,6 +134,19 @@ class LoadImageNode(ComfyUiNode):
             button.setIcon(QIcon(pixmap))
 
         return button
+
+    def _set_layer_selection_buttons(self, buttons: list[QToolButton]) -> None:
+        # Keep this visibility swap local to Load Image; Save Image retains its
+        # existing action-button behavior.
+        for button in (self.edit_button, self.accept_button, self.cancel_button):
+            button.hide()
+
+        while self.action_buttons_container.count() > 0:
+            self.action_buttons_container.takeAt(0)
+
+        for button in buttons:
+            self.action_buttons_container.addWidget(button)
+            button.show()
 
     def initialize_state(self) -> None:
         if self.layer_ids or self.snapshot_revision:
@@ -178,7 +191,7 @@ class LoadImageNode(ComfyUiNode):
             LOGGER.warning("Could not start Krita layer selection: %s", error)
             return
 
-        self.set_action_buttons([self.accept_button, self.cancel_button])
+        self._set_layer_selection_buttons([self.accept_button, self.cancel_button])
 
     def _accept_selection(self, *_args: object) -> None:
         try:
@@ -192,7 +205,7 @@ class LoadImageNode(ComfyUiNode):
         self._reset_edit_controls()
 
     def _reset_edit_controls(self) -> None:
-        self.set_action_buttons([self.edit_button])
+        self._set_layer_selection_buttons([self.edit_button])
 
     def _selection_accepted(self, selected_nodes: list[KritaNode]) -> None:
         self._reset_edit_controls()
