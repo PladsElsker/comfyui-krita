@@ -7,25 +7,27 @@ class SelectionSessionUnavailableError(RuntimeError):
     """Raised when another node already owns the Krita Layers Docker edit session."""
 
 
-_active_picker: object | None = None
+class _SelectionSession:
+    """Hold the active picker without rebinding module-level state."""
+
+    active_picker: object | None = None
+
+
+_session = _SelectionSession()
 
 
 def claim_selection_session(picker: object) -> None:
     """Claim the single shared edit session for either Krita node picker."""
-    global _active_picker
-
-    if _active_picker is picker:
+    if _session.active_picker is picker:
         return
-    if _active_picker is not None:
+    if _session.active_picker is not None:
         message = "Another Krita node is already editing the Layers Docker"
         raise SelectionSessionUnavailableError(message)
 
-    _active_picker = picker
+    _session.active_picker = picker
 
 
 def release_selection_session(picker: object) -> None:
     """Release the shared edit session only when called by its current owner."""
-    global _active_picker
-
-    if _active_picker is picker:
-        _active_picker = None
+    if _session.active_picker is picker:
+        _session.active_picker = None
