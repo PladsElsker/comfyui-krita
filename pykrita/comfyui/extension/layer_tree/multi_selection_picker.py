@@ -63,7 +63,6 @@ class LayerMultiSelectionPicker(QObject):
         if selection_model is None:
             raise TargetSelectionUnavailableError("Krita's Layers Docker has no selection model")
 
-        claim_selection_session(self)
         self._view = view
         self._layer_view = layer_view
         self._selection_model = selection_model
@@ -71,6 +70,7 @@ class LayerMultiSelectionPicker(QObject):
         active_node = self.document.activeNode()
         self._previous_active_node_id = str(active_node.uniqueId()) if active_node is not None else None
         self._previous_selection_mode = layer_view.selectionMode()
+        claim_selection_session(self)
         self._editing = True
 
         try:
