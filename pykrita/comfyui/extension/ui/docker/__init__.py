@@ -12,6 +12,7 @@ COMFYUI_DOCKER_OBJECT_NAME = "comfyui_docker"
 class ComfyUIDocker(DockWidget):
     def __init__(self) -> None:
         super().__init__()
+        self.setObjectName(COMFYUI_DOCKER_OBJECT_NAME)
 
         self._active_document = None
         self._workflows: dict[int, list[Node]] = {}
