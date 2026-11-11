@@ -63,6 +63,7 @@ class LoadImageState(UiNodeState):
     layer_names: list[str]
     snapshot_revision: str
     selection_generation: int = 0
+    snapshot_pending: bool = False
 
 
 KritaLayerType = Literal[
