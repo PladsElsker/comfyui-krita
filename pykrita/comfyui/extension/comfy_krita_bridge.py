@@ -313,7 +313,6 @@ class ComfyKritaBridge(QObject):
                     cached = self._load_image_snapshots.get(key)
                     if (
                         cached is not None
-                        and not state.snapshot_pending
                         and cached[0].snapshot_revision == state.snapshot_revision
                         and state.snapshot_revision
                     ):
