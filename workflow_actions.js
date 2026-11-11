@@ -401,24 +401,30 @@ async function updateKritaLoadImagePreview(state, preview) {
 
 function clearKritaLoadImagePreview(state) {
     const node = findKritaNodeByLocator(state.id, KRITA_LOAD_IMAGE_NODE_TYPE);
-    if(!node || findKritaWidget(node, DOCUMENT_WIDGET_LABEL)?.value !== state.document_id) return;
+    if(node && findKritaWidget(node, DOCUMENT_WIDGET_LABEL)?.value !== state.document_id) return;
 
-    kritaLoadImagePreviewRequests.set(
-        node,
-        (kritaLoadImagePreviewRequests.get(node) ?? 0) + 1,
-    );
+    if(node) {
+        kritaLoadImagePreviewRequests.set(
+            node,
+            (kritaLoadImagePreviewRequests.get(node) ?? 0) + 1,
+        );
+    }
 
     const nodeOutputStore = getComfyNodeOutputStore();
-    const locatorId = getComfyNodeLocatorId(node);
+    const locatorId = state.id;
 
     if(typeof nodeOutputStore?.setNodePreviewsByLocatorId === "function") {
         nodeOutputStore.setNodePreviewsByLocatorId(locatorId, []);
     }
     else if(app.nodePreviewImages) {
+        const previousUrls = app.nodePreviewImages[locatorId] ?? [];
         delete app.nodePreviewImages[locatorId];
-        const previousUrl = node._kritaLoadImagePreviewUrl;
-        if(previousUrl) URL.revokeObjectURL(previousUrl);
+        for(const previousUrl of previousUrls) {
+            URL.revokeObjectURL(previousUrl);
+        }
     }
+
+    if(!node) return;
 
     node._kritaLoadImagePreviewUrl = null;
     node.preview = [];
@@ -429,7 +435,6 @@ function clearKritaLoadImagePreview(state) {
     node.setDirtyCanvas?.(true, true);
     kritaLoadImagePreviewRevisions.delete(node);
 }
-
 
 export async function updateDocumentWidgetValues(documentNames=null) {
     const internalKritaNodes = getInternalKritaNodes();
