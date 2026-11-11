@@ -477,6 +477,7 @@ class LoadImageNode(ComfyUiNode):
             snapshot_revision=self.snapshot_revision,
             selection_generation=self.selection_generation,
             snapshot_pending=True,
+            placeholder=not layer_ids,
         )
         blank_dimensions = None
         if not layer_ids:
