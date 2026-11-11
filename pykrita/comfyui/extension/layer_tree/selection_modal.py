@@ -3,10 +3,11 @@ from __future__ import annotations
 from typing import Literal
 
 from krita import Document, Node
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtWidgets import (
     QDialog,
+    QAbstractItemView,
     QDialogButtonBox,
     QHBoxLayout,
     QLabel,
@@ -89,9 +90,9 @@ class LayerSelectionDialog(QDialog):
         self.tree.setIconSize(QPixmap(THUMBNAIL_SIZE, THUMBNAIL_SIZE).size())
         self.tree.setUniformRowHeights(True)
         self.tree.setSelectionMode(
-            QTreeWidget.SelectionMode.SingleSelection
+            QAbstractItemView.SelectionMode.SingleSelection
             if mode == "single"
-            else QTreeWidget.SelectionMode.ExtendedSelection
+            else QAbstractItemView.SelectionMode.ExtendedSelection
         )
         self.tree.itemDoubleClicked.connect(self._accept_on_double_click)
         layout.addWidget(self.tree, 1)
@@ -104,8 +105,14 @@ class LayerSelectionDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-        self._populate_tree()
-        self._restore_selection()
+        self._pending_nodes = list(self.document.topLevelNodes())
+        self._population_timer = QTimer(self)
+        self._population_timer.setSingleShot(True)
+        self._population_timer.timeout.connect(self._populate_chunk)
+        self._population_complete = False
+        self._ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        self._ok_button.setEnabled(False)
+        self._population_timer.start(0)
 
     def selected_nodes(self) -> list[Node]:
         selected_ids = {
@@ -120,6 +127,8 @@ class LayerSelectionDialog(QDialog):
         ]
 
     def accept(self) -> None:
+        if not self._population_complete:
+            return
         selected_nodes = self.selected_nodes()
         if not selected_nodes and not self.allow_empty:
             self.search_input.setPlaceholderText("Select a layer to continue")
@@ -127,9 +136,29 @@ class LayerSelectionDialog(QDialog):
             return
         super().accept()
 
-    def _populate_tree(self) -> None:
-        for node in reversed(self.document.topLevelNodes()):
-            self._add_node(node, self.tree.invisibleRootItem())
+    def _populate_chunk(self) -> None:
+        # Bound work per event-loop turn so opening a large document does not
+        # monopolize Krita's GUI thread while thumbnails are generated.
+        for _ in range(min(32, len(self._pending_nodes))):
+            node = self._pending_nodes.pop()
+            parent_id = str(node.parentNode().uniqueId()) if node.parentNode() is not None else None
+            parent_item = self.tree.invisibleRootItem() if parent_id is None else self._items_by_id.get(parent_id)
+            if parent_item is None:
+                continue
+            self._add_node(node, parent_item)
+            self._pending_nodes.extend(node.childNodes())
+
+        if self._pending_nodes:
+            self._population_timer.start(0)
+            return
+
+        self._restore_selection()
+        self._population_complete = True
+        self._ok_button.setEnabled(True)
+
+    def reject(self) -> None:
+        self._population_timer.stop()
+        super().reject()
 
     def _add_node(self, node: Node, parent_item: QTreeWidgetItem) -> None:
         node_id = str(node.uniqueId())
@@ -142,9 +171,6 @@ class LayerSelectionDialog(QDialog):
         if not selectable:
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
         self._items_by_id[node_id] = item
-
-        for child in reversed(node.childNodes()):
-            self._add_node(child, item)
 
         if node.type() == "grouplayer":
             try:
@@ -191,7 +217,7 @@ class LayerSelectionDialog(QDialog):
             update_visibility(root.child(index))
 
     def _accept_on_double_click(self, _item: QTreeWidgetItem, _column: int) -> None:
-        if self.selected_nodes():
+        if self._population_complete and self.selected_nodes():
             self.accept()
 
 
