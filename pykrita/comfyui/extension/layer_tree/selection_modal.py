@@ -9,7 +9,6 @@ from PyQt5.QtWidgets import (
     QDialog,
     QAbstractItemView,
     QDialogButtonBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QTreeWidget,
