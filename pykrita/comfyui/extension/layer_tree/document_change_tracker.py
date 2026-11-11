@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING, ClassVar
 
 from PyQt5.QtCore import QEvent, QObject, QTimer, Qt
 from PyQt5.QtWidgets import QApplication, QWidget
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from krita import Document, Window
 
 CHANGE_DEBOUNCE_MS = 450
