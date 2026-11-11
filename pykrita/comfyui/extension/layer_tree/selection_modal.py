@@ -78,6 +78,7 @@ class LayerSelectionDialog(QDialog):
         self.search_input = QLineEdit(self)
         self.search_input.setPlaceholderText("Filter layers…")
         self.search_input.textChanged.connect(self._filter_items)
+        self.search_input.setEnabled(False)
         layout.addWidget(self.search_input)
 
         self.tree = QTreeWidget(self)
@@ -153,6 +154,7 @@ class LayerSelectionDialog(QDialog):
         self._restore_selection()
         self._population_complete = True
         self._ok_button.setEnabled(True)
+        self.search_input.setEnabled(True)
 
     def reject(self) -> None:
         self._population_timer.stop()
