@@ -29,7 +29,7 @@ SI5R_AMOUNT_OF_KRITA_NODES = 5
 
 
 class Node(BaseModel):
-    id: int
+    id: str
     type: str
     name: str
 
@@ -343,7 +343,7 @@ def test__given_krita_output_node__when_krita_state_updates__then_metadata_widge
 
             document_widget.value = "krita-document-1";
             const state = {
-                id: node.id,
+                id: String(node.id),
                 type: "KritaSaveImage-15347",
                 document_id: "krita-document-1",
                 insert_direction: "above",
@@ -494,3 +494,294 @@ def test__given_krita_output_node__when_metadata_input_is_created__then_metadata
         "hidden": True,
         "optionsHidden": True,
     }
+
+
+def test__given_krita_load_image_node__when_fix_krita_node_ui__then_document_and_metadata_widgets_are_hidden(
+    default_page: Page,
+) -> None:
+    node_ui = default_page.evaluate(
+        """
+        async () => {
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const metadataWidget = {
+                name: "_meta-15347",
+                label: "_meta-15347",
+                value: '{"document_id":"document-1"}',
+                hidden: false,
+                options: {},
+            };
+            const node = {
+                id: 90,
+                type: "KritaLoadImage-15347",
+                inputs: [{ name: "_meta-15347" }, { name: "document" }],
+                widgets: [
+                    { name: "document", label: "document", value: "document-1" },
+                    metadataWidget,
+                ],
+                setDirtyCanvas() {},
+            };
+
+            workflow.fixKritaNodeUi(node);
+            return {
+                isRegistered: workflow.KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type),
+                hidden: metadataWidget.hidden,
+                optionsHidden: metadataWidget.options.hidden,
+                remainingInputs: node.inputs.length,
+                metadataValue: metadataWidget.value,
+            };
+        }
+        """,
+    )
+    assert node_ui == {
+        "isRegistered": True,
+        "hidden": True,
+        "optionsHidden": True,
+        "remainingInputs": 0,
+        "metadataValue": '{"document_id":"document-1"}',
+    }
+
+
+def test__given_krita_load_image_node__when_state_updates__then_input_metadata_widget_is_updated(
+    default_page: Page,
+) -> None:
+    updated_state = default_page.evaluate(
+        """
+        async () => {
+            const { app } = await import('../../../scripts/app.js');
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const node = {
+                id: 99001,
+                graph: app.graph,
+                type: "KritaLoadImage-15347",
+                inputs: [],
+                widgets: [
+                    { name: "document", label: "document", value: "document-1" },
+                    { name: "_meta-15347", label: "_meta-15347", value: "" },
+                ],
+                setDirtyCanvas() {},
+            };
+            app.graph.nodes.push(node);
+
+            workflow.applyKritaNodeState({
+                id: String(99001),
+                type: "KritaLoadImage-15347",
+                document_id: "document-1",
+                layer_ids: ["layer-1", "layer-2"],
+                layer_names: ["Background", "Line Art"],
+                snapshot_revision: "revision-1",
+            });
+
+            const value = JSON.parse(node.widgets[1].value);
+            app.graph.nodes.splice(app.graph.nodes.indexOf(node), 1);
+            return value;
+        }
+        """,
+    )
+    assert updated_state == {
+        "id": "99001",
+        "type": "KritaLoadImage-15347",
+        "document_id": "document-1",
+        "snapshot_revision": "revision-1",
+    }
+
+
+def test__given_load_image_node__when_node_is_created__then_both_krita_dropdowns_use_the_same_document_ids(
+    default_page: Page,
+) -> None:
+    dropdown_states = default_page.evaluate(
+        """
+        async () => {
+            const { app } = await import('../../../scripts/app.js');
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const nodeTypes = ["KritaSaveImage-15347", "KritaLoadImage-15347"];
+            const nodes = nodeTypes.map((type, index) => ({
+                id: 70001 + index,
+                type,
+                inputs: [],
+                widgets: [
+                    {
+                        name: "document",
+                        label: "document",
+                        value: null,
+                        options: { values: [] },
+                    },
+                    {
+                        name: "_meta-15347",
+                        label: "_meta-15347",
+                        value: "",
+                        options: {},
+                    },
+                ],
+                setDirtyCanvas() {},
+            }));
+            app.graph.nodes.push(...nodes);
+
+            workflow.api.get = async () => ({
+                documents: ["document-1", "document-2"],
+            });
+            await workflow.extension.nodeCreated(nodes[1]);
+
+            const result = nodes.map(node => {
+                const dropdown = node.widgets[0];
+                return {
+                    type: node.type,
+                    options: dropdown.options.values,
+                    value: dropdown.value,
+                };
+            });
+            app.graph.nodes.splice(
+                app.graph.nodes.length - nodes.length,
+                nodes.length,
+            );
+            return result;
+        }
+        """,
+    )
+    assert dropdown_states == [
+        {
+            "type": "KritaSaveImage-15347",
+            "options": ["document-1", "document-2"],
+            "value": "document-1",
+        },
+        {
+            "type": "KritaLoadImage-15347",
+            "options": ["document-1", "document-2"],
+            "value": "document-1",
+        },
+    ]
+
+
+def test__given_non_krita_node__when_fix_krita_node_ui__then_document_and_metadata_widgets_are_untouched(
+    default_page: Page,
+) -> None:
+    node_ui = default_page.evaluate(
+        """
+        async () => {
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const metadataWidget = {
+                name: "_meta-15347",
+                label: "_meta-15347",
+                hidden: false,
+                options: {},
+            };
+            const node = {
+                type: "SomeOtherNode",
+                inputs: [{ name: "_meta-15347" }, { name: "document" }],
+                widgets: [
+                    { name: "document", label: "document", value: "document-1" },
+                    metadataWidget,
+                ],
+                setDirtyCanvas() {},
+            };
+
+            workflow.fixKritaNodeUi(node);
+            return {
+                hidden: metadataWidget.hidden,
+                remainingInputs: node.inputs.length,
+            };
+        }
+        """,
+    )
+    assert node_ui == {"hidden": False, "remainingInputs": 2}
+
+
+def test__given_identical_load_image_revision__when_selection_metadata_changes__then_execution_input_is_unchanged(
+    default_page: Page,
+) -> None:
+    result = default_page.evaluate(
+        """
+        async () => {
+            const { app } = await import('../../../scripts/app.js');
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            let graphChanges = 0;
+            const originalGraphChange = app.graph.change?.bind(app.graph);
+            app.graph.change = () => { graphChanges += 1; };
+            const node = {
+                id: 99002,
+                graph: app.graph,
+                type: "KritaLoadImage-15347",
+                inputs: [],
+                widgets: [
+                    { name: "document", label: "document", value: "document-1" },
+                    { name: "_meta-15347", label: "_meta-15347", value: "" },
+                ],
+                setDirtyCanvas() {},
+            };
+            app.graph.nodes.push(node);
+
+            workflow.applyKritaNodeState({
+                id: String(node.id),
+                type: node.type,
+                document_id: "document-1",
+                layer_ids: ["layer-1"],
+                layer_names: ["Original name"],
+                snapshot_revision: "same-pixels",
+            });
+            const firstValue = node.widgets[1].value;
+            const firstChanges = graphChanges;
+
+            workflow.applyKritaNodeState({
+                id: String(node.id),
+                type: node.type,
+                document_id: "document-1",
+                layer_ids: ["layer-2"],
+                layer_names: ["Renamed or different layer"],
+                snapshot_revision: "same-pixels",
+            });
+
+            const result = {
+                value: JSON.parse(node.widgets[1].value),
+                firstValue: JSON.parse(firstValue),
+                firstChanges,
+                finalChanges: graphChanges,
+            };
+            app.graph.nodes.splice(app.graph.nodes.indexOf(node), 1);
+            if(originalGraphChange) app.graph.change = originalGraphChange;
+            return result;
+        }
+        """,
+    )
+
+    assert result["value"] == {
+        "id": "99002",
+        "type": "KritaLoadImage-15347",
+        "document_id": "document-1",
+        "snapshot_revision": "same-pixels",
+    }
+    assert result["firstValue"] == result["value"]
+    assert result["finalChanges"] == result["firstChanges"]
+
+
+def test__given_nested_graph_nodes_with_same_local_id__when_resolving_krita_node_locators__then_ids_are_graph_scoped(
+    default_page: Page,
+) -> None:
+    locator_ids = default_page.evaluate(
+        """
+        async () => {
+            const { app } = await import('../../../scripts/app.js');
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const pinia = document.getElementById("vue-app")
+                ?.__vue_app__?.config?.globalProperties?.$pinia;
+            const workflowStore = pinia?._s?.get?.("workflow");
+            if(!workflowStore) throw new Error("ComfyUI workflow store is unavailable");
+
+            const original = workflowStore.nodeToNodeLocatorId;
+            workflowStore.nodeToNodeLocatorId = node => (
+                node.graph === app.graph
+                    ? String(node.id)
+                    : `${node.graph.id}:${node.id}`
+            );
+            try {
+                return [
+                    workflow.getComfyNodeLocatorId({ id: 42, graph: { id: "subgraph-a" } }),
+                    workflow.getComfyNodeLocatorId({ id: 42, graph: { id: "subgraph-b" } }),
+                    workflow.getComfyNodeLocatorId({ id: 42, graph: app.graph }),
+                ];
+            }
+            finally {
+                workflowStore.nodeToNodeLocatorId = original;
+            }
+        }
+        """,
+    )
+    assert locator_ids == ["subgraph-a:42", "subgraph-b:42", "42"]

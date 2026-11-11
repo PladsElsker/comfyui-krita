@@ -1,3 +1,5 @@
+import asyncio
+import hashlib
 import inspect
 import io
 import logging
@@ -6,7 +8,11 @@ import secrets
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from io import BytesIO
+from pathlib import Path
 
+import folder_paths
+from PIL import Image as PILImage
 from PIL.Image import Image
 from server import PromptServer
 
@@ -14,6 +20,8 @@ from .models import (
     KritaDocuments,
     KritaNodeStateUpdate,
     LayerCreateNotification,
+    LoadImageState,
+    KritaNodeState,
     SaveImageState,
     UpdateWorkflowsRequest,
 )
@@ -25,6 +33,22 @@ STAGED_IMAGE_TTL_SECONDS = 180
 MAX_STAGED_IMAGE_BYTES = 64 * 1024 * 1024
 MAX_STAGED_TOTAL_BYTES = 256 * 1024 * 1024
 MAX_STAGED_IMAGES = 128
+MAX_LOAD_IMAGE_SNAPSHOT_BYTES = 64 * 1024 * 1024
+MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES = 256 * 1024 * 1024
+MAX_LOAD_IMAGE_SNAPSHOTS = 128
+MAX_LOAD_IMAGE_PIXELS = 16_000_000
+MAX_LOAD_IMAGE_LAYERS = 512
+MAX_LOAD_IMAGE_LAYER_ID_LENGTH = 256
+MAX_LOAD_IMAGE_LAYER_NAME_LENGTH = 512
+MAX_LOAD_IMAGE_REVISION_LENGTH = 128
+
+
+@dataclass
+class LoadImageSnapshot:
+    state: LoadImageState
+    data: bytes
+    preview: dict[str, str]
+    updated_at: float
 
 
 @dataclass
@@ -53,11 +77,148 @@ def prune_sids(f: Callable) -> Callable:
     return wrapper
 
 
+def _validate_snapshot_owner(api: "KritaApi", sid: str, state: LoadImageState) -> None:
+    if sid not in api.registered_documents:
+        message = "The Krita websocket session is not registered"
+        raise LookupError(message)
+    if state.document_id not in api.registered_documents[sid]:
+        message = "The image snapshot does not belong to a document registered by this Krita session"
+        raise ValueError(message)
+
+
+def _validate_load_image_snapshot_generation(api: "KritaApi", sid: str, state: LoadImageState) -> None:
+    current_state = api.node_states.get(sid, {}).get((state.document_id, state.id, state.type))
+    if not isinstance(current_state, LoadImageState):
+        return
+    if current_state.selection_generation > state.selection_generation:
+        message = "A newer Krita layer selection superseded this snapshot"
+        raise ValueError(message)
+    if current_state.selection_generation != state.selection_generation:
+        return
+    if state.placeholder:
+        if not current_state.placeholder or current_state.layer_ids:
+            message = "The Krita placeholder selection changed before upload completed"
+            raise ValueError(message)
+    elif not current_state.layer_ids or current_state.layer_ids != state.layer_ids:
+        message = "The Krita layer selection changed before this snapshot finished uploading"
+        raise ValueError(message)
+    if not current_state.snapshot_pending and current_state.snapshot_revision != state.snapshot_revision:
+        message = "A newer Krita image composition superseded this snapshot"
+        raise ValueError(message)
+
+
+def _should_ignore_load_image_state_update(
+    state: LoadImageState,
+    current_state: LoadImageState,
+) -> bool:
+    if state.selection_generation < current_state.selection_generation:
+        return True
+    return state.selection_generation == current_state.selection_generation and state.snapshot_pending and not current_state.snapshot_pending
+
+
+def _apply_load_image_state_update(
+    api: "KritaApi",
+    key: tuple[str, str, str],
+    state: LoadImageState,
+) -> dict[str, object]:
+    event: dict[str, object] = {"deleted": False, "state": state.model_dump()}
+    if not state.layer_ids and not state.placeholder:
+        api.remove_load_image_snapshot(key)
+        event["preview"] = None
+    elif not state.snapshot_pending and state.snapshot_revision:
+        snapshot = api.load_image_snapshots.get(key)
+        if snapshot is not None and snapshot.state.snapshot_revision == state.snapshot_revision:
+            snapshot.state = state
+    return event
+
+
+def _validate_snapshot_metadata(api: "KritaApi", state: LoadImageState) -> None:
+    if state.placeholder:
+        if state.layer_ids or state.layer_names:
+            message = "A blank Load Image placeholder cannot reference selected layers"
+            raise ValueError(message)
+    elif (
+        not state.layer_ids
+        or len(state.layer_ids) != len(state.layer_names)
+        or len(state.layer_ids) > MAX_LOAD_IMAGE_LAYERS
+        or len(set(state.layer_ids)) != len(state.layer_ids)
+    ):
+        message = "The image snapshot must contain a bounded, unique set of matching layer IDs and names"
+        raise ValueError(message)
+    if any(not layer_id or len(layer_id) > MAX_LOAD_IMAGE_LAYER_ID_LENGTH for layer_id in state.layer_ids):
+        message = "The image snapshot contains an invalid layer ID"
+        raise ValueError(message)
+    if any(len(layer_name) > MAX_LOAD_IMAGE_LAYER_NAME_LENGTH for layer_name in state.layer_names):
+        message = "The image snapshot contains an excessively long layer name"
+        raise ValueError(message)
+    if not state.snapshot_revision or len(state.snapshot_revision) > MAX_LOAD_IMAGE_REVISION_LENGTH:
+        message = "The image snapshot revision is missing or invalid"
+        raise ValueError(message)
+
+    if not api.has_workflow_node(state.document_id, state.id, state.type):
+        message = "The Load Image node is no longer present in the current ComfyUI workflow"
+        raise ValueError(message)
+
+
+def _load_snapshot_pixels(image_data: bytes) -> tuple[bytes, tuple[int, int]]:
+    try:
+        image = PILImage.open(BytesIO(image_data))
+    except Exception as error:  # noqa: BLE001
+        message = "The Krita image snapshot is not a valid PNG"
+        raise ValueError(message) from error
+
+    with image:
+        if image.format != "PNG" or image.mode not in ("RGBA", "RGB"):
+            message = "The Krita image snapshot must be an RGB or RGBA PNG"
+            raise ValueError(message)
+        if image.width < 1 or image.height < 1 or image.width * image.height > MAX_LOAD_IMAGE_PIXELS:
+            message = "The Krita image snapshot exceeds the supported pixel count"
+            raise ValueError(message)
+        try:
+            rgba = image.convert("RGBA")
+            return rgba.tobytes(), rgba.size
+        except Exception as error:  # noqa: BLE001
+            message = "The Krita image snapshot is not a valid PNG"
+            raise ValueError(message) from error
+
+
+def _snapshot_revision(image_data: bytes, *, require_transparent_black: bool = False) -> str:
+    pixels, dimensions = _load_snapshot_pixels(image_data)
+    if require_transparent_black and any(pixels):
+        message = "A blank Load Image placeholder must be fully transparent black"
+        raise ValueError(message)
+    digest = hashlib.sha256()
+    digest.update(dimensions[0].to_bytes(4, "big"))
+    digest.update(dimensions[1].to_bytes(4, "big"))
+    digest.update(pixels)
+    return digest.hexdigest()
+
+
+def _write_snapshot_preview(image_data: bytes) -> dict[str, str]:
+    filename = f"krita_{secrets.token_hex(12)}.png"
+    filepath = Path(folder_paths.get_temp_directory()) / filename
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    filepath.write_bytes(image_data)
+    return {"filename": filename, "subfolder": "", "type": "temp"}
+
+
+def _delete_snapshot_preview(preview: dict[str, str]) -> None:
+    filename = preview.get("filename")
+    if not filename or Path(filename).name != filename:
+        return
+    filepath = Path(folder_paths.get_temp_directory()) / filename
+    try:
+        filepath.unlink(missing_ok=True)
+    except OSError:
+        LOGGER.warning("Could not remove stale Krita preview file %s", filepath, exc_info=True)
+
+
 class KritaApi:
     def __init__(self) -> None:
         self.registered_documents: dict[str, set[str]] = {}
         self.document_mappings: dict[str, dict[str, str]] = {}
-        self.node_states: dict[str, dict[tuple[str, int, str], SaveImageState]] = {}
+        self.node_states: dict[str, dict[tuple[str, str, str], KritaNodeState]] = {}
+        self.load_image_snapshots: dict[tuple[str, str, str], LoadImageSnapshot] = {}
         self._staged_images: dict[str, StagedImage] = {}
         self._last_workflows_request: UpdateWorkflowsRequest = UpdateWorkflowsRequest.default()
 
@@ -90,7 +251,10 @@ class KritaApi:
             len(self._staged_images) >= MAX_STAGED_IMAGES
             or sum(len(staged.data) for staged in self._staged_images.values()) + len(image_data) > MAX_STAGED_TOTAL_BYTES
         ):
-            oldest_transfer = min(self._staged_images, key=lambda key: self._staged_images[key].expires_at)
+            oldest_transfer = min(
+                self._staged_images,
+                key=lambda key: self._staged_images[key].expires_at,
+            )
             self._staged_images.pop(oldest_transfer, None)
 
         transfer_id = secrets.token_urlsafe(24)
@@ -113,7 +277,189 @@ class KritaApi:
         )
         return transfer_id
 
-    async def _send_layer_notification(self, notification: LayerCreateNotification) -> None:
+    def _validate_snapshot_commit_state(self, sid: str, state: LoadImageState) -> None:
+        _validate_snapshot_owner(self, sid, state)
+        _validate_snapshot_metadata(self, state)
+        _validate_load_image_snapshot_generation(self, sid, state)
+
+    async def _prepare_load_image_snapshot_preview(
+        self,
+        sid: str,
+        state: LoadImageState,
+        image_data: bytes,
+        revision: str,
+    ) -> tuple[LoadImageSnapshot | None, dict[str, str] | None]:
+        existing = self.load_image_snapshots.get((state.document_id, state.id, state.type))
+        if existing is not None and existing.state.snapshot_revision == revision:
+            return existing, None
+
+        preview_candidate = await asyncio.to_thread(_write_snapshot_preview, image_data)
+        try:
+            self._validate_snapshot_commit_state(sid, state)
+        except Exception:
+            _delete_snapshot_preview(preview_candidate)
+            raise
+
+        # Re-check after the asynchronous write in case a matching upload
+        # committed while the preview file was being created.
+        existing = self.load_image_snapshots.get((state.document_id, state.id, state.type))
+        if existing is not None and existing.state.snapshot_revision == revision:
+            _delete_snapshot_preview(preview_candidate)
+            return existing, None
+
+        return existing, preview_candidate
+
+    def _plan_load_image_snapshot_evictions(
+        self,
+        key: tuple[str, str, str],
+        existing: LoadImageSnapshot | None,
+        incoming_size: int,
+    ) -> list[tuple[str, str, str]]:
+        total_bytes = sum(len(snapshot.data) for snapshot in self.load_image_snapshots.values())
+        if existing is not None:
+            total_bytes -= len(existing.data)
+        planned_count = len(self.load_image_snapshots) - (1 if existing is not None else 0)
+        planned_evictions: list[tuple[str, str, str]] = []
+
+        while (planned_count >= MAX_LOAD_IMAGE_SNAPSHOTS and existing is None) or total_bytes + incoming_size > MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES:
+            candidates = [
+                candidate_key for candidate_key in self.load_image_snapshots if candidate_key != key and candidate_key not in planned_evictions
+            ]
+            if not candidates:
+                message = "The ComfyUI Krita snapshot cache is full"
+                raise ValueError(message)
+
+            oldest_key = min(
+                candidates,
+                key=lambda candidate_key: self.load_image_snapshots[candidate_key].updated_at,
+            )
+            planned_evictions.append(oldest_key)
+            total_bytes -= len(self.load_image_snapshots[oldest_key].data)
+            planned_count -= 1
+
+        return planned_evictions
+
+    def _evict_load_image_snapshots(
+        self,
+        keys: list[tuple[str, str, str]],
+    ) -> list[tuple[str, dict[str, object]]]:
+        events: list[tuple[str, dict[str, object]]] = []
+        for key in keys:
+            snapshot = self.load_image_snapshots.pop(key)
+            _delete_snapshot_preview(snapshot.preview)
+
+            for owner_sid, owner_states in self.node_states.items():
+                evicted_state = owner_states.get(key)
+                if not isinstance(evicted_state, LoadImageState):
+                    continue
+                invalidated_state = evicted_state.model_copy(
+                    update={"snapshot_revision": "", "snapshot_pending": True},
+                )
+                owner_states[key] = invalidated_state
+                events.append(
+                    (
+                        owner_sid,
+                        {
+                            "deleted": False,
+                            "state": invalidated_state.model_dump(),
+                            "preview": None,
+                        },
+                    ),
+                )
+
+        return events
+
+    @prune_sids
+    async def store_load_image_snapshot(
+        self,
+        sid: str,
+        state: LoadImageState,
+        image_data: bytes,
+    ) -> dict[str, bool | str]:
+        self._validate_snapshot_commit_state(sid, state)
+        if len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_BYTES:
+            message = f"The Krita image snapshot exceeds the {MAX_LOAD_IMAGE_SNAPSHOT_BYTES}-byte limit"
+            raise ValueError(message)
+
+        revision = await asyncio.to_thread(
+            _snapshot_revision,
+            image_data,
+            require_transparent_black=state.placeholder,
+        )
+        canonical_state = state.model_copy(update={"snapshot_revision": revision})
+        self._validate_snapshot_commit_state(sid, canonical_state)
+
+        key = (state.document_id, state.id, state.type)
+        existing, preview_candidate = await self._prepare_load_image_snapshot_preview(
+            sid,
+            canonical_state,
+            image_data,
+            revision,
+        )
+        try:
+            evicted_keys = self._plan_load_image_snapshot_evictions(key, existing, len(image_data))
+            self._validate_snapshot_commit_state(sid, canonical_state)
+        except Exception:
+            if preview_candidate is not None:
+                _delete_snapshot_preview(preview_candidate)
+            raise
+
+        # No await occurs between this final validation and the cache commit.
+        existing = self.load_image_snapshots.get(key)
+        if existing is not None and existing.state.snapshot_revision == revision:
+            preview = existing.preview
+            changed = False
+            if preview_candidate is not None:
+                _delete_snapshot_preview(preview_candidate)
+        else:
+            if preview_candidate is None:
+                message = "A preview image could not be prepared for the new Krita snapshot"
+                raise RuntimeError(message)
+            preview = preview_candidate
+            changed = True
+
+        evicted_events = self._evict_load_image_snapshots(evicted_keys)
+        self.load_image_snapshots[key] = LoadImageSnapshot(
+            state=canonical_state,
+            data=image_data,
+            preview=preview,
+            updated_at=time.monotonic(),
+        )
+        self.node_states.setdefault(sid, {})[key] = canonical_state
+
+        await PromptServer.instance.send(
+            "krita::nodes::update",
+            {
+                "deleted": False,
+                "state": canonical_state.model_dump(),
+                "preview": preview,
+            },
+        )
+        for owner_sid, event in evicted_events:
+            await PromptServer.instance.send("krita::nodes::update", event, owner_sid)
+
+        return {"snapshot_revision": revision, "changed": changed}
+
+    def remove_load_image_snapshot(self, key: tuple[str, str, str]) -> None:
+        snapshot = self.load_image_snapshots.pop(key, None)
+        if snapshot is not None:
+            _delete_snapshot_preview(snapshot.preview)
+
+    def has_load_image_snapshot(self, state: LoadImageState) -> bool:
+        snapshot = self.load_image_snapshots.get((state.document_id, state.id, state.type))
+        return snapshot is not None and snapshot.state.snapshot_revision == state.snapshot_revision
+
+    def get_load_image_snapshot(self, state: LoadImageState) -> bytes | None:
+        snapshot = self.load_image_snapshots.get((state.document_id, state.id, state.type))
+        if snapshot is None or snapshot.state.snapshot_revision != state.snapshot_revision:
+            return None
+        snapshot.updated_at = time.monotonic()
+        return snapshot.data
+
+    async def _send_layer_notification(
+        self,
+        notification: LayerCreateNotification,
+    ) -> None:
         self._prune_staged_images()
         staged = self._staged_images.get(notification.transfer_id)
         if staged is None:
@@ -208,7 +554,7 @@ class KritaApi:
                 (
                     candidate_id
                     for candidate_id, previous_name in previous_mappings.items()
-                    if previous_name == document_name and candidate_id not in occupied_ids and candidate_id not in document_mapping
+                    if (previous_name == document_name and candidate_id not in occupied_ids and candidate_id not in document_mapping)
                 ),
                 None,
             )
@@ -226,6 +572,7 @@ class KritaApi:
         removed_keys = [key for key, state in sid_states.items() if state.document_id not in registered_ids]
         for key in removed_keys:
             state = sid_states.pop(key)
+            self.remove_load_image_snapshot(key)
             await self._broadcast_deleted_node_state(state)
 
         krita_documents = self.get_registered_documents().model_dump()
@@ -249,7 +596,9 @@ class KritaApi:
                 message = "The deleted node state does not belong to this Krita session"
                 raise ValueError(message)
 
-            sid_states.pop((update.document_id, update.id, update.type), None)
+            deleted_key = (update.document_id, update.id, update.type)
+            sid_states.pop(deleted_key, None)
+            self.remove_load_image_snapshot(deleted_key)
             await PromptServer.instance.send(
                 "krita::nodes::update",
                 {
@@ -270,13 +619,22 @@ class KritaApi:
             raise ValueError(message)
 
         key = (state.document_id, state.id, state.type)
-        sid_states[key] = state
-        await PromptServer.instance.send(
-            "krita::nodes::update",
-            {"deleted": False, "state": state.model_dump()},
-        )
+        current_state = sid_states.get(key)
+        if (
+            isinstance(state, LoadImageState)
+            and isinstance(current_state, LoadImageState)
+            and _should_ignore_load_image_state_update(state, current_state)
+        ):
+            return
 
-    def get_node_states(self) -> list[SaveImageState]:
+        sid_states[key] = state
+        if isinstance(state, LoadImageState):
+            event = _apply_load_image_state_update(self, key, state)
+        else:
+            event = {"deleted": False, "state": state.model_dump()}
+        await PromptServer.instance.send("krita::nodes::update", event)
+
+    def get_node_states(self) -> list[KritaNodeState]:
         return [state for sid_states in self.node_states.values() for state in sid_states.values()]
 
     @prune_sids
@@ -292,8 +650,16 @@ class KritaApi:
             )
 
     @prune_sids
-    def get_registered_workflows_by_sid(self, sid: str) -> UpdateWorkflowsRequest | None:
+    def get_registered_workflows_by_sid(
+        self,
+        sid: str,
+    ) -> UpdateWorkflowsRequest | None:
         return self._split_update_workflows_request_per_sids(self._last_workflows_request).get(sid, None)
+
+    def has_workflow_node(self, document_id: str, node_id: str, node_type: str) -> bool:
+        """Return whether the active workflow contains the specified node."""
+        workflow_nodes = self._last_workflows_request.workflows.get(document_id, [])
+        return any(node.id == node_id and node.type == node_type for node in workflow_nodes)
 
     def get_registered_documents(self) -> KritaDocuments:
         return KritaDocuments(
@@ -313,6 +679,7 @@ class KritaApi:
                 del self.registered_documents[sid]
                 self.document_mappings.pop(sid, None)
                 for state in self.node_states.pop(sid, {}).values():
+                    self.remove_load_image_snapshot((state.document_id, state.id, state.type))
                     await self._broadcast_deleted_node_state(state)
                 has_changed = True
 
@@ -350,7 +717,7 @@ class KritaApi:
 
         return sid_request_map
 
-    async def _broadcast_deleted_node_state(self, state: SaveImageState) -> None:
+    async def _broadcast_deleted_node_state(self, state: KritaNodeState) -> None:
         await PromptServer.instance.send(
             "krita::nodes::update",
             {
@@ -372,6 +739,7 @@ class KritaApi:
             del self.registered_documents[sid]
             self.document_mappings.pop(sid, None)
             for state in self.node_states.pop(sid, {}).values():
+                self.remove_load_image_snapshot((state.document_id, state.id, state.type))
                 await self._broadcast_deleted_node_state(state)
 
     def _document_id_to_sid(self, document_id: str) -> str | None:

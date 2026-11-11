@@ -2,14 +2,42 @@ import { app } from "../../../scripts/app.js";
 
 
 const KRITA_SAVE_IMAGE_NODE_TYPE = "KritaSaveImage-15347";
+const KRITA_LOAD_IMAGE_NODE_TYPE = "KritaLoadImage-15347";
 const DOCUMENT_WIDGET_LABEL = "document";
 const META_WIDGET_LABEL = "_meta-15347";
 const KRITA_DOCUMENT_GRAPH_USAGE_REFRESH_RATE = 300;
 export const COMFY_TABS_CONTAINER_SELECTOR = ".workflow-tabs-container";
 export const COMFY_ACTIVE_TAB_SELECTOR = '[role="tab"][aria-selected="true"] .workflow-label';
-const KRITA_CUSTOM_IO_NODE_TYPES = [
-    KRITA_SAVE_IMAGE_NODE_TYPE
+export const KRITA_CUSTOM_IO_NODE_TYPES = [
+    KRITA_SAVE_IMAGE_NODE_TYPE,
+    KRITA_LOAD_IMAGE_NODE_TYPE,
 ];
+
+function getMetadataWidgetLabel(nodeType) {
+    return KRITA_CUSTOM_IO_NODE_TYPES.includes(nodeType) ? META_WIDGET_LABEL : null;
+}
+
+function createDefaultNodeState(node) {
+    if(node.type === KRITA_LOAD_IMAGE_NODE_TYPE) {
+        return {
+            id: getComfyNodeLocatorId(node),
+            type: node.type,
+            document_id: "",
+            layer_ids: [],
+            layer_names: [],
+            snapshot_revision: "",
+        };
+    }
+
+    return {
+        id: getComfyNodeLocatorId(node),
+        type: node.type,
+        document_id: "",
+        insert_direction: "below",
+        path: [{ quuid: null, type: "target" }],
+        layer_name: "Not set",
+    };
+}
 const EXTENSION_NAME = "Krita.WorkflowSync";
 
 let baseUrl = null;
@@ -18,6 +46,8 @@ let previousDocumentIdLists = {};
 let websocketRoutesSetup = false;
 const kritaNodeStateCache = new Map();
 const kritaNodeStateEventRevisions = new Map();
+const kritaLoadImagePreviewRevisions = new WeakMap();
+const kritaLoadImagePreviewRequests = new WeakMap();
 
 
 export const api = (() => {
@@ -71,6 +101,7 @@ export const extension = {
     },
     async nodeCreated(node) {
         fixKritaNodeUi(node);
+        await updateDocumentWidgetValues();
         applyCachedKritaNodeStates();
     },
 };
@@ -80,14 +111,15 @@ export function fixKritaNodeUi(node, visitedNodes=new Set()) {
     if(!node || visitedNodes.has(node)) return;
     visitedNodes.add(node);
 
-    if(KRITA_CUSTOM_IO_NODE_TYPES.includes(node.type)) {
+    const metadataWidgetLabel = getMetadataWidgetLabel(node.type);
+    if(metadataWidgetLabel !== null) {
         const inputs = node.inputs ?? [];
-        const metaSlot = inputs.find(i => i.name === META_WIDGET_LABEL);
+        const metaSlot = inputs.find(i => i.name === metadataWidgetLabel);
         const documentSlot = inputs.find(i => i.name === DOCUMENT_WIDGET_LABEL);
 
         if(documentSlot) inputs.splice(inputs.indexOf(documentSlot), 1);
         if(metaSlot) inputs.splice(inputs.indexOf(metaSlot), 1);
-        hideKritaMetadataWidget(node);
+        hideKritaMetadataWidget(node, metadataWidgetLabel);
     }
 
     // Ordinary ComfyUI nodes can own subgraphs that contain Krita nodes.
@@ -104,8 +136,9 @@ function findKritaWidget(node, name) {
 }
 
 
-function hideKritaMetadataWidget(node) {
-    const widget = findKritaWidget(node, META_WIDGET_LABEL);
+function hideKritaMetadataWidget(node, label=getMetadataWidgetLabel(node.type)) {
+    if(label === null) return;
+    const widget = findKritaWidget(node, label);
     if(!widget) return;
 
     // V3 schema-level hidden flag is authoritative; keep matching widget flags
@@ -137,6 +170,18 @@ export function setupAdditionalWebsocketRoutes() {
                     }
                     else if(data.data.state) {
                         applyKritaNodeState(data.data.state);
+                        if(data.data.preview) {
+                            await updateKritaLoadImagePreview(data.data.state, data.data.preview);
+                        }
+                        else if(
+                            data.data.state.type === KRITA_LOAD_IMAGE_NODE_TYPE &&
+                            (
+                                !data.data.state.snapshot_revision ||
+                                (!data.data.state.layer_ids?.length && !data.data.state.placeholder)
+                            )
+                        ) {
+                            clearKritaLoadImagePreview(data.data.state);
+                        }
                     }
                     break;
             }
@@ -148,13 +193,57 @@ export function setupAdditionalWebsocketRoutes() {
 }
 
 
+function getComfyPinia() {
+    return document.getElementById("vue-app")
+        ?.__vue_app__?.config?.globalProperties?.$pinia ?? null;
+}
+
+
+function getComfyWorkflowStore() {
+    return getComfyPinia()?._s?.get?.("workflow") ?? null;
+}
+
+
+function getComfyNodeOutputStore() {
+    return getComfyPinia()?._s?.get?.("nodeOutput") ?? null;
+}
+
+
+export function getComfyNodeLocatorId(node) {
+    const locatorId = getComfyWorkflowStore()?.nodeToNodeLocatorId?.(node);
+    if(typeof locatorId === "string" && locatorId.length > 0) return locatorId;
+
+    if(node?.graph === app.graph) return String(node.id);
+
+    const graphId = node?.graph?.id;
+    if(typeof graphId === "string" && graphId.length > 0) {
+        return `${graphId}:${node.id}`;
+    }
+
+    throw new Error("Could not resolve a stable ComfyUI node locator");
+}
+
+
+function findKritaNodeByLocator(locatorId, nodeType) {
+    return getInternalKritaNodes().find(candidate => {
+        if(candidate.type !== nodeType) return false;
+        try {
+            return getComfyNodeLocatorId(candidate) === locatorId;
+        }
+        catch {
+            return false;
+        }
+    }) ?? null;
+}
+
+
 function kritaNodeStateKey(documentId, nodeId, nodeType=KRITA_SAVE_IMAGE_NODE_TYPE) {
     return `${documentId}::${nodeType}::${nodeId}`;
 }
 
 
 export function applyKritaNodeState(state) {
-    if(!state || state.type !== KRITA_SAVE_IMAGE_NODE_TYPE || !state.document_id) return;
+    if(!state || !KRITA_CUSTOM_IO_NODE_TYPES.includes(state.type) || !state.document_id) return;
 
     const key = kritaNodeStateKey(state.document_id, state.id, state.type);
     kritaNodeStateEventRevisions.set(key, (kritaNodeStateEventRevisions.get(key) ?? 0) + 1);
@@ -165,6 +254,10 @@ export function applyKritaNodeState(state) {
 
 function removeKritaNodeState(deleted) {
     if(!deleted?.document_id || deleted.id === undefined || !deleted.type) return;
+
+    if(deleted.type === KRITA_LOAD_IMAGE_NODE_TYPE) {
+        clearKritaLoadImagePreview(deleted);
+    }
 
     const key = kritaNodeStateKey(deleted.document_id, deleted.id, deleted.type);
     kritaNodeStateEventRevisions.set(key, (kritaNodeStateEventRevisions.get(key) ?? 0) + 1);
@@ -178,7 +271,7 @@ export async function loadKritaNodeStates() {
     try {
         const response = await api.get('/krita/nodes/states');
         for(const state of (response.states ?? [])) {
-            if(state.type !== KRITA_SAVE_IMAGE_NODE_TYPE || !state.document_id) continue;
+            if(!KRITA_CUSTOM_IO_NODE_TYPES.includes(state.type) || !state.document_id) continue;
 
             const key = kritaNodeStateKey(state.document_id, state.id, state.type);
             if((kritaNodeStateEventRevisions.get(key) ?? 0) !== (revisionsAtRequest.get(key) ?? 0)) continue;
@@ -196,13 +289,14 @@ export async function loadKritaNodeStates() {
 export function applyCachedKritaNodeStates() {
     for(const node of getInternalKritaNodes()) {
         const documentWidget = findKritaWidget(node, DOCUMENT_WIDGET_LABEL);
-        const metaWidget = findKritaWidget(node, META_WIDGET_LABEL);
-        hideKritaMetadataWidget(node);
+        const metadataLabel = getMetadataWidgetLabel(node.type);
+        const metaWidget = metadataLabel === null ? null : findKritaWidget(node, metadataLabel);
+        hideKritaMetadataWidget(node, metadataLabel);
         if(!metaWidget) continue;
 
         const documentId = documentWidget?.value;
         const state = documentId
-            ? kritaNodeStateCache.get(kritaNodeStateKey(documentId, node.id, node.type))
+            ? kritaNodeStateCache.get(kritaNodeStateKey(documentId, getComfyNodeLocatorId(node), node.type))
             : null;
 
         if(state) {
@@ -210,27 +304,145 @@ export function applyCachedKritaNodeStates() {
             continue;
         }
 
-        setNodeMetadataValue(node, metaWidget, {
-            id: node.id,
-            type: node.type,
-            document_id: "",
-            insert_direction: "below",
-            path: [{ quuid: null, type: "target" }],
-            layer_name: "Not set",
-        });
+        setNodeMetadataValue(node, metaWidget, createDefaultNodeState(node));
     }
 }
 
 
 function setNodeMetadataValue(node, widget, value) {
-    const serialized = typeof value === "string" ? value : JSON.stringify(value);
+    // Layer IDs and names are Krita-side UI state, not execution inputs.
+    // Only the canonical pixel digest participates in ComfyUI's cache key.
+    const executionState = node.type === KRITA_LOAD_IMAGE_NODE_TYPE
+        ? {
+            id: value.id,
+            type: value.type,
+            document_id: value.document_id,
+            snapshot_revision: value.snapshot_revision,
+        }
+        : value;
+    const serialized = typeof executionState === "string"
+        ? executionState
+        : JSON.stringify(executionState);
     if(widget.value === serialized) return;
 
     widget.value = serialized;
     node.graph?.change?.();
     node.setDirtyCanvas?.(true, true);
+
+    // The workflow ChangeTracker compares execution-relevant serialized
+    // widgets, then emits ComfyUI's auto-queue event when Run on Change is
+    // enabled. Calling it here is necessary for websocket-originated updates,
+    // which do not originate from a canvas mouse/key event.
+    if(node.type === KRITA_LOAD_IMAGE_NODE_TYPE) {
+        getComfyWorkflowStore()?.activeWorkflow?.changeTracker?.captureCanvasState?.();
+    }
 }
 
+
+async function updateKritaLoadImagePreview(state, preview) {
+    if(
+        state?.type !== KRITA_LOAD_IMAGE_NODE_TYPE ||
+        !state.snapshot_revision ||
+        !preview?.filename ||
+        baseUrl === null
+    ) return;
+
+    const node = findKritaNodeByLocator(state.id, KRITA_LOAD_IMAGE_NODE_TYPE);
+    if(!node || findKritaWidget(node, DOCUMENT_WIDGET_LABEL)?.value !== state.document_id) return;
+
+    if(kritaLoadImagePreviewRevisions.get(node) === state.snapshot_revision) return;
+
+    const requestId = (kritaLoadImagePreviewRequests.get(node) ?? 0) + 1;
+    kritaLoadImagePreviewRequests.set(node, requestId);
+    const params = new URLSearchParams({
+        filename: preview.filename,
+        subfolder: preview.subfolder ?? "",
+        type: preview.type ?? "temp",
+    });
+    const response = await fetch(new URL(`/view?${params.toString()}`, baseUrl), {
+        cache: "no-store",
+    });
+    if(!response.ok) {
+        throw new Error(`Could not fetch the updated Krita preview: HTTP ${response.status}`);
+    }
+
+    const objectUrl = URL.createObjectURL(await response.blob());
+    if(
+        kritaLoadImagePreviewRequests.get(node) !== requestId ||
+        findKritaNodeByLocator(state.id, KRITA_LOAD_IMAGE_NODE_TYPE) !== node ||
+        findKritaWidget(node, DOCUMENT_WIDGET_LABEL)?.value !== state.document_id
+    ) {
+        URL.revokeObjectURL(objectUrl);
+        return;
+    }
+
+    // ComfyUI initializes nodeOutput lazily from its LiteGraph draw hook.
+    // Initialize it before writing the preview so Vue's reactive preview
+    // composable observes the new image immediately.
+    node.onDrawBackground?.();
+    const nodeOutputStore = getComfyNodeOutputStore();
+    const locatorId = getComfyNodeLocatorId(node);
+
+    if(typeof nodeOutputStore?.setNodePreviewsByLocatorId === "function") {
+        nodeOutputStore.setNodePreviewsByLocatorId(locatorId, [objectUrl]);
+    }
+    else if(app.nodePreviewImages) {
+        // Older ComfyUI builds without a mounted Pinia store seed it from this
+        // legacy map when the draw hook initializes nodeOutput.
+        const previousUrl = node._kritaLoadImagePreviewUrl;
+        if(previousUrl) URL.revokeObjectURL(previousUrl);
+        app.nodePreviewImages[locatorId] = [objectUrl];
+    }
+    else {
+        URL.revokeObjectURL(objectUrl);
+        throw new Error("ComfyUI's node preview store is not available");
+    }
+
+    node._kritaLoadImagePreviewUrl = objectUrl;
+    node.graph?.setDirtyCanvas?.(true, true);
+    node.setDirtyCanvas?.(true, true);
+
+    // Refresh the node's preview immediately after the reactive store changes.
+    node.onDrawBackground?.();
+    kritaLoadImagePreviewRevisions.set(node, state.snapshot_revision);
+}
+
+function clearKritaLoadImagePreview(state) {
+    const node = findKritaNodeByLocator(state.id, KRITA_LOAD_IMAGE_NODE_TYPE);
+    if(node && findKritaWidget(node, DOCUMENT_WIDGET_LABEL)?.value !== state.document_id) return;
+
+    if(node) {
+        kritaLoadImagePreviewRequests.set(
+            node,
+            (kritaLoadImagePreviewRequests.get(node) ?? 0) + 1,
+        );
+    }
+
+    const nodeOutputStore = getComfyNodeOutputStore();
+    const locatorId = state.id;
+
+    if(typeof nodeOutputStore?.setNodePreviewsByLocatorId === "function") {
+        nodeOutputStore.setNodePreviewsByLocatorId(locatorId, []);
+    }
+    else if(app.nodePreviewImages) {
+        const previousUrls = app.nodePreviewImages[locatorId] ?? [];
+        delete app.nodePreviewImages[locatorId];
+        for(const previousUrl of previousUrls) {
+            URL.revokeObjectURL(previousUrl);
+        }
+    }
+
+    if(!node) return;
+
+    node._kritaLoadImagePreviewUrl = null;
+    node.preview = [];
+    node.images = [];
+    node.imgs = [];
+    node.imageIndex = 0;
+    node.graph?.setDirtyCanvas?.(true, true);
+    node.setDirtyCanvas?.(true, true);
+    kritaLoadImagePreviewRevisions.delete(node);
+}
 
 export async function updateDocumentWidgetValues(documentNames=null) {
     const internalKritaNodes = getInternalKritaNodes();
@@ -411,7 +623,7 @@ export class CustomKritaNodeFactory {
             .map(([_, i]) => internalNode.serialize().widgets_values[i]);
 
         return new CustomKritaNode(
-            internalNode.id,
+            getComfyNodeLocatorId(internalNode),
             internalNode.type,
             internalNode.title,
             documentIds,
