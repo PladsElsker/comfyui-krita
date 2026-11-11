@@ -29,7 +29,7 @@ SI5R_AMOUNT_OF_KRITA_NODES = 5
 
 
 class Node(BaseModel):
-    id: int
+    id: str
     type: str
     name: str
 
@@ -551,6 +551,7 @@ def test__given_krita_load_image_node__when_state_updates__then_input_metadata_w
             const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
             const node = {
                 id: 99001,
+                graph: app.graph,
                 type: "KritaLoadImage-15347",
                 inputs: [],
                 widgets: [
@@ -577,7 +578,7 @@ def test__given_krita_load_image_node__when_state_updates__then_input_metadata_w
         """,
     )
     assert updated_state == {
-        "id": 99001,
+        "id": "99001",
         "type": "KritaLoadImage-15347",
         "document_id": "document-1",
         "snapshot_revision": "revision-1",
@@ -693,10 +694,12 @@ def test__given_identical_load_image_revision__when_selection_metadata_changes__
             const { app } = await import('../../../scripts/app.js');
             const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
             let graphChanges = 0;
+            const originalGraphChange = app.graph.change?.bind(app.graph);
+            app.graph.change = () => { graphChanges += 1; };
             const node = {
                 id: 99002,
+                graph: app.graph,
                 type: "KritaLoadImage-15347",
-                graph: { change() { graphChanges += 1; } },
                 inputs: [],
                 widgets: [
                     { name: "document", label: "document", value: "document-1" },
@@ -707,7 +710,7 @@ def test__given_identical_load_image_revision__when_selection_metadata_changes__
             app.graph.nodes.push(node);
 
             workflow.applyKritaNodeState({
-                id: node.id,
+                id: String(node.id),
                 type: node.type,
                 document_id: "document-1",
                 layer_ids: ["layer-1"],
@@ -733,13 +736,14 @@ def test__given_identical_load_image_revision__when_selection_metadata_changes__
                 finalChanges: graphChanges,
             };
             app.graph.nodes.splice(app.graph.nodes.indexOf(node), 1);
+            if(originalGraphChange) app.graph.change = originalGraphChange;
             return result;
         }
         """,
     )
 
     assert result["value"] == {
-        "id": 99002,
+        "id": "99002",
         "type": "KritaLoadImage-15347",
         "document_id": "document-1",
         "snapshot_revision": "same-pixels",
