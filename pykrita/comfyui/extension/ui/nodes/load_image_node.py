@@ -415,6 +415,7 @@ class LoadImageNode(ComfyUiNode):
 
         if not layer_ids:
             self._latest_capture = None
+            self._active_capture_token = None
             self._pending_state = None
             self._refresh_requested = False
             self._live_refresh_timer.stop()
