@@ -247,7 +247,7 @@ class LayerMultiSelectionPicker(QObject):
             siblings = root.childNodes()
         else:
             parent_index = self._index_for_node(parent)
-            layer_view.setExpanded(parent_index, expand=True)
+            layer_view.setExpanded(parent_index, True)
             siblings = parent.childNodes()
 
         node_id = str(node.uniqueId())
