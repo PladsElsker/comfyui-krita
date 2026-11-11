@@ -4,7 +4,6 @@ from typing import ClassVar, Literal, cast
 from krita import DockWidget, Document, Node as KritaNode, Window
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QPalette
-from PyQt5.QtWidgets import QLabel
 
 from comfyui.extension.layer_tree.document_change_tracker import document_change_tracker
 from comfyui.extension.layer_tree.selection_modal import select_layers
