@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from typing import ClassVar
 
 from krita import Document, Window
 from PyQt5.QtCore import QEvent, QObject, QTimer
@@ -17,6 +18,14 @@ _INPUT_EVENTS = {
 
 
 class DocumentChangeTracker(QObject):
+    _instance: ClassVar[DocumentChangeTracker | None] = None
+
+    @classmethod
+    def instance(cls) -> DocumentChangeTracker:
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
     """Coalesce user input into one per-document change notification.
 
     Krita's public Python Notifier has no image-content-changed signal. This
@@ -71,10 +80,7 @@ class DocumentChangeTracker(QObject):
             return super().eventFilter(watched, event)
         if self._is_integration_dialog(watched):
             return super().eventFilter(watched, event)
-        if event.type() == QEvent.Type.Shortcut:
-            is_content_input = True
-        else:
-            is_content_input = self._is_content_input_widget(watched)
+        is_content_input = True if event.type() == QEvent.Type.Shortcut else self._is_content_input_widget(watched)
         if not is_content_input:
             return super().eventFilter(watched, event)
 
@@ -131,11 +137,5 @@ class DocumentChangeTracker(QObject):
                 continue
 
 
-_TRACKER: DocumentChangeTracker | None = None
-
-
 def document_change_tracker() -> DocumentChangeTracker:
-    global _TRACKER
-    if _TRACKER is None:
-        _TRACKER = DocumentChangeTracker()
-    return _TRACKER
+    return DocumentChangeTracker.instance()
