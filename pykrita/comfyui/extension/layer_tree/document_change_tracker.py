@@ -12,6 +12,7 @@ _INPUT_EVENTS = {
     QEvent.Type.TabletRelease,
     QEvent.Type.TouchEnd,
     QEvent.Type.KeyRelease,
+    QEvent.Type.Shortcut,
 }
 
 
