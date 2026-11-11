@@ -175,7 +175,10 @@ export function setupAdditionalWebsocketRoutes() {
                         }
                         else if(
                             data.data.state.type === KRITA_LOAD_IMAGE_NODE_TYPE &&
-                            (!data.data.state.layer_ids?.length || !data.data.state.snapshot_revision)
+                            (
+                                !data.data.state.snapshot_revision ||
+                                (!data.data.state.layer_ids?.length && !data.data.state.placeholder)
+                            )
                         ) {
                             clearKritaLoadImagePreview(data.data.state);
                         }
