@@ -193,6 +193,41 @@ export function setupAdditionalWebsocketRoutes() {
 }
 
 
+function getComfyWorkflowStore() {
+    const pinia = document.getElementById("vue-app")
+        ?.__vue_app__?.config?.globalProperties?.$pinia;
+    return pinia?._s?.get?.("workflow") ?? null;
+}
+
+
+export function getComfyNodeLocatorId(node) {
+    const locatorId = getComfyWorkflowStore()?.nodeToNodeLocatorId?.(node);
+    if(typeof locatorId === "string" && locatorId.length > 0) return locatorId;
+
+    if(node?.graph === app.graph) return String(node.id);
+
+    const graphId = node?.graph?.id;
+    if(typeof graphId === "string" && graphId.length > 0) {
+        return `${graphId}:${node.id}`;
+    }
+
+    throw new Error("Could not resolve a stable ComfyUI node locator");
+}
+
+
+function findKritaNodeByLocator(locatorId, nodeType) {
+    return getInternalKritaNodes().find(candidate => {
+        if(candidate.type !== nodeType) return false;
+        try {
+            return getComfyNodeLocatorId(candidate) === locatorId;
+        }
+        catch {
+            return false;
+        }
+    }) ?? null;
+}
+
+
 function kritaNodeStateKey(documentId, nodeId, nodeType=KRITA_SAVE_IMAGE_NODE_TYPE) {
     return `${documentId}::${nodeType}::${nodeId}`;
 }
@@ -291,11 +326,8 @@ async function updateKritaLoadImagePreview(state, preview) {
         baseUrl === null
     ) return;
 
-    const node = getInternalKritaNodes().find(candidate => {
-        if(candidate.id !== state.id || candidate.type !== KRITA_LOAD_IMAGE_NODE_TYPE) return false;
-        return findKritaWidget(candidate, DOCUMENT_WIDGET_LABEL)?.value === state.document_id;
-    });
-    if(!node) return;
+    const node = findKritaNodeByLocator(state.id, KRITA_LOAD_IMAGE_NODE_TYPE);
+    if(!node || findKritaWidget(node, DOCUMENT_WIDGET_LABEL)?.value !== state.document_id) return;
 
     if(kritaLoadImagePreviewRevisions.get(node) === state.snapshot_revision) return;
 
@@ -330,11 +362,7 @@ async function updateKritaLoadImagePreview(state, preview) {
     }
 
     const nodeOutputStore = pinia?._s?.get?.("nodeOutput");
-    const workflowStore = pinia?._s?.get?.("workflow");
-    const locatorId = workflowStore?.nodeToNodeLocatorId?.(node)
-        ?? (node.graph && node.graph !== app.graph && node.graph.id
-            ? `${node.graph.id}:${node.id}`
-            : String(node.id));
+    const locatorId = getComfyNodeLocatorId(node);
 
     if(typeof nodeOutputStore?.setNodePreviewsByLocatorId === "function") {
         nodeOutputStore.setNodePreviewsByLocatorId(locatorId, [objectUrl]);
@@ -359,11 +387,8 @@ async function updateKritaLoadImagePreview(state, preview) {
 }
 
 function clearKritaLoadImagePreview(state) {
-    const node = getInternalKritaNodes().find(candidate => {
-        if(candidate.id !== state.id || candidate.type !== KRITA_LOAD_IMAGE_NODE_TYPE) return false;
-        return findKritaWidget(candidate, DOCUMENT_WIDGET_LABEL)?.value === state.document_id;
-    });
-    if(!node) return;
+    const node = findKritaNodeByLocator(state.id, KRITA_LOAD_IMAGE_NODE_TYPE);
+    if(!node || findKritaWidget(node, DOCUMENT_WIDGET_LABEL)?.value !== state.document_id) return;
 
     kritaLoadImagePreviewRequests.set(
         node,
@@ -373,11 +398,7 @@ function clearKritaLoadImagePreview(state) {
     const pinia = document.getElementById("vue-app")
         ?.__vue_app__?.config?.globalProperties?.$pinia;
     const nodeOutputStore = pinia?._s?.get?.("nodeOutput");
-    const workflowStore = pinia?._s?.get?.("workflow");
-    const locatorId = workflowStore?.nodeToNodeLocatorId?.(node)
-        ?? (node.graph && node.graph !== app.graph && node.graph.id
-            ? `${node.graph.id}:${node.id}`
-            : String(node.id));
+    const locatorId = getComfyNodeLocatorId(node);
 
     if(typeof nodeOutputStore?.setNodePreviewsByLocatorId === "function") {
         nodeOutputStore.setNodePreviewsByLocatorId(locatorId, []);
@@ -578,7 +599,7 @@ export class CustomKritaNodeFactory {
             .map(([_, i]) => internalNode.serialize().widgets_values[i]);
 
         return new CustomKritaNode(
-            internalNode.id,
+            getComfyNodeLocatorId(internalNode),
             internalNode.type,
             internalNode.title,
             documentIds,
