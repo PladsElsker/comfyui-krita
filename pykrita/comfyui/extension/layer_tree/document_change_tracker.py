@@ -117,14 +117,18 @@ class DocumentChangeTracker(QObject):
     @staticmethod
     def _is_content_input_widget(watched: QObject) -> bool:
         current = watched
+        is_layer_name_editor = False
         while current is not None:
             if isinstance(current, QWidget):
                 try:
                     class_name = current.metaObject().className()
                 except RuntimeError:
                     return False
+                is_layer_name_editor = is_layer_name_editor or class_name == "QLineEdit"
                 if class_name in _CANVAS_WIDGET_TYPES or class_name in _CONTENT_TOOL_WIDGET_TYPES:
                     return True
+                if current.objectName() == "listLayers":
+                    return is_layer_name_editor
                 current = current.parentWidget()
             else:
                 current = current.parent()
