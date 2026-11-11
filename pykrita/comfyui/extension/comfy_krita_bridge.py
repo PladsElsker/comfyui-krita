@@ -1,8 +1,19 @@
 import json
+from contextlib import suppress
 import logging
 import threading
+from io import BytesIO
+from zipfile import ZIP_STORED, ZipFile
 
-from PyQt5.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import (
+    QObject,
+    QRunnable,
+    QThreadPool,
+    QTimer,
+    Qt,
+    pyqtSignal,
+    pyqtSlot,
+)
 
 from comfyui.extension.comfy_websocket import ComfyWebsocket
 from comfyui.extension.document_monitor import DocumentMonitor
@@ -10,6 +21,7 @@ from comfyui.extension.image_import import insert_png_image
 from comfyui.extension.models import (
     DocumentMappingResponse,
     LayerCreateNotification,
+    LoadImageState,
     SaveImageState,
     StatusRequest,
     UpdateDocumentsRequest,
@@ -18,6 +30,15 @@ from comfyui.extension.models import (
 
 LOGGER = logging.getLogger(__name__)
 MAX_NODE_STATE_UPLOAD_ATTEMPTS = 3
+
+
+def _extract_load_image_snapshot_revision(response: str) -> str:
+    upload_result = json.loads(response)
+    snapshot_revision = upload_result.get("snapshot_revision")
+    if not isinstance(snapshot_revision, str) or not snapshot_revision:
+        message = "ComfyUI did not return the canonical Load Image snapshot revision"
+        raise RuntimeError(message)
+    return snapshot_revision
 
 
 class _NodeStateUploadTask(QRunnable):
@@ -35,7 +56,11 @@ class _ImageDownloadSignals(QObject):
 
 
 class _ImageDownloadTask(QRunnable):
-    def __init__(self, comfy_ws: ComfyWebsocket, notification: LayerCreateNotification) -> None:
+    def __init__(
+        self,
+        comfy_ws: ComfyWebsocket,
+        notification: LayerCreateNotification,
+    ) -> None:
         super().__init__()
         self.comfy_ws = comfy_ws
         self.notification = notification
@@ -53,27 +78,92 @@ class _ImageDownloadTask(QRunnable):
         self.signals.completed.emit(self.notification, image_data)
 
 
+class _LoadImageUploadSignals(QObject):
+    completed = pyqtSignal(object, object, bytes, str)
+    failed = pyqtSignal(object, object, str)
+
+
+class _LoadImageUploadTask(QRunnable):
+    def __init__(
+        self,
+        comfy_ws: ComfyWebsocket,
+        sid: str,
+        widget: object,
+        state: LoadImageState,
+        image_data: bytes,
+    ) -> None:
+        super().__init__()
+        self.comfy_ws = comfy_ws
+        self.sid = sid
+        self.widget = widget
+        self.state = state
+        self.image_data = image_data
+        self.signals = _LoadImageUploadSignals()
+
+    def run(self) -> None:
+        package_buffer = BytesIO()
+        try:
+            with ZipFile(package_buffer, "w", compression=ZIP_STORED) as archive:
+                archive.writestr("state.json", self.state.model_dump_json())
+                archive.writestr("composite.png", self.image_data)
+            response = self.comfy_ws.put_bytes(
+                f"/krita/{self.sid}/nodes/load-image",
+                package_buffer.getvalue(),
+                content_type="application/zip",
+            )
+            snapshot_revision = _extract_load_image_snapshot_revision(response)
+        except Exception as error:  # noqa: BLE001
+            self.signals.failed.emit(self.widget, self.state, str(error))
+            return
+
+        self.signals.completed.emit(
+            self.widget,
+            self.state,
+            self.image_data,
+            snapshot_revision,
+        )
+
+
 class ComfyKritaBridge(QObject):
     _state_upload_retry_requested = pyqtSignal()
 
-    def __init__(self, comfy_ws: ComfyWebsocket, document_monitor: DocumentMonitor) -> None:
+    def __init__(
+        self,
+        comfy_ws: ComfyWebsocket,
+        document_monitor: DocumentMonitor,
+    ) -> None:
         super().__init__()
         self.comfy_ws = comfy_ws
         self.document_monitor = document_monitor
         self._connected_node_lists: set[int] = set()
         self._image_downloads: dict[str, _ImageDownloadTask] = {}
+        self._load_image_snapshots: dict[
+            tuple[str, str, str],
+            tuple[LoadImageState, bytes],
+        ] = {}
+        self._pending_load_image_snapshots: dict[
+            tuple[str, str, str],
+            tuple[object, LoadImageState, bytes],
+        ] = {}
+        self._active_load_image_snapshot_uploads: dict[
+            tuple[str, str, str],
+            _LoadImageUploadTask,
+        ] = {}
+        self._load_image_upload_attempts: dict[tuple[str, int, str, str], int] = {}
 
         self._download_pool = QThreadPool(self)
         self._download_pool.setMaxThreadCount(1)
+        self._load_image_upload_pool = QThreadPool(self)
+        self._load_image_upload_pool.setMaxThreadCount(1)
 
         # Node-state HTTP writes are serialized on one worker. Coalescing by
         # document/node/type means only the newest pending value is sent.
         self._state_upload_pool = QThreadPool(self)
         self._state_upload_pool.setMaxThreadCount(1)
-        self._pending_node_state_updates: dict[tuple[str, int, str], dict] = {}
+        self._pending_node_state_updates: dict[tuple[str, str, str], dict] = {}
         self._node_state_upload_running = False
         self._node_state_upload_lock = threading.Lock()
-        self._node_state_upload_attempts: dict[tuple[str, int, str], int] = {}
+        self._node_state_upload_attempts: dict[tuple[str, str, str], int] = {}
         self._state_upload_retry_requested.connect(
             self._schedule_node_state_upload_retry,
             Qt.ConnectionType.QueuedConnection,
@@ -140,8 +230,14 @@ class ComfyKritaBridge(QObject):
 
         sid = self.comfy_ws.sid
         documents = [doc.name() for doc in self.document_monitor.get_opened_documents()]
-        update_request = UpdateDocumentsRequest(documents=documents, previous_mappings=self.document_monitor.document_id_mapping)
-        response = self.comfy_ws.put(f"/krita/{sid}/documents", update_request.model_dump())
+        update_request = UpdateDocumentsRequest(
+            documents=documents,
+            previous_mappings=self.document_monitor.document_id_mapping,
+        )
+        response = self.comfy_ws.put(
+            f"/krita/{sid}/documents",
+            update_request.model_dump(),
+        )
         return DocumentMappingResponse.model_validate_json(response).mapping
 
     def update_workflows(self, workflows_request: UpdateWorkflowsRequest) -> None:
@@ -175,10 +271,16 @@ class ComfyKritaBridge(QObject):
             node_list_id = id(node_list)
             if node_list_id not in self._connected_node_lists:
                 node_list.node_state_changed.connect(self._publish_node_state)
+                node_list.snapshot_upload_requested.connect(self._queue_load_image_snapshot_upload)
                 self._connected_node_lists.add(node_list_id)
 
             docker.update_title(workflows_request.name, found_document_id)
-            docker.update_node_list(found_nodes, window, active_document, found_document_id)
+            docker.update_node_list(
+                found_nodes,
+                window,
+                active_document,
+                found_document_id,
+            )
             docker.set_active_document(window, active_document, found_document_id)
 
     def send_krita_state(self) -> None:
@@ -192,13 +294,36 @@ class ComfyKritaBridge(QObject):
             node_list_id = id(node_list)
             if node_list_id not in self._connected_node_lists:
                 node_list.node_state_changed.connect(self._publish_node_state)
+                node_list.snapshot_upload_requested.connect(self._queue_load_image_snapshot_upload)
                 self._connected_node_lists.add(node_list_id)
 
             for state in node_list.previous_node_states.values():
                 if isinstance(state, SaveImageState):
                     self._send_save_image_state(state)
+                elif isinstance(state, LoadImageState):
+                    key = (state.document_id, state.id, state.type)
+                    pending = self._pending_load_image_snapshots.get(key)
+                    if (
+                        pending is not None
+                        and pending[1].selection_generation == state.selection_generation
+                        and pending[1].snapshot_revision == state.snapshot_revision
+                    ):
+                        continue
 
-        # Also flush tombstones/updates that accumulated while disconnected.
+                    cached = self._load_image_snapshots.get(key)
+                    if (
+                        cached is not None
+                        and not state.snapshot_pending
+                        and cached[0].snapshot_revision == state.snapshot_revision
+                        and state.snapshot_revision
+                    ):
+                        self._queue_load_image_snapshot_upload(None, state, cached[1])
+                    else:
+                        self._publish_node_state({"deleted": False, "state": state})
+
+        # Also flush tombstones, image snapshots, and state updates that
+        # accumulated while disconnected.
+        self._start_pending_load_image_snapshot_uploads()
         self._start_pending_node_state_upload()
 
     def _publish_node_state(self, update: dict) -> None:
@@ -210,6 +335,8 @@ class ComfyKritaBridge(QObject):
                 LOGGER.warning("Ignoring an incomplete deleted Krita node-state update")
                 return
             key = (document_id, node_id, node_type)
+            self._load_image_snapshots.pop(key, None)
+            self._pending_load_image_snapshots.pop(key, None)
             payload = {
                 "deleted": True,
                 "document_id": document_id,
@@ -218,10 +345,25 @@ class ComfyKritaBridge(QObject):
             }
         else:
             state = update.get("state")
-            if not isinstance(state, SaveImageState):
+            if isinstance(state, SaveImageState):
+                key = (state.document_id, state.id, state.type)
+                serialized_state = self._serialize_save_image_state(state)
+            elif isinstance(state, LoadImageState):
+                key = (state.document_id, state.id, state.type)
+                serialized_state = state.model_dump()
+                pending = self._pending_load_image_snapshots.get(key)
+                if pending is not None and state.selection_generation > pending[1].selection_generation:
+                    self._pending_load_image_snapshots.pop(key, None)
+                if not state.layer_ids and not state.placeholder:
+                    self._load_image_snapshots.pop(key, None)
+                    self._pending_load_image_snapshots.pop(key, None)
+                elif not state.snapshot_pending:
+                    cached = self._load_image_snapshots.get(key)
+                    if cached is not None and cached[0].snapshot_revision == state.snapshot_revision:
+                        self._load_image_snapshots[key] = (state, cached[1])
+            else:
                 return
-            key = (state.document_id, state.id, state.type)
-            payload = {"deleted": False, "state": self._serialize_save_image_state(state)}
+            payload = {"deleted": False, "state": serialized_state}
 
         # Keep updates even while disconnected. On reconnect the status flow
         # refreshes the document mapping and calls send_krita_state().
@@ -230,6 +372,103 @@ class ComfyKritaBridge(QObject):
             self._node_state_upload_attempts.pop(key, None)
 
         self._start_pending_node_state_upload()
+
+    def _queue_load_image_snapshot_upload(
+        self,
+        widget: object,
+        state: LoadImageState,
+        image_data: bytes,
+    ) -> None:
+        key = (state.document_id, state.id, state.type)
+        previous = self._pending_load_image_snapshots.get(key)
+        if (
+            previous is None
+            or previous[1].snapshot_revision != state.snapshot_revision
+            or previous[1].selection_generation != state.selection_generation
+            or previous[1].placeholder != state.placeholder
+        ):
+            self._load_image_upload_attempts.pop((*key, state.snapshot_revision), None)
+        self._pending_load_image_snapshots[key] = (widget, state, image_data)
+        self._start_pending_load_image_snapshot_uploads()
+
+    def _start_pending_load_image_snapshot_uploads(self) -> None:
+        sid = self.comfy_ws.sid
+        if sid is None or not self.comfy_ws.is_connected:
+            return
+
+        for key, (widget, state, image_data) in list(self._pending_load_image_snapshots.items()):
+            if key in self._active_load_image_snapshot_uploads:
+                continue
+            attempts_key = (*key, state.snapshot_revision)
+            if self._load_image_upload_attempts.get(attempts_key, 0) >= MAX_NODE_STATE_UPLOAD_ATTEMPTS:
+                continue
+
+            task = _LoadImageUploadTask(self.comfy_ws, sid, widget, state, image_data)
+            task.signals.completed.connect(
+                self._on_load_image_snapshot_uploaded,
+                Qt.ConnectionType.QueuedConnection,
+            )
+            task.signals.failed.connect(
+                self._on_load_image_snapshot_upload_failed,
+                Qt.ConnectionType.QueuedConnection,
+            )
+            self._active_load_image_snapshot_uploads[key] = task
+            self._load_image_upload_pool.start(task)
+
+    @pyqtSlot(object, object, bytes, str)
+    def _on_load_image_snapshot_uploaded(
+        self,
+        widget: object,
+        state: LoadImageState,
+        image_data: bytes,
+        snapshot_revision: str,
+    ) -> None:
+        key = (state.document_id, state.id, state.type)
+        self._active_load_image_snapshot_uploads.pop(key, None)
+        pending = self._pending_load_image_snapshots.get(key)
+        if (
+            pending is None
+            or pending[1].snapshot_revision != state.snapshot_revision
+            or pending[1].selection_generation != state.selection_generation
+            or pending[1].placeholder != state.placeholder
+        ):
+            self._start_pending_load_image_snapshot_uploads()
+            return
+
+        self._pending_load_image_snapshots.pop(key, None)
+        canonical_state = state.model_copy(update={"snapshot_revision": snapshot_revision})
+        self._load_image_snapshots[key] = (canonical_state, image_data)
+        self._load_image_upload_attempts.pop((*key, state.snapshot_revision), None)
+        if widget is not None and hasattr(widget, "snapshot_uploaded"):
+            with suppress(RuntimeError):
+                # The backend revision is derived from normalized RGBA pixels
+                # and is the execution-cache identity used by ComfyUI.
+                widget.snapshot_uploaded(canonical_state)
+
+        self._start_pending_load_image_snapshot_uploads()
+
+    @pyqtSlot(object, object, str)
+    def _on_load_image_snapshot_upload_failed(
+        self,
+        widget: object,
+        state: LoadImageState,
+        error: str,
+    ) -> None:
+        key = (state.document_id, state.id, state.type)
+        self._active_load_image_snapshot_uploads.pop(key, None)
+        attempts_key = (*key, state.snapshot_revision)
+        attempts = self._load_image_upload_attempts.get(attempts_key, 0) + 1
+        self._load_image_upload_attempts[attempts_key] = attempts
+        LOGGER.error(
+            "Could not upload Krita input snapshot for node %s: %s",
+            state.id,
+            error,
+        )
+        if attempts < MAX_NODE_STATE_UPLOAD_ATTEMPTS:
+            QTimer.singleShot(1000, self._start_pending_load_image_snapshot_uploads)
+        elif widget is not None and hasattr(widget, "snapshot_upload_failed"):
+            with suppress(RuntimeError):
+                widget.snapshot_upload_failed(state, error)
 
     def _start_pending_node_state_upload(self) -> None:
         with self._node_state_upload_lock:
@@ -260,7 +499,7 @@ class ComfyKritaBridge(QObject):
                 with self._node_state_upload_lock:
                     self._node_state_upload_attempts.pop(key, None)
 
-    def _take_pending_node_state_batch(self) -> list[tuple[tuple[str, int, str], dict]]:
+    def _take_pending_node_state_batch(self) -> list[tuple[tuple[str, str, str], dict]]:
         with self._node_state_upload_lock:
             if not self._pending_node_state_updates:
                 self._node_state_upload_running = False
@@ -271,7 +510,7 @@ class ComfyKritaBridge(QObject):
 
     def _requeue_unsent_node_state_updates(
         self,
-        updates: list[tuple[tuple[str, int, str], dict]],
+        updates: list[tuple[tuple[str, str, str], dict]],
     ) -> None:
         with self._node_state_upload_lock:
             for key, payload in updates:
@@ -288,7 +527,7 @@ class ComfyKritaBridge(QObject):
 
     def _retry_unsent_node_state_updates(
         self,
-        updates: list[tuple[tuple[str, int, str], dict]],
+        updates: list[tuple[tuple[str, str, str], dict]],
     ) -> None:
         with self._node_state_upload_lock:
             for key, payload in updates:
@@ -307,6 +546,7 @@ class ComfyKritaBridge(QObject):
     @pyqtSlot()
     def _schedule_node_state_upload_retry(self) -> None:
         QTimer.singleShot(500, self._start_pending_node_state_upload)
+        QTimer.singleShot(500, self._start_pending_load_image_snapshot_uploads)
 
     def _send_save_image_state(self, state: SaveImageState) -> None:
         self._publish_node_state({"deleted": False, "state": state})
@@ -330,17 +570,30 @@ class ComfyKritaBridge(QObject):
 
     def _download_layer_image(self, notification: LayerCreateNotification) -> None:
         if notification.transfer_id in self._image_downloads:
-            LOGGER.warning("Ignoring duplicate generated image transfer %s", notification.transfer_id)
+            LOGGER.warning(
+                "Ignoring duplicate generated image transfer %s",
+                notification.transfer_id,
+            )
             return
 
         task = _ImageDownloadTask(self.comfy_ws, notification)
-        task.signals.completed.connect(self._on_image_downloaded, Qt.ConnectionType.QueuedConnection)
-        task.signals.failed.connect(self._on_image_download_failed, Qt.ConnectionType.QueuedConnection)
+        task.signals.completed.connect(
+            self._on_image_downloaded,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        task.signals.failed.connect(
+            self._on_image_download_failed,
+            Qt.ConnectionType.QueuedConnection,
+        )
         self._image_downloads[notification.transfer_id] = task
         self._download_pool.start(task)
 
     @pyqtSlot(object, bytes)
-    def _on_image_downloaded(self, notification: LayerCreateNotification, image_data: bytes) -> None:
+    def _on_image_downloaded(
+        self,
+        notification: LayerCreateNotification,
+        image_data: bytes,
+    ) -> None:
         self._image_downloads.pop(notification.transfer_id, None)
         state = notification.state
 
@@ -348,7 +601,7 @@ class ComfyKritaBridge(QObject):
         document = self.document_monitor.mapping.get(state.document_id)
         if document is None:
             LOGGER.error(
-                "Fetched generated image %s (%d bytes), but Krita has no document mapping for ID %s",
+                "Fetched generated image %s (%d bytes), but " "Krita has no document mapping for ID %s",
                 notification.transfer_id,
                 len(image_data),
                 state.document_id,
@@ -357,7 +610,7 @@ class ComfyKritaBridge(QObject):
 
         if document not in opened_documents:
             LOGGER.error(
-                "Fetched generated image %s (%d bytes), but target document %s is not open",
+                "Fetched generated image %s (%d bytes), but " "target document %s is not open",
                 notification.transfer_id,
                 len(image_data),
                 state.document_id,
@@ -372,13 +625,21 @@ class ComfyKritaBridge(QObject):
             insert_png_image(document, image_data, state.path, layer_name)
         except Exception as error:  # noqa: BLE001
             LOGGER.exception(
-                "Generated image %s was fetched but could not be inserted into document %s",
+                "Generated image %s was fetched but could not be " "inserted into document %s",
                 notification.transfer_id,
                 state.document_id,
             )
             return
 
     @pyqtSlot(object, str)
-    def _on_image_download_failed(self, notification: LayerCreateNotification, error: str) -> None:
+    def _on_image_download_failed(
+        self,
+        notification: LayerCreateNotification,
+        error: str,
+    ) -> None:
         self._image_downloads.pop(notification.transfer_id, None)
-        LOGGER.error("Could not download generated image %s: %s", notification.transfer_id, error)
+        LOGGER.error(
+            "Could not download generated image %s: %s",
+            notification.transfer_id,
+            error,
+        )

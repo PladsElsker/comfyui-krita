@@ -11,7 +11,7 @@ class StatusRequest(BaseModel):
 
 
 class Node(BaseModel):
-    id: int
+    id: str
     type: str
     name: str
     direction: NodeDirection
@@ -43,11 +43,11 @@ class FlatLayerToken(BaseModel):
         if not isinstance(other, FlatLayerToken):
             return False
 
-        return str(self.quuid) == str(other.quuid)
+        return self.type == other.type and str(self.quuid) == str(other.quuid)
 
 
 class UiNodeState(BaseModel):
-    id: int
+    id: str
     type: str
     document_id: str
 
@@ -56,6 +56,15 @@ class SaveImageState(UiNodeState):
     insert_direction: Literal["above", "below"]
     path: list[FlatLayerToken]
     layer_name: str
+
+
+class LoadImageState(UiNodeState):
+    layer_ids: list[str]
+    layer_names: list[str]
+    snapshot_revision: str
+    selection_generation: int = 0
+    snapshot_pending: bool = False
+    placeholder: bool = False
 
 
 KritaLayerType = Literal[

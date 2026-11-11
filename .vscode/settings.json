@@ -1,7 +1,7 @@
 {
     "python.analysis.extraPaths": [
         "/home/plads/.vscode-server/extensions/mcunderground.kritaexec-1.0.4/krita-lang",
-        "c:\\Users\\Plads\\.vscode\\extensions\\mcunderground.kritaexec-1.0.4\\krita-lang"
+        "/home/plads/.vscode/extensions/mcunderground.kritaexec-1.0.4/krita-lang"
     ],
     "editor.formatOnSave": true,
     "[python]": {

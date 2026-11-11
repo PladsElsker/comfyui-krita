@@ -15,7 +15,7 @@ class ComfyUiNode(QWidget):
     state_changed = cast("pyqtBoundSignal", pyqtSignal(object))
     type: ClassVar[str]
     direction: NodeDirection
-    id: int
+    id: str
 
     def __init__(self, docker: DockWidget, node: Node, default_icon: QSvgRenderer, document_id: str) -> None:
         super().__init__()
@@ -62,10 +62,14 @@ class ComfyUiNode(QWidget):
 
     def set_action_buttons(self, buttons: list[QToolButton]) -> None:
         while self.action_buttons_container.count() > 0:
-            self.action_buttons_container.takeAt(0)
+            item = self.action_buttons_container.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
 
         for button in buttons:
             self.action_buttons_container.addWidget(button)
+            button.show()
 
     def update_node_data(self, node: Node) -> None: ...
 

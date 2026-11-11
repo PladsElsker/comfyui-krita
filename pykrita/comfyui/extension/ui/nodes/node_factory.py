@@ -3,6 +3,7 @@ from krita import DockWidget, Document, Window
 from comfyui.extension.models import Node
 
 from .comfyui_node import ComfyUiNode
+from .load_image_node import LoadImageNode
 from .save_image_node import SaveImageNode
 
 
@@ -12,6 +13,8 @@ class NodeFactory:
         match node.type:
             case SaveImageNode.type:
                 return SaveImageNode(docker, node, window, document, document_id)
+            case LoadImageNode.type:
+                return LoadImageNode(docker, node, window, document, document_id)
 
         message = f"Unknown node type {node.type}"
         raise ValueError(message)

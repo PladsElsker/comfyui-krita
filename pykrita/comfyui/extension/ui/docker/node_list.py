@@ -9,11 +9,12 @@ from comfyui.extension.models import Node, NodeDirection, UiNodeState
 from comfyui.extension.ui.nodes.comfyui_node import ComfyUiNode
 from comfyui.extension.ui.nodes.node_factory import NodeFactory
 
-NodeKey = tuple[int, str, str | None]
+NodeKey = tuple[str, str, str | None]
 
 
 class NodeListWidget(QScrollArea):
     node_state_changed = cast("pyqtBoundSignal", pyqtSignal(object))
+    snapshot_upload_requested = cast("pyqtBoundSignal", pyqtSignal(object, object, bytes))
 
     def __init__(self) -> None:
         super().__init__()
@@ -34,12 +35,15 @@ class NodeListWidget(QScrollArea):
         self.node_widgets: list[ComfyUiNode] = []
         self.previous_node_states: dict[NodeKey, UiNodeState] = {}
 
-    def update_from_comyui(self, nodes: list[Node], window: Window, document: Document, document_id: str) -> None:
+    def update_from_comfyui(self, nodes: list[Node], window: Window, document: Document, document_id: str) -> None:
         comfyui_node_mapping = {self._get_node_key(node, document_id): node for node in nodes}
         current_node_mapping = {self._get_node_key(node_widget): node_widget for node_widget in self.node_widgets}
 
         incoming_keys = comfyui_node_mapping.keys()
         existing_keys = current_node_mapping.keys()
+
+        to_delete_keys = existing_keys - incoming_keys
+        to_create_keys = incoming_keys - existing_keys
 
         for cached_key in list(self.previous_node_states):
             if cached_key[2] != document_id or cached_key in incoming_keys:
@@ -55,16 +59,20 @@ class NodeListWidget(QScrollArea):
                 }
             )
 
-        to_delete_keys = existing_keys - incoming_keys
-        to_create_keys = incoming_keys - existing_keys
-
         self._clear_main_layout()
 
         for to_delete_key in to_delete_keys:
             widget: ComfyUiNode = current_node_mapping[to_delete_key]
 
             if isinstance(widget, ComfyUiNode):
+                # Remove the row from the layout and hide it before cleanup:
+                # picker cancellation can synchronously update action controls.
+                widget.hide()
                 widget.cleanup()
+
+                # QWidget.deleteLater() is deferred. Detach the obsolete row now
+                # so no old child control can keep its previous docker geometry.
+                widget.setParent(None)
                 widget.deleteLater()
                 self.node_widgets.remove(widget)
 
@@ -72,6 +80,15 @@ class NodeListWidget(QScrollArea):
             to_create = comfyui_node_mapping[to_create_key]
             node_widget = NodeFactory.create(self, to_create, window, document, document_id)
             node_widget.state_changed.connect(self._register_node_state)
+            snapshot_ready = getattr(node_widget, "snapshot_ready", None)
+            if snapshot_ready is not None:
+                snapshot_ready.connect(
+                    lambda state, image_data, widget=node_widget: self._queue_snapshot_upload(
+                        widget,
+                        state,
+                        image_data,
+                    )
+                )
             self.node_widgets.append(node_widget)
 
             if to_create_key in self.previous_node_states:
@@ -123,6 +140,13 @@ class NodeListWidget(QScrollArea):
         line.setFixedHeight(1)
         line.setStyleSheet("background-color: rgba(0, 0, 0, 20); border: none;")
         self.main_layout.addWidget(line)
+
+    def _queue_snapshot_upload(self, widget: ComfyUiNode, state: UiNodeState, image_data: bytes) -> None:
+        # Keep the accepted state locally while the matching image bytes are
+        # uploaded. Do not publish the state to ComfyUI until the atomic upload
+        # has stored both together.
+        self.previous_node_states[self._get_node_key(state)] = state
+        self.snapshot_upload_requested.emit(widget, state, image_data)
 
     def _register_node_state(self, state: UiNodeState) -> None:
         self.previous_node_states[self._get_node_key(state)] = state
