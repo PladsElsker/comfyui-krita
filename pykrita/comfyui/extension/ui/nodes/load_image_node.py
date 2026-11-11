@@ -6,6 +6,7 @@ from typing import ClassVar, cast
 from krita import DockWidget, Document, Node as KritaNode, Window
 from PyQt5.QtCore import (
     QTimer,
+    QObject,
     QByteArray,
     QBuffer,
     QIODevice,
@@ -473,8 +474,3 @@ class LoadImageNode(ComfyUiNode):
         self._update_layer_info()
         LOGGER.error("Could not upload the Krita layer snapshot: %s", error)
         self._start_latest_projection_capture()
-
-    def _update_layer_info(self) -> None:
-        layer_count = len(self.layer_ids)
-        label = "layer" if layer_count == 1 else "layers"
-        self.set_info_text(f"{layer_count} {label} selected")
