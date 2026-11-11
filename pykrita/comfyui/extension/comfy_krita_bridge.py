@@ -342,7 +342,10 @@ class ComfyKritaBridge(QObject):
             elif isinstance(state, LoadImageState):
                 key = (state.document_id, state.id, state.type)
                 serialized_state = state.model_dump()
-                if not state.layer_ids or not state.snapshot_revision:
+                pending = self._pending_load_image_snapshots.get(key)
+                if pending is not None and state.selection_generation > pending[1].selection_generation:
+                    self._pending_load_image_snapshots.pop(key, None)
+                if not state.layer_ids:
                     self._load_image_snapshots.pop(key, None)
                     self._pending_load_image_snapshots.pop(key, None)
             else:
