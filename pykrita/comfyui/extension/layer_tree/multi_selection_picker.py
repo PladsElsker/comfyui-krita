@@ -86,51 +86,54 @@ class LayerMultiSelectionPicker(QObject):
             self._previous_selection_mode = layer_view.selectionMode()
             self._editing = True
 
-            layer_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-
-            # Krita's LayerBox reselects the active node whenever its selection
-            # becomes empty. Move the active node to the invisible root first,
-            # otherwise clearSelection() re-adds the user's previous active
-            # layer before the Load Image selection is applied.
-            self.document.setActiveNode(self.document.rootNode())
-            selection_model.clearSelection()
-            selection_model.setCurrentIndex(QModelIndex(), QItemSelectionModel.SelectionFlag.NoUpdate)
-
-            selected_id_set = set(selected_ids or [])
-            selected_nodes = [
-                node
-                for node in self._walk_nodes(self.document.rootNode())
-                if str(node.uniqueId()) in selected_id_set and node.type() in SUPPORTED_LAYER_TYPES
-            ]
-            for node in selected_nodes:
-                index = self._index_for_node(node)
-                selection_model.select(
-                    index,
-                    QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
-                )
-
-            if selected_nodes:
-                current_index = self._index_for_node(selected_nodes[0])
-                selection_model.setCurrentIndex(current_index, QItemSelectionModel.SelectionFlag.NoUpdate)
-                layer_view.scrollTo(current_index)
-
-            # Krita tracks the active node independently from the Qt selection
-            # model. Clear the old single-layer active highlight as well as its
-            # selection-model row before entering multi-selection mode.
-            if selected_nodes:
-                self.document.setActiveNode(selected_nodes[0])
-
-            self.window.activeViewChanged.connect(self._on_active_view_changed)
-            app = QApplication.instance()
-            if app is not None:
-                app.installEventFilter(self)
-                self._event_filter_installed = True
+            self._activate_load_image_selection(selected_ids, layer_view, selection_model)
         except Exception:
             if self._editing:
                 self._finish(restore_selection=True)
             else:
                 self._clear_session()
             raise
+
+    def _activate_load_image_selection(
+        self,
+        selected_ids: list[str] | None,
+        layer_view: QTreeView,
+        selection_model: QItemSelectionModel,
+    ) -> None:
+        layer_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+
+        # Krita's LayerBox reselects the active node whenever its selection
+        # becomes empty. Move the active node to the invisible root first,
+        # otherwise clearSelection() re-adds the user's previous active
+        # layer before the Load Image selection is applied.
+        self.document.setActiveNode(self.document.rootNode())
+        selection_model.clearSelection()
+        selection_model.setCurrentIndex(QModelIndex(), QItemSelectionModel.SelectionFlag.NoUpdate)
+
+        selected_id_set = set(selected_ids or [])
+        selected_nodes = [
+            node
+            for node in self._walk_nodes(self.document.rootNode())
+            if str(node.uniqueId()) in selected_id_set and node.type() in SUPPORTED_LAYER_TYPES
+        ]
+        for node in selected_nodes:
+            index = self._index_for_node(node)
+            selection_model.select(
+                index,
+                QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+            )
+
+        if selected_nodes:
+            current_index = self._index_for_node(selected_nodes[0])
+            selection_model.setCurrentIndex(current_index, QItemSelectionModel.SelectionFlag.NoUpdate)
+            layer_view.scrollTo(current_index)
+            self.document.setActiveNode(selected_nodes[0])
+
+        self.window.activeViewChanged.connect(self._on_active_view_changed)
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+            self._event_filter_installed = True
 
     def cleanup(self) -> None:
         if self._editing:
