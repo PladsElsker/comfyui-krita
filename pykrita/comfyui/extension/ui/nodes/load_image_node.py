@@ -481,4 +481,6 @@ class LoadImageNode(ComfyUiNode):
         self._start_latest_projection_capture()
 
     def _update_layer_info(self) -> None:
-        self.set_info_text(f"{len(self.layer_ids)} layers selected")
+        layer_count = len(self.layer_ids)
+        label = "layer" if layer_count == 1 else "layers"
+        self.set_info_text(f"{layer_count} {label} selected")
