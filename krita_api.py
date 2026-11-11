@@ -242,7 +242,7 @@ class KritaApi:
                 if not current_state.layer_ids or current_state.layer_ids != state.layer_ids:
                     message = "The Krita layer selection changed before this snapshot finished uploading"
                     raise ValueError(message)
-                if current_state.snapshot_revision and current_state.snapshot_revision != state.snapshot_revision:
+                if not current_state.snapshot_pending and current_state.snapshot_revision != state.snapshot_revision:
                     message = "A newer Krita image composition superseded this snapshot"
                     raise ValueError(message)
         if len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_BYTES:
@@ -480,11 +480,11 @@ class KritaApi:
                 return
             if (
                 state.selection_generation == current_state.selection_generation
-                and not state.snapshot_revision
-                and current_state.snapshot_revision
+                and state.snapshot_pending
+                and not current_state.snapshot_pending
             ):
-                # Ignore a delayed "capture pending" update after its matching
-                # upload already stored the canonical snapshot revision.
+                # Ignore a delayed capture-pending update after its upload has
+                # already stored the completed snapshot for this generation.
                 return
 
         sid_states[key] = state
@@ -493,7 +493,7 @@ class KritaApi:
             if not state.layer_ids:
                 self._remove_load_image_snapshot(key)
                 event["preview"] = None
-            elif state.snapshot_revision:
+            elif not state.snapshot_pending and state.snapshot_revision:
                 snapshot = self.load_image_snapshots.get(key)
                 if snapshot is not None and snapshot.state.snapshot_revision == state.snapshot_revision:
                     snapshot.state = state
