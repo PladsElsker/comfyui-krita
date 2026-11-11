@@ -173,6 +173,12 @@ export function setupAdditionalWebsocketRoutes() {
                         if(data.data.preview) {
                             await updateKritaLoadImagePreview(data.data.state, data.data.preview);
                         }
+                        else if(
+                            data.data.state.type === KRITA_LOAD_IMAGE_NODE_TYPE &&
+                            (!data.data.state.layer_ids?.length || !data.data.state.snapshot_revision)
+                        ) {
+                            clearKritaLoadImagePreview(data.data.state);
+                        }
                     }
                     break;
             }
@@ -347,6 +353,46 @@ async function updateKritaLoadImagePreview(state, preview) {
     // Refresh the node's preview immediately after the reactive store changes.
     node.onDrawBackground?.();
     kritaLoadImagePreviewRevisions.set(node, state.snapshot_revision);
+}
+
+function clearKritaLoadImagePreview(state) {
+    const node = getInternalKritaNodes().find(candidate => {
+        if(candidate.id !== state.id || candidate.type !== KRITA_LOAD_IMAGE_NODE_TYPE) return false;
+        return findKritaWidget(candidate, DOCUMENT_WIDGET_LABEL)?.value === state.document_id;
+    });
+    if(!node) return;
+
+    kritaLoadImagePreviewRequests.set(
+        node,
+        (kritaLoadImagePreviewRequests.get(node) ?? 0) + 1,
+    );
+
+    const pinia = document.getElementById("vue-app")
+        ?.__vue_app__?.config?.globalProperties?.$pinia;
+    const nodeOutputStore = pinia?._s?.get?.("nodeOutput");
+    const workflowStore = pinia?._s?.get?.("workflow");
+    const locatorId = workflowStore?.nodeToNodeLocatorId?.(node)
+        ?? (node.graph && node.graph !== app.graph && node.graph.id
+            ? `${node.graph.id}:${node.id}`
+            : String(node.id));
+
+    if(typeof nodeOutputStore?.setNodePreviewsByLocatorId === "function") {
+        nodeOutputStore.setNodePreviewsByLocatorId(locatorId, []);
+    }
+    else if(app.nodePreviewImages) {
+        delete app.nodePreviewImages[locatorId];
+        const previousUrl = node._kritaLoadImagePreviewUrl;
+        if(previousUrl) URL.revokeObjectURL(previousUrl);
+    }
+
+    node._kritaLoadImagePreviewUrl = null;
+    node.preview = [];
+    node.images = [];
+    node.imgs = [];
+    node.imageIndex = 0;
+    node.graph?.setDirtyCanvas?.(true, true);
+    node.setDirtyCanvas?.(true, true);
+    kritaLoadImagePreviewRevisions.delete(node);
 }
 
 
