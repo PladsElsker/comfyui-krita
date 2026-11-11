@@ -58,6 +58,7 @@ class LayerSelectionDialog(QDialog):
         parent=None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("LayerSelectionDialog")
         self.document = document
         self.mode = mode
         self._selected_ids = set(selected_ids or [])
