@@ -1,9 +1,11 @@
+import logging
 import time
 import traceback
 
 from krita import Document, Node
-from PyQt5.QtCore import qWarning
 from PyQt5.QtGui import QImage
+
+LOGGER = logging.getLogger(__name__)
 
 SOURCE_BARRIER_TIMEOUT_SECONDS = 30
 SOURCE_BARRIER_RETRY_SECONDS = 0.02
@@ -16,8 +18,8 @@ class ProjectionCaptureError(RuntimeError):
 
 
 def _warn(message: str, *args: object) -> None:
-    """Send temporary diagnostics through Krita's Qt warning handler."""
-    qWarning(message % args if args else message)
+    """Keep verbose projection details out of normal Krita status output."""
+    LOGGER.debug(message, *args)
 
 
 _MASK_NODE_TYPES = {
