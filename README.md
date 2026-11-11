@@ -28,7 +28,7 @@ An idiomatic extension:
 - [x] Requires only a running and accessible ComfyUI server
 - [x] Adds a settings popup under `settings/ComfyUI...` to set up the ComfyUI URL
 - [x] Dynamically updates the workflow nodes in Krita based on the nodes used in ComfyUI
-- [ ] Allows users to select a list of layers to composite into a single image before sending as workflow input
+- [x] Selects multiple layers in a dedicated thumbnail hierarchy modal without changing the Layers Docker selection
 
 ### ComfyUI
 - [x] Exposes the currently opened workflow in the UI to Krita
@@ -36,7 +36,7 @@ An idiomatic extension:
 - [x] Brittle frontend dependencies are tested everyday with CI
 - [x] Compatibility with nodes 2.0
 - [x] `Save Image (as krita layer)` → Sends the generated image back to a specified location in Krita’s layer tree
-- [ ] `Load Image (from krita layers)` → Composites specific Krita layers and sends them as a single image to ComfyUI
+- [x] `Load Image (from krita layers)` → Composites selected Krita layers, refreshes the node preview when the composition changes, and supplies IMAGE/MASK outputs to ComfyUI
 - [ ] `Load Mask (from Krita selection)` → Retrieves the active mask selection 
 - [ ] `Load Image (from krita document)` → Retrieves all the active layers of a document composited together
 
@@ -46,3 +46,10 @@ This extension has been tested and developped with:
 - ComfyUI on Ubuntu
 
 It may work on other system configurations, but other configurations won't be tested for practical reasons. 
+
+
+### Load Image behavior
+
+The Load Image and Save Image edit actions use one shared Krita layer-hierarchy modal. It shows layer thumbnails, supports filtering and hierarchical selection, and leaves the native Layers Docker selection untouched. The Load Image selection is tracked by Krita layer UUIDs; document input events are debounced, and a new snapshot is uploaded only when its canonical RGBA pixel digest differs from the last accepted composition. The ComfyUI preview is refreshed from the uploaded snapshot without requiring a prompt run. A changed snapshot updates the hidden execution metadata so normal ComfyUI graph/cache invalidation and auto-queue behavior can take effect.
+
+ComfyUI node identity is sent as a graph-scoped locator rather than a local numeric node ID, which avoids collisions between nodes inside different subgraph definitions. Snapshot storage revalidates the selection generation after asynchronous hashing and preview-file creation, and evicted snapshots invalidate their corresponding node state.
