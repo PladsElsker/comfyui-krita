@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
-from krita import Document, Window
 from PyQt5.QtCore import QEvent, QObject, QTimer
 from PyQt5.QtWidgets import QApplication, QWidget
+
+if TYPE_CHECKING:
+    from krita import Document, Window
 
 CHANGE_DEBOUNCE_MS = 450
 _CANVAS_WIDGET_TYPES = {"KisOpenGLCanvas2", "KisQPainterCanvas"}
