@@ -343,7 +343,7 @@ def test__given_krita_output_node__when_krita_state_updates__then_metadata_widge
 
             document_widget.value = "krita-document-1";
             const state = {
-                id: node.id,
+                id: String(node.id),
                 type: "KritaSaveImage-15347",
                 document_id: "krita-document-1",
                 insert_direction: "above",
@@ -563,7 +563,7 @@ def test__given_krita_load_image_node__when_state_updates__then_input_metadata_w
             app.graph.nodes.push(node);
 
             workflow.applyKritaNodeState({
-                id: 99001,
+                id: String(99001),
                 type: "KritaLoadImage-15347",
                 document_id: "document-1",
                 layer_ids: ["layer-1", "layer-2"],
@@ -721,7 +721,7 @@ def test__given_identical_load_image_revision__when_selection_metadata_changes__
             const firstChanges = graphChanges;
 
             workflow.applyKritaNodeState({
-                id: node.id,
+                id: String(node.id),
                 type: node.type,
                 document_id: "document-1",
                 layer_ids: ["layer-2"],
@@ -750,3 +750,38 @@ def test__given_identical_load_image_revision__when_selection_metadata_changes__
     }
     assert result["firstValue"] == result["value"]
     assert result["finalChanges"] == result["firstChanges"]
+
+
+def test__given_nested_graph_nodes_with_same_local_id__when_resolving_krita_node_locators__then_ids_are_graph_scoped(
+    default_page: Page,
+) -> None:
+    locator_ids = default_page.evaluate(
+        """
+        async () => {
+            const { app } = await import('../../../scripts/app.js');
+            const workflow = await import('/extensions/comfyui-krita/workflow_actions.js');
+            const pinia = document.getElementById("vue-app")
+                ?.__vue_app__?.config?.globalProperties?.$pinia;
+            const workflowStore = pinia?._s?.get?.("workflow");
+            if(!workflowStore) throw new Error("ComfyUI workflow store is unavailable");
+
+            const original = workflowStore.nodeToNodeLocatorId;
+            workflowStore.nodeToNodeLocatorId = node => (
+                node.graph === app.graph
+                    ? String(node.id)
+                    : `${node.graph.id}:${node.id}`
+            );
+            try {
+                return [
+                    workflow.getComfyNodeLocatorId({ id: 42, graph: { id: "subgraph-a" } }),
+                    workflow.getComfyNodeLocatorId({ id: 42, graph: { id: "subgraph-b" } }),
+                    workflow.getComfyNodeLocatorId({ id: 42, graph: app.graph }),
+                ];
+            }
+            finally {
+                workflowStore.nodeToNodeLocatorId = original;
+            }
+        }
+        """,
+    )
+    assert locator_ids == ["subgraph-a:42", "subgraph-b:42", "42"]
