@@ -11,7 +11,7 @@ class StatusRequest(BaseModel):
 
 
 class Node(BaseModel):
-    id: int
+    id: str
     type: str
     name: str
     direction: NodeDirection
@@ -43,11 +43,11 @@ class FlatLayerToken(BaseModel):
         if not isinstance(other, FlatLayerToken):
             return False
 
-        return str(self.quuid) == str(other.quuid)
+        return self.type == other.type and str(self.quuid) == str(other.quuid)
 
 
 class UiNodeState(BaseModel):
-    id: int
+    id: str
     type: str
     document_id: str
 
