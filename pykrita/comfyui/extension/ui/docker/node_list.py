@@ -35,7 +35,7 @@ class NodeListWidget(QScrollArea):
         self.node_widgets: list[ComfyUiNode] = []
         self.previous_node_states: dict[NodeKey, UiNodeState] = {}
 
-    def update_from_comyui(self, nodes: list[Node], window: Window, document: Document, document_id: str) -> None:
+    def update_from_comfyui(self, nodes: list[Node], window: Window, document: Document, document_id: str) -> None:
         comfyui_node_mapping = {self._get_node_key(node, document_id): node for node in nodes}
         current_node_mapping = {self._get_node_key(node_widget): node_widget for node_widget in self.node_widgets}
 
