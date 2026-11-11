@@ -307,9 +307,14 @@ class ComfyKritaBridge(QObject):
                         continue
 
                     cached = self._load_image_snapshots.get(key)
-                    if cached is not None and cached[0].snapshot_revision == state.snapshot_revision and state.snapshot_revision:
+                    if (
+                        cached is not None
+                        and not state.snapshot_pending
+                        and cached[0].snapshot_revision == state.snapshot_revision
+                        and state.snapshot_revision
+                    ):
                         self._queue_load_image_snapshot_upload(None, state, cached[1])
-                    elif not state.snapshot_revision:
+                    elif state.snapshot_pending or not state.snapshot_revision:
                         self._publish_node_state({"deleted": False, "state": state})
 
         # Also flush tombstones, image snapshots, and state updates that
@@ -348,7 +353,7 @@ class ComfyKritaBridge(QObject):
                 if not state.layer_ids:
                     self._load_image_snapshots.pop(key, None)
                     self._pending_load_image_snapshots.pop(key, None)
-                else:
+                elif not state.snapshot_pending:
                     cached = self._load_image_snapshots.get(key)
                     if cached is not None and cached[0].snapshot_revision == state.snapshot_revision:
                         self._load_image_snapshots[key] = (state, cached[1])
