@@ -2,7 +2,7 @@ from collections.abc import Callable
 
 from krita import Document, Window
 from PyQt5.QtCore import QEvent, QObject, QTimer
-from PyQt5.QtWidgets import QApplication, QDialog, QWidget
+from PyQt5.QtWidgets import QApplication, QWidget
 
 CHANGE_DEBOUNCE_MS = 450
 _INPUT_EVENTS = {
@@ -89,9 +89,7 @@ class DocumentChangeTracker(QObject):
         current = watched
         while current is not None:
             if isinstance(current, QWidget):
-                if current.objectName() in {"LayerSelectionDialog", "ComfyUIDocker"}:
-                    return True
-                if isinstance(current, QDialog):
+                if current.objectName() in {"LayerSelectionDialog", "comfyui_docker"}:
                     return True
                 current = current.parentWidget()
             else:
