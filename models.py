@@ -56,6 +56,7 @@ class LoadImageState(BaseModel):
     snapshot_revision: str = ""
     selection_generation: int = 0
     snapshot_pending: bool = False
+    placeholder: bool = False
 
 
 class LoadImageExecutionState(BaseModel):
