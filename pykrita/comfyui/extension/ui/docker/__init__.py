@@ -70,7 +70,7 @@ class ComfyUIDocker(DockWidget):
 
         document_index = self._registered_documents.index(document)
         nodes = self._workflows[document_index]
-        self.node_list.update_from_comyui(nodes, window, document, document_id)
+        self.node_list.update_from_comfyui(nodes, window, document, document_id)
 
     def canvasChanged(self, canvas: Canvas) -> None:  # noqa: N802
         pass
