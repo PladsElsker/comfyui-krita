@@ -95,7 +95,11 @@ def _validate_load_image_snapshot_generation(api: "KritaApi", sid: str, state: L
         raise ValueError(message)
     if current_state.selection_generation != state.selection_generation:
         return
-    if not current_state.layer_ids or current_state.layer_ids != state.layer_ids:
+    if state.placeholder:
+        if not current_state.placeholder or current_state.layer_ids:
+            message = "The Krita placeholder selection changed before upload completed"
+            raise ValueError(message)
+    elif not current_state.layer_ids or current_state.layer_ids != state.layer_ids:
         message = "The Krita layer selection changed before this snapshot finished uploading"
         raise ValueError(message)
     if not current_state.snapshot_pending and current_state.snapshot_revision != state.snapshot_revision:
@@ -118,7 +122,7 @@ def _apply_load_image_state_update(
     state: LoadImageState,
 ) -> dict[str, object]:
     event: dict[str, object] = {"deleted": False, "state": state.model_dump()}
-    if not state.layer_ids:
+    if not state.layer_ids and not state.placeholder:
         api.remove_load_image_snapshot(key)
         event["preview"] = None
     elif not state.snapshot_pending and state.snapshot_revision:
@@ -129,7 +133,11 @@ def _apply_load_image_state_update(
 
 
 def _validate_snapshot_metadata(api: "KritaApi", state: LoadImageState) -> None:
-    if (
+    if state.placeholder:
+        if state.layer_ids or state.layer_names:
+            message = "A blank Load Image placeholder cannot reference selected layers"
+            raise ValueError(message)
+    elif (
         not state.layer_ids
         or len(state.layer_ids) != len(state.layer_names)
         or len(state.layer_ids) > MAX_LOAD_IMAGE_LAYERS
@@ -174,8 +182,11 @@ def _load_snapshot_pixels(image_data: bytes) -> tuple[bytes, tuple[int, int]]:
             raise ValueError(message) from error
 
 
-def _snapshot_revision(image_data: bytes) -> str:
+def _snapshot_revision(image_data: bytes, *, require_transparent_black: bool = False) -> str:
     pixels, dimensions = _load_snapshot_pixels(image_data)
+    if require_transparent_black and any(pixels):
+        message = "A blank Load Image placeholder must be fully transparent black"
+        raise ValueError(message)
     digest = hashlib.sha256()
     digest.update(dimensions[0].to_bytes(4, "big"))
     digest.update(dimensions[1].to_bytes(4, "big"))
@@ -279,7 +290,11 @@ class KritaApi:
         if len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_BYTES:
             message = f"The Krita image snapshot exceeds the {MAX_LOAD_IMAGE_SNAPSHOT_BYTES}-byte limit"
             raise ValueError(message)
-        revision = await asyncio.to_thread(_snapshot_revision, image_data)
+        revision = await asyncio.to_thread(
+            _snapshot_revision,
+            image_data,
+            require_transparent_black=state.placeholder,
+        )
         canonical_state = state.model_copy(update={"snapshot_revision": revision})
 
         key = (state.document_id, state.id, state.type)
