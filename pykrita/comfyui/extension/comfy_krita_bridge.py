@@ -342,6 +342,9 @@ class ComfyKritaBridge(QObject):
             elif isinstance(state, LoadImageState):
                 key = (state.document_id, state.id, state.type)
                 serialized_state = state.model_dump()
+                if not state.layer_ids or not state.snapshot_revision:
+                    self._load_image_snapshots.pop(key, None)
+                    self._pending_load_image_snapshots.pop(key, None)
             else:
                 return
             payload = {"deleted": False, "state": serialized_state}
