@@ -45,8 +45,6 @@ def _to_pil_images(image: Tensor) -> list[PilImage.Image]:
         result.append(to_pil_image(image_tensor.detach().cpu()))
     return result
 
-
-
 class KritaSaveImage(io.ComfyNode):
     @classmethod
     def define_schema(cls) -> io.Schema:
