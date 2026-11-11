@@ -5,22 +5,22 @@ from typing import ClassVar, cast
 
 from krita import DockWidget, Document, Node as KritaNode, Window
 from PyQt5.QtCore import (
-    QTimer,
-    QObject,
     QByteArray,
     QBuffer,
+    QObject,
     QIODevice,
-    Qt,
     QRunnable,
     QThreadPool,
+    QTimer,
+    Qt,
     pyqtBoundSignal,
     pyqtSignal,
     pyqtSlot,
 )
 from PyQt5.QtGui import QImage
 
-from comfyui.extension.layer_tree.selection_exporter import capture_selected_layers_projection
 from comfyui.extension.layer_tree.document_change_tracker import document_change_tracker
+from comfyui.extension.layer_tree.selection_exporter import capture_selected_layers_projection
 from comfyui.extension.layer_tree.selection_modal import iter_layer_nodes, select_layers
 from comfyui.extension.models import LoadImageState, Node, UiNodeState
 from comfyui.extension.ui.icons import STACKS_ICON
