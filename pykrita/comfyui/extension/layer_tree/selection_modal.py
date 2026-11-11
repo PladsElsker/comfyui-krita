@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Literal
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtWidgets import (
-    QDialog,
     QAbstractItemView,
+    QDialog,
     QDialogButtonBox,
     QLabel,
     QLineEdit,
@@ -71,9 +71,11 @@ class LayerSelectionDialog(QDialog):
 
         layout = QVBoxLayout(self)
         description = QLabel(
-            "Choose the layer where generated images will be inserted."
-            if mode == "single"
-            else "Choose the layers to composite and send to ComfyUI.",
+            (
+                "Choose the layer where generated images will be inserted."
+                if mode == "single"
+                else "Choose the layers to composite and send to ComfyUI."
+            ),
         )
         description.setWordWrap(True)
         layout.addWidget(description)
@@ -89,9 +91,7 @@ class LayerSelectionDialog(QDialog):
         self.tree.setIconSize(QPixmap(THUMBNAIL_SIZE, THUMBNAIL_SIZE).size())
         self.tree.setUniformRowHeights(True)
         self.tree.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
-            if mode == "single"
-            else QAbstractItemView.SelectionMode.ExtendedSelection
+            QAbstractItemView.SelectionMode.SingleSelection if mode == "single" else QAbstractItemView.SelectionMode.ExtendedSelection
         )
         self.tree.itemDoubleClicked.connect(self._accept_on_double_click)
         layout.addWidget(self.tree, 1)
@@ -114,16 +114,9 @@ class LayerSelectionDialog(QDialog):
         self._population_timer.start(0)
 
     def selected_nodes(self) -> list[Node]:
-        selected_ids = {
-            str(item.data(0, Qt.ItemDataRole.UserRole))
-            for item in self.tree.selectedItems()
-        }
+        selected_ids = {str(item.data(0, Qt.ItemDataRole.UserRole)) for item in self.tree.selectedItems()}
         # Preserve the document's layer-stack order, independent of click order.
-        return [
-            node
-            for node in iter_layer_nodes(self.document.rootNode())
-            if str(node.uniqueId()) in selected_ids
-        ]
+        return [node for node in iter_layer_nodes(self.document.rootNode()) if str(node.uniqueId()) in selected_ids]
 
     def accept(self) -> None:
         if not self._population_complete:
