@@ -311,9 +311,14 @@ class ComfyKritaBridge(QObject):
                         continue
 
                     cached = self._load_image_snapshots.get(key)
-                    if cached is not None and cached[0].snapshot_revision == state.snapshot_revision and state.snapshot_revision:
+                    if (
+                        cached is not None
+                        and not state.snapshot_pending
+                        and cached[0].snapshot_revision == state.snapshot_revision
+                        and state.snapshot_revision
+                    ):
                         self._queue_load_image_snapshot_upload(None, state, cached[1])
-                    elif state.snapshot_pending or not state.snapshot_revision:
+                    else:
                         self._publish_node_state({"deleted": False, "state": state})
 
         # Also flush tombstones, image snapshots, and state updates that
@@ -376,7 +381,12 @@ class ComfyKritaBridge(QObject):
     ) -> None:
         key = (state.document_id, state.id, state.type)
         previous = self._pending_load_image_snapshots.get(key)
-        if previous is None or previous[1].snapshot_revision != state.snapshot_revision:
+        if (
+            previous is None
+            or previous[1].snapshot_revision != state.snapshot_revision
+            or previous[1].selection_generation != state.selection_generation
+            or previous[1].placeholder != state.placeholder
+        ):
             self._load_image_upload_attempts.pop((*key, state.snapshot_revision), None)
         self._pending_load_image_snapshots[key] = (widget, state, image_data)
         self._start_pending_load_image_snapshot_uploads()
