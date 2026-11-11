@@ -49,6 +49,9 @@ def _walk_layer_tree(parent: KritaNode) -> list[KritaNode]:
     return nodes
 
 
+MAX_EXPORT_PLACEHOLDER_PIXELS = 16_000_000
+
+
 class _ProjectionExportSignals(QObject):
     completed = cast("pyqtBoundSignal", pyqtSignal(object, object, object, bytes))
     failed = cast("pyqtBoundSignal", pyqtSignal(object, object, str))
@@ -97,12 +100,14 @@ class _ProjectionExportTask(QRunnable):
         state: LoadImageState,
         selected_layer_ids: list[str],
         capture_token: str,
+        blank_dimensions: tuple[int, int] | None = None,
     ) -> None:
         super().__init__()
         self.document = document
         self.state = state
         self.selected_layer_ids = list(selected_layer_ids)
         self.capture_token = capture_token
+        self.blank_dimensions = blank_dimensions
         self.signals = _ProjectionExportSignals()
         self.signals.scratch_document_ready.connect(
             _SCRATCH_DOCUMENT_DISPOSER.dispose,
@@ -112,13 +117,31 @@ class _ProjectionExportTask(QRunnable):
     def run(self) -> None:
         scratch_document: Document | None = None
         try:
-            projection, scratch_document = capture_selected_layers_projection(
-                self.document,
-                self.selected_layer_ids,
-            )
-            self.signals.scratch_document_ready.emit(scratch_document)
+            if self.selected_layer_ids:
+                projection, scratch_document = capture_selected_layers_projection(
+                    self.document,
+                    self.selected_layer_ids,
+                )
+                self.signals.scratch_document_ready.emit(scratch_document)
+            else:
+                if self.blank_dimensions is None:
+                    message = "The blank Load Image preview requires document dimensions"
+                    raise ValueError(message)
+                width, height = self.blank_dimensions
+                if width < 1 or height < 1 or width * height > MAX_EXPORT_PLACEHOLDER_PIXELS:
+                    message = "The Krita document dimensions exceed the supported Load Image preview size"
+                    raise ValueError(message)
+                projection = QImage(width, height, QImage.Format.Format_RGBA8888)
+                if projection.isNull():
+                    message = "Krita could not allocate the blank Load Image preview"
+                    raise RuntimeError(message)
+                # Zero RGBA bytes represent black RGB with fully transparent alpha.
+                projection.fill(0)
+
             revision = _projection_revision(projection)
-            state = self.state.model_copy(update={"snapshot_revision": revision, "snapshot_pending": False})
+            state = self.state.model_copy(
+                update={"snapshot_revision": revision, "snapshot_pending": False},
+            )
 
             image_data = _encode_projection_png(projection)
             self.signals.completed.emit(self, self.capture_token, state, image_data)
@@ -167,6 +190,7 @@ class LoadImageNode(ComfyUiNode):
         self.layer_names: list[str] = []
         self.snapshot_revision = ""
         self.snapshot_pending = False
+        self.placeholder = False
         self.selection_generation = 0
         self._pending_state: LoadImageState | None = None
         self._composition_pool = QThreadPool.globalInstance()
@@ -233,21 +257,9 @@ class LoadImageNode(ComfyUiNode):
         return button
 
     def initialize_state(self) -> None:
-        if self.layer_ids or self.snapshot_revision:
+        if self.layer_ids or self.snapshot_revision or self.snapshot_pending:
             return
-
-        state = LoadImageState(
-            id=self.id,
-            type=self.type,
-            document_id=self.document_id,
-            layer_ids=[],
-            layer_names=[],
-            snapshot_revision="",
-            selection_generation=self.selection_generation,
-            snapshot_pending=False,
-        )
-        self._apply_state(state)
-        self.state_changed.emit(state)
+        self._queue_projection_capture([], [])
 
     def cleanup(self) -> None:
         self._disposed = True
@@ -287,6 +299,7 @@ class LoadImageNode(ComfyUiNode):
         self.layer_names = list(state.layer_names)
         self.snapshot_revision = state.snapshot_revision
         self.snapshot_pending = state.snapshot_pending
+        self.placeholder = state.placeholder
         self.selection_generation = state.selection_generation
         self._update_layer_info()
 
@@ -427,22 +440,9 @@ class LoadImageNode(ComfyUiNode):
         self._pending_state = None
 
         if not layer_ids:
-            self._latest_capture = None
             self._active_capture_token = None
             self._refresh_requested = False
             self._live_refresh_timer.stop()
-            empty_state = LoadImageState(
-                id=self.id,
-                type=self.type,
-                document_id=self.document_id,
-                layer_ids=[],
-                layer_names=[],
-                snapshot_revision="",
-                selection_generation=self.selection_generation,
-            )
-            self._apply_state(empty_state)
-            self.state_changed.emit(empty_state)
-            return
 
         pending_state = LoadImageState(
             id=self.id,
@@ -453,8 +453,10 @@ class LoadImageNode(ComfyUiNode):
             snapshot_revision=self.snapshot_revision,
             selection_generation=self.selection_generation,
             snapshot_pending=True,
+            placeholder=not layer_ids,
         )
         self.snapshot_pending = True
+        self.placeholder = not layer_ids
         self.state_changed.emit(pending_state)
         self._latest_capture = (uuid.uuid4().hex, list(layer_ids), list(layer_names))
         self._refresh_requested = True
@@ -476,11 +478,15 @@ class LoadImageNode(ComfyUiNode):
             selection_generation=self.selection_generation,
             snapshot_pending=True,
         )
+        blank_dimensions = None
+        if not layer_ids:
+            blank_dimensions = (self.document.width(), self.document.height())
         task = _ProjectionExportTask(
             self.document,
             state,
             layer_ids,
             capture_token,
+            blank_dimensions=blank_dimensions,
         )
         task.signals.completed.connect(
             self._on_projection_export_completed,
