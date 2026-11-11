@@ -48,6 +48,7 @@ class SaveImageNode(ComfyUiNode):
         self.target_picker.target_selected.connect(self._set_target)
         self.target_picker.target_removed.connect(self._clear_deleted_target)
         self.target_picker.target_renamed.connect(self._update_target_name)
+        self.target_picker.target_position_changed.connect(self._refresh_target_path)
         self.target_picker.cancelled.connect(self._reset_target_button)
 
     def initialize_state(self) -> None:
@@ -104,6 +105,21 @@ class SaveImageNode(ComfyUiNode):
 
         self.layer_path = path
         self.target_picker.watch_target(str(target.uniqueId()), target.name())
+        self._update_layer_name(target.name())
+        self._consolidate_state()
+
+    def _refresh_target_path(self, target: KritaNode) -> None:
+        direction = "below" if self.direction_button.is_inserting_below() else "above"
+        try:
+            path = LayerUtils.capture_target(self.document, target, direction)
+        except (RuntimeError, ValueError):
+            LOGGER.exception("Could not refresh the Krita output target position")
+            return
+
+        if path == self.layer_path:
+            return
+
+        self.layer_path = path
         self._update_layer_name(target.name())
         self._consolidate_state()
 
