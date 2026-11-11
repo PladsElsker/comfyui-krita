@@ -20,7 +20,7 @@ function getMetadataWidgetLabel(nodeType) {
 function createDefaultNodeState(node) {
     if(node.type === KRITA_LOAD_IMAGE_NODE_TYPE) {
         return {
-            id: node.id,
+            id: getComfyNodeLocatorId(node),
             type: node.type,
             document_id: "",
             layer_ids: [],
@@ -30,7 +30,7 @@ function createDefaultNodeState(node) {
     }
 
     return {
-        id: node.id,
+        id: getComfyNodeLocatorId(node),
         type: node.type,
         document_id: "",
         insert_direction: "below",
@@ -283,7 +283,7 @@ export function applyCachedKritaNodeStates() {
 
         const documentId = documentWidget?.value;
         const state = documentId
-            ? kritaNodeStateCache.get(kritaNodeStateKey(documentId, node.id, node.type))
+            ? kritaNodeStateCache.get(kritaNodeStateKey(documentId, getComfyNodeLocatorId(node), node.type))
             : null;
 
         if(state) {
@@ -503,7 +503,7 @@ export function getDocumentIdsNodeMap() {
         for(const documentId of node.documentIds) {
             if(!(documentId in getDocumentIdsNodeMap)) getDocumentIdsNodeMap[documentId] = [];
             getDocumentIdsNodeMap[documentId].push({
-                id: node.id,
+                id: getComfyNodeLocatorId(node),
                 type: node.type,
                 name: node.name,
             });
