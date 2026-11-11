@@ -193,10 +193,19 @@ export function setupAdditionalWebsocketRoutes() {
 }
 
 
+function getComfyPinia() {
+    return document.getElementById("vue-app")
+        ?.__vue_app__?.config?.globalProperties?.$pinia ?? null;
+}
+
+
 function getComfyWorkflowStore() {
-    const pinia = document.getElementById("vue-app")
-        ?.__vue_app__?.config?.globalProperties?.$pinia;
-    return pinia?._s?.get?.("workflow") ?? null;
+    return getComfyPinia()?._s?.get?.("workflow") ?? null;
+}
+
+
+function getComfyNodeOutputStore() {
+    return getComfyPinia()?._s?.get?.("nodeOutput") ?? null;
 }
 
 
@@ -351,17 +360,11 @@ async function updateKritaLoadImagePreview(state, preview) {
         return;
     }
 
-    const vueApp = document.getElementById("vue-app")?.__vue_app__;
-    const pinia = vueApp?.config?.globalProperties?.$pinia;
-
-    // ComfyUI initializes nodeOutput lazily from the LiteGraph draw hook.
-    // Calling it once ensures Pinia has a live reactive preview store before
-    // writing the URL; assigning node.imgs alone only reserves canvas space.
-    if(typeof node.onDrawBackground === "function") {
-        node.onDrawBackground();
-    }
-
-    const nodeOutputStore = pinia?._s?.get?.("nodeOutput");
+    // ComfyUI initializes nodeOutput lazily from its LiteGraph draw hook.
+    // Initialize it before writing the preview so Vue's reactive preview
+    // composable observes the new image immediately.
+    node.onDrawBackground?.();
+    const nodeOutputStore = getComfyNodeOutputStore();
     const locatorId = getComfyNodeLocatorId(node);
 
     if(typeof nodeOutputStore?.setNodePreviewsByLocatorId === "function") {
@@ -395,9 +398,7 @@ function clearKritaLoadImagePreview(state) {
         (kritaLoadImagePreviewRequests.get(node) ?? 0) + 1,
     );
 
-    const pinia = document.getElementById("vue-app")
-        ?.__vue_app__?.config?.globalProperties?.$pinia;
-    const nodeOutputStore = pinia?._s?.get?.("nodeOutput");
+    const nodeOutputStore = getComfyNodeOutputStore();
     const locatorId = getComfyNodeLocatorId(node);
 
     if(typeof nodeOutputStore?.setNodePreviewsByLocatorId === "function") {
@@ -503,7 +504,7 @@ export function getDocumentIdsNodeMap() {
         for(const documentId of node.documentIds) {
             if(!(documentId in getDocumentIdsNodeMap)) getDocumentIdsNodeMap[documentId] = [];
             getDocumentIdsNodeMap[documentId].push({
-                id: getComfyNodeLocatorId(node),
+                id: node.id,
                 type: node.type,
                 name: node.name,
             });
