@@ -109,11 +109,7 @@ def _should_ignore_load_image_state_update(
 ) -> bool:
     if state.selection_generation < current_state.selection_generation:
         return True
-    return (
-        state.selection_generation == current_state.selection_generation
-        and state.snapshot_pending
-        and not current_state.snapshot_pending
-    )
+    return state.selection_generation == current_state.selection_generation and state.snapshot_pending and not current_state.snapshot_pending
 
 
 def _apply_load_image_state_update(
@@ -123,7 +119,7 @@ def _apply_load_image_state_update(
 ) -> dict[str, object]:
     event: dict[str, object] = {"deleted": False, "state": state.model_dump()}
     if not state.layer_ids:
-        api._remove_load_image_snapshot(key)
+        api.remove_load_image_snapshot(key)
         event["preview"] = None
     elif not state.snapshot_pending and state.snapshot_revision:
         snapshot = api.load_image_snapshots.get(key)
@@ -330,7 +326,7 @@ class KritaApi:
         await PromptServer.instance.send("krita::nodes::update", event)
         return {"snapshot_revision": revision, "changed": changed}
 
-    def _remove_load_image_snapshot(self, key: tuple[str, int, str]) -> None:
+    def remove_load_image_snapshot(self, key: tuple[str, int, str]) -> None:
         snapshot = self.load_image_snapshots.pop(key, None)
         if snapshot is not None:
             _delete_snapshot_preview(snapshot.preview)
@@ -462,7 +458,7 @@ class KritaApi:
         removed_keys = [key for key, state in sid_states.items() if state.document_id not in registered_ids]
         for key in removed_keys:
             state = sid_states.pop(key)
-            self._remove_load_image_snapshot(key)
+            self.remove_load_image_snapshot(key)
             await self._broadcast_deleted_node_state(state)
 
         krita_documents = self.get_registered_documents().model_dump()
@@ -518,11 +514,7 @@ class KritaApi:
             return
 
         sid_states[key] = state
-        event = (
-            _apply_load_image_state_update(self, key, state)
-            if isinstance(state, LoadImageState)
-            else {"deleted": False, "state": state.model_dump()}
-        )
+        event = _apply_load_image_state_update(self, key, state) if isinstance(state, LoadImageState) else {"deleted": False, "state": state.model_dump()}
         await PromptServer.instance.send("krita::nodes::update", event)
 
     def get_node_states(self) -> list[KritaNodeState]:
