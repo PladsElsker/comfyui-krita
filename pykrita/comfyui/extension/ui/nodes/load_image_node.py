@@ -41,6 +41,14 @@ from .comfyui_node import ComfyUiNode
 LOGGER = logging.getLogger(__name__)
 
 
+def _walk_layer_tree(parent: KritaNode) -> list[KritaNode]:
+    nodes: list[KritaNode] = []
+    for child in parent.childNodes():
+        nodes.append(child)
+        nodes.extend(_walk_layer_tree(child))
+    return nodes
+
+
 class _ProjectionExportSignals(QObject):
     completed = cast("pyqtBoundSignal", pyqtSignal(object, object, object, bytes))
     failed = cast("pyqtBoundSignal", pyqtSignal(object, object, str))
@@ -312,7 +320,7 @@ class LoadImageNode(ComfyUiNode):
             "background-color: rgba(255, 205, 64, 58);"
             "}"
         )
-        self.setProperty("layerEditing", False)
+        self.setProperty("layerEditing", False)  # noqa: FBT003
 
     def _set_layer_editing_feedback(self, *, editing: bool) -> None:
         self.setProperty("layerEditing", editing)
@@ -368,10 +376,7 @@ class LoadImageNode(ComfyUiNode):
         if self._disposed:
             return
 
-        nodes_by_id = {
-            str(node.uniqueId()): node
-            for node in self.layer_picker._walk_nodes(self.document.rootNode())
-        }
+        nodes_by_id = {str(node.uniqueId()): node for node in _walk_layer_tree(self.document.rootNode())}
         remaining_ids = [layer_id for layer_id in self.layer_ids if layer_id in nodes_by_id]
         remaining_names = [nodes_by_id[layer_id].name() for layer_id in remaining_ids]
         selection_changed = remaining_ids != self.layer_ids or remaining_names != self.layer_names
