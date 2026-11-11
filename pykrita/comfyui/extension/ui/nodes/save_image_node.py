@@ -60,8 +60,7 @@ class SaveImageNode(ComfyUiNode):
         self._consolidate_state()
 
     def cleanup(self) -> None:
-        if self.target_picker.is_editing:
-            self.target_picker.cancel()
+        self.target_picker.cleanup()
 
     def apply(self, node_state: UiNodeState) -> None:
         state = cast("SaveImageState", node_state)
