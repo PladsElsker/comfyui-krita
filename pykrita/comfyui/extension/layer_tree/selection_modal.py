@@ -163,7 +163,7 @@ class LayerSelectionDialog(QDialog):
         item.setData(0, Qt.ItemDataRole.UserRole, node_id)
         item.setToolTip(0, f"{node.name()} — {node.type()}")
         item.setIcon(0, self._thumbnail_icon(node))
-        selectable = self.mode == "single" or node.type() in SELECTABLE_LAYER_TYPES
+        selectable = node.type() in SELECTABLE_LAYER_TYPES
         if not selectable:
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
         self._items_by_id[node_id] = item
