@@ -514,7 +514,10 @@ class KritaApi:
             return
 
         sid_states[key] = state
-        event = _apply_load_image_state_update(self, key, state) if isinstance(state, LoadImageState) else {"deleted": False, "state": state.model_dump()}
+        if isinstance(state, LoadImageState):
+            event = _apply_load_image_state_update(self, key, state)
+        else:
+            event = {"deleted": False, "state": state.model_dump()}
         await PromptServer.instance.send("krita::nodes::update", event)
 
     def get_node_states(self) -> list[KritaNodeState]:
