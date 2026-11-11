@@ -283,7 +283,6 @@ class LoadImageNode(ComfyUiNode):
         try:
             self.layer_picker.begin(self.layer_ids)
         except TargetSelectionUnavailableError as error:
-            self.layer_info_text.setToolTip(str(error))
             LOGGER.warning("Could not start Krita layer selection: %s", error)
             return
 
@@ -293,7 +292,6 @@ class LoadImageNode(ComfyUiNode):
         try:
             self.layer_picker.accept()
         except (TargetSelectionUnavailableError, ValueError) as error:
-            self.layer_info_text.setToolTip(str(error))
             LOGGER.warning("Could not accept Krita layer selection: %s", error)
 
     def _cancel_editing(self, *_args: object) -> None:
@@ -406,7 +404,7 @@ class LoadImageNode(ComfyUiNode):
         self._capture_active = True
         self._active_capture_token = capture_token
         self._composition_tasks.add(task)
-        self.set_info_text(f"Composing {len(layer_names)} selected layer(s)…")
+        self._update_layer_info()
         self._composition_pool.start(task)
 
     def _on_projection_export_completed(
@@ -432,14 +430,14 @@ class LoadImageNode(ComfyUiNode):
             self._apply_state(state)
             self._pending_state = None
             self.state_changed.emit(state)
-            self.set_info_text(f"{len(state.layer_names)} selected layer(s) — unchanged")
+            self._update_layer_info()
             self._refresh_requested = False
             self._start_latest_projection_capture()
             return
 
         self._pending_state = state
         self._refresh_requested = False
-        self.set_info_text(f"Uploading {len(state.layer_names)} selected layer(s)…")
+        self._update_layer_info()
         self.snapshot_ready.emit(state, image_data)
 
     def _on_projection_export_failed(
@@ -459,8 +457,7 @@ class LoadImageNode(ComfyUiNode):
             self._start_latest_projection_capture()
             return
 
-        self.layer_info_text.setToolTip(error)
-        self.set_info_text("Layer export failed")
+        self._update_layer_info()
         LOGGER.error("Could not export the selected Krita layer projection: %s", error)
         self._refresh_requested = False
         self._start_latest_projection_capture()
@@ -479,15 +476,9 @@ class LoadImageNode(ComfyUiNode):
             return
 
         self._pending_state = None
-        self.layer_info_text.setToolTip(error)
-        self.set_info_text("Upload failed — edit selection to retry")
+        self._update_layer_info()
         LOGGER.error("Could not upload the Krita layer snapshot: %s", error)
         self._start_latest_projection_capture()
 
     def _update_layer_info(self) -> None:
-        if not self.layer_ids:
-            self.set_info_text("No layers selected")
-        elif len(self.layer_names) == 1:
-            self.set_info_text(f'Layer: "{self.layer_names[0]}"')
-        else:
-            self.set_info_text(f"{len(self.layer_names)} layers selected")
+        self.set_info_text(f"{len(self.layer_ids)} layers selected")
