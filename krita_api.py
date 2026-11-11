@@ -86,6 +86,52 @@ def _validate_snapshot_owner(api: "KritaApi", sid: str, state: LoadImageState) -
         raise ValueError(message)
 
 
+def _validate_load_image_snapshot_generation(api: "KritaApi", sid: str, state: LoadImageState) -> None:
+    current_state = api.node_states.get(sid, {}).get((state.document_id, state.id, state.type))
+    if not isinstance(current_state, LoadImageState):
+        return
+    if current_state.selection_generation > state.selection_generation:
+        message = "A newer Krita layer selection superseded this snapshot"
+        raise ValueError(message)
+    if current_state.selection_generation != state.selection_generation:
+        return
+    if not current_state.layer_ids or current_state.layer_ids != state.layer_ids:
+        message = "The Krita layer selection changed before this snapshot finished uploading"
+        raise ValueError(message)
+    if not current_state.snapshot_pending and current_state.snapshot_revision != state.snapshot_revision:
+        message = "A newer Krita image composition superseded this snapshot"
+        raise ValueError(message)
+
+
+def _should_ignore_load_image_state_update(
+    state: LoadImageState,
+    current_state: LoadImageState,
+) -> bool:
+    if state.selection_generation < current_state.selection_generation:
+        return True
+    return (
+        state.selection_generation == current_state.selection_generation
+        and state.snapshot_pending
+        and not current_state.snapshot_pending
+    )
+
+
+def _apply_load_image_state_update(
+    api: "KritaApi",
+    key: tuple[str, int, str],
+    state: LoadImageState,
+) -> dict[str, object]:
+    event: dict[str, object] = {"deleted": False, "state": state.model_dump()}
+    if not state.layer_ids:
+        api._remove_load_image_snapshot(key)
+        event["preview"] = None
+    elif not state.snapshot_pending and state.snapshot_revision:
+        snapshot = api.load_image_snapshots.get(key)
+        if snapshot is not None and snapshot.state.snapshot_revision == state.snapshot_revision:
+            snapshot.state = state
+    return event
+
+
 def _validate_snapshot_metadata(api: "KritaApi", state: LoadImageState) -> None:
     if (
         not state.layer_ids
@@ -233,18 +279,7 @@ class KritaApi:
     ) -> dict[str, bool | str]:
         _validate_snapshot_owner(self, sid, state)
         _validate_snapshot_metadata(self, state)
-        current_state = self.node_states.get(sid, {}).get((state.document_id, state.id, state.type))
-        if isinstance(current_state, LoadImageState):
-            if current_state.selection_generation > state.selection_generation:
-                message = "A newer Krita layer selection superseded this snapshot"
-                raise ValueError(message)
-            if current_state.selection_generation == state.selection_generation:
-                if not current_state.layer_ids or current_state.layer_ids != state.layer_ids:
-                    message = "The Krita layer selection changed before this snapshot finished uploading"
-                    raise ValueError(message)
-                if not current_state.snapshot_pending and current_state.snapshot_revision != state.snapshot_revision:
-                    message = "A newer Krita image composition superseded this snapshot"
-                    raise ValueError(message)
+        _validate_load_image_snapshot_generation(self, sid, state)
         if len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_BYTES:
             message = f"The Krita image snapshot exceeds the {MAX_LOAD_IMAGE_SNAPSHOT_BYTES}-byte limit"
             raise ValueError(message)
@@ -475,28 +510,19 @@ class KritaApi:
 
         key = (state.document_id, state.id, state.type)
         current_state = sid_states.get(key)
-        if isinstance(state, LoadImageState) and isinstance(current_state, LoadImageState):
-            if state.selection_generation < current_state.selection_generation:
-                return
-            if (
-                state.selection_generation == current_state.selection_generation
-                and state.snapshot_pending
-                and not current_state.snapshot_pending
-            ):
-                # Ignore a delayed capture-pending update after its upload has
-                # already stored the completed snapshot for this generation.
-                return
+        if (
+            isinstance(state, LoadImageState)
+            and isinstance(current_state, LoadImageState)
+            and _should_ignore_load_image_state_update(state, current_state)
+        ):
+            return
 
         sid_states[key] = state
-        event = {"deleted": False, "state": state.model_dump()}
-        if isinstance(state, LoadImageState):
-            if not state.layer_ids:
-                self._remove_load_image_snapshot(key)
-                event["preview"] = None
-            elif not state.snapshot_pending and state.snapshot_revision:
-                snapshot = self.load_image_snapshots.get(key)
-                if snapshot is not None and snapshot.state.snapshot_revision == state.snapshot_revision:
-                    snapshot.state = state
+        event = (
+            _apply_load_image_state_update(self, key, state)
+            if isinstance(state, LoadImageState)
+            else {"deleted": False, "state": state.model_dump()}
+        )
         await PromptServer.instance.send("krita::nodes::update", event)
 
     def get_node_states(self) -> list[KritaNodeState]:
