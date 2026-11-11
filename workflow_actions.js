@@ -277,7 +277,7 @@ function setNodeMetadataValue(node, widget, value) {
 function getKritaNodeLocatorId(node) {
     const localId = String(node.id);
     const graph = node.graph;
-    if(!graph || graph.isRootGraph) return localId;
+    if(!graph || graph === app.graph) return localId;
     const graphId = graph.id;
     return graphId ? `${graphId}:${localId}` : localId;
 }
@@ -331,16 +331,14 @@ async function updateKritaLoadImagePreview(state, preview) {
         }
 
         const locatorId = getKritaNodeLocatorId(node);
-        const vueApp = app.vueApp ?? document.getElementById("vue-app")?.__vue_app__;
-        const provides = vueApp?._context?.provides;
-        const pinia = provides?.pinia ?? Object.getOwnPropertySymbols(provides ?? {})
-            .map(symbol => provides[symbol])
-            .find(candidate => candidate?._s?.get);
+        const pinia = document.getElementById("vue-app")
+            ?.__vue_app__?.config?.globalProperties?.$pinia;
         const nodeOutputStore = pinia?._s?.get?.("nodeOutput");
         if(typeof nodeOutputStore?.setNodePreviewsByLocatorId === "function") {
-            // Use the already-instantiated ComfyUI store when the Vue frontend
-            // exposes it; no non-public source-module import is required.
+            // This is ComfyUI's reactive preview store used by its Vue nodes.
             nodeOutputStore.setNodePreviewsByLocatorId(locatorId, [objectUrl]);
+            const previousUrl = node._kritaLoadImagePreviewUrl;
+            if(previousUrl && previousUrl !== objectUrl) URL.revokeObjectURL(previousUrl);
         }
         else {
             // Legacy LiteGraph canvas preview fallback.
