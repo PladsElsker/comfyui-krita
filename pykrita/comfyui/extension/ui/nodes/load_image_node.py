@@ -365,7 +365,7 @@ class LoadImageNode(ComfyUiNode):
         return False
 
     def _on_layer_tree_changed(self) -> None:
-        if self._disposed or self.layer_picker.is_editing:
+        if self._disposed:
             return
 
         nodes_by_id = {
@@ -384,7 +384,8 @@ class LoadImageNode(ComfyUiNode):
 
         # Tree changes can also alter a selected group's projection without
         # changing the selected group ID (for example, inserting a child).
-        self._schedule_live_refresh()
+        if not self.layer_picker.is_editing:
+            self._schedule_live_refresh()
 
     def _schedule_live_refresh(self) -> None:
         if not self.layer_ids or self.layer_picker.is_editing:
@@ -410,6 +411,25 @@ class LoadImageNode(ComfyUiNode):
         # duplicated; a newer request is processed as soon as it completes.
         self.layer_ids = list(layer_ids)
         self.layer_names = list(layer_names)
+        self._update_layer_info()
+
+        if not layer_ids:
+            self._latest_capture = None
+            self._pending_state = None
+            self._refresh_requested = False
+            self._live_refresh_timer.stop()
+            empty_state = LoadImageState(
+                id=self.id,
+                type=self.type,
+                document_id=self.document_id,
+                layer_ids=[],
+                layer_names=[],
+                snapshot_revision="",
+            )
+            self._apply_state(empty_state)
+            self.state_changed.emit(empty_state)
+            return
+
         self._latest_capture = (uuid.uuid4().hex, list(layer_ids), list(layer_names))
         self._refresh_requested = True
         self._start_latest_projection_capture()
