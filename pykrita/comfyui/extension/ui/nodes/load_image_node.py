@@ -197,6 +197,7 @@ class LoadImageNode(ComfyUiNode):
         self.layer_picker = LayerMultiSelectionPicker(window, document, self)
         self.layer_picker.cancelled.connect(self._reset_edit_controls)
         self.layer_picker.selection_accepted.connect(self._selection_accepted)
+        self.layer_picker.tree_changed.connect(self._schedule_live_refresh)
 
         # Krita does not expose a public document-pixels-changed signal.
         # Observe input on its actual canvas widgets, then capture once the
@@ -244,8 +245,7 @@ class LoadImageNode(ComfyUiNode):
             app.removeEventFilter(self)
         self._event_filter_installed = False
 
-        if self.layer_picker.is_editing:
-            self.layer_picker.cancel()
+        self.layer_picker.cleanup()
 
         # The node may remain alive until Qt processes deleteLater(). Remove
         # its action controls synchronously so none can outlive the node row.
