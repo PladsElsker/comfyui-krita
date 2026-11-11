@@ -15,7 +15,7 @@ class ComfyUiNode(QWidget):
     state_changed = cast("pyqtBoundSignal", pyqtSignal(object))
     type: ClassVar[str]
     direction: NodeDirection
-    id: int
+    id: str
 
     def __init__(self, docker: DockWidget, node: Node, default_icon: QSvgRenderer, document_id: str) -> None:
         super().__init__()
