@@ -5,12 +5,13 @@ from PyQt5.QtCore import QEvent, QObject, QTimer
 from PyQt5.QtWidgets import QApplication, QWidget
 
 CHANGE_DEBOUNCE_MS = 450
+_CANVAS_WIDGET_TYPES = {"KisOpenGLCanvas2", "KisQPainterCanvas"}
+_CONTENT_TOOL_WIDGET_TYPES = {"QMenu", "QMenuBar", "QToolBar"}
 _INPUT_EVENTS = {
     QEvent.Type.MouseButtonRelease,
     QEvent.Type.TabletRelease,
     QEvent.Type.TouchEnd,
     QEvent.Type.KeyRelease,
-    QEvent.Type.Shortcut,
 }
 
 
@@ -69,6 +70,12 @@ class DocumentChangeTracker(QObject):
             return super().eventFilter(watched, event)
         if self._is_integration_dialog(watched):
             return super().eventFilter(watched, event)
+        if event.type() == QEvent.Type.Shortcut:
+            is_content_input = True
+        else:
+            is_content_input = self._is_content_input_widget(watched)
+        if not is_content_input:
+            return super().eventFilter(watched, event)
 
         for document_key, callbacks in self._callbacks.items():
             document = self._documents.get(document_key)
@@ -90,6 +97,22 @@ class DocumentChangeTracker(QObject):
         while current is not None:
             if isinstance(current, QWidget):
                 if current.objectName() in {"LayerSelectionDialog", "comfyui_docker"}:
+                    return True
+                current = current.parentWidget()
+            else:
+                current = current.parent()
+        return False
+
+    @staticmethod
+    def _is_content_input_widget(watched: QObject) -> bool:
+        current = watched
+        while current is not None:
+            if isinstance(current, QWidget):
+                try:
+                    class_name = current.metaObject().className()
+                except RuntimeError:
+                    return False
+                if class_name in _CANVAS_WIDGET_TYPES or class_name in _CONTENT_TOOL_WIDGET_TYPES:
                     return True
                 current = current.parentWidget()
             else:
