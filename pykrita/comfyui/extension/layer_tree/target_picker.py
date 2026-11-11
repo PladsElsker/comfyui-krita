@@ -60,6 +60,11 @@ class LayerTargetPicker(QObject):
         if target_id is not None:
             QTimer.singleShot(0, self._check_watched_target)
 
+    def cleanup(self) -> None:
+        if self._editing:
+            self.cancel()
+        self._disconnect_model_watch()
+
     def _ensure_model_watch(self) -> None:
         layer_view = self._find_layer_view()
         if layer_view is None:
