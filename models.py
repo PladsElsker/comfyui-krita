@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class Node(BaseModel):
-    id: int
+    id: str
     type: str
     name: str
     direction: Literal["input", "output"] | None = None
@@ -39,7 +39,7 @@ class FlatLayerToken(BaseModel):
 
 
 class SaveImageState(BaseModel):
-    id: int
+    id: str
     type: Literal["KritaSaveImage-15347"]
     document_id: str
     insert_direction: Literal["above", "below"]
@@ -48,7 +48,7 @@ class SaveImageState(BaseModel):
 
 
 class LoadImageState(BaseModel):
-    id: int
+    id: str
     type: Literal["KritaLoadImage-15347"]
     document_id: str
     layer_ids: list[str] = Field(default_factory=list)
@@ -60,7 +60,7 @@ class LoadImageState(BaseModel):
 
 
 class LoadImageExecutionState(BaseModel):
-    id: int
+    id: str
     type: Literal["KritaLoadImage-15347"]
     document_id: str
     snapshot_revision: str = ""
@@ -73,7 +73,7 @@ class KritaNodeStateUpdate(BaseModel):
     deleted: bool = False
     state: KritaNodeState | None = None
     document_id: str | None = None
-    id: int | None = None
+    id: str | None = None
     type: str | None = None
 
 
