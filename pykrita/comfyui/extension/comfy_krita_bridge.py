@@ -349,7 +349,7 @@ class ComfyKritaBridge(QObject):
                 pending = self._pending_load_image_snapshots.get(key)
                 if pending is not None and state.selection_generation > pending[1].selection_generation:
                     self._pending_load_image_snapshots.pop(key, None)
-                if not state.layer_ids:
+                if not state.layer_ids and not state.placeholder:
                     self._load_image_snapshots.pop(key, None)
                     self._pending_load_image_snapshots.pop(key, None)
                 elif not state.snapshot_pending:
@@ -416,7 +416,12 @@ class ComfyKritaBridge(QObject):
         key = (state.document_id, state.id, state.type)
         self._active_load_image_snapshot_uploads.pop(key, None)
         pending = self._pending_load_image_snapshots.get(key)
-        if pending is None or pending[1].snapshot_revision != state.snapshot_revision:
+        if (
+            pending is None
+            or pending[1].snapshot_revision != state.snapshot_revision
+            or pending[1].selection_generation != state.selection_generation
+            or pending[1].placeholder != state.placeholder
+        ):
             self._start_pending_load_image_snapshot_uploads()
             return
 
