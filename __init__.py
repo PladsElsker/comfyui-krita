@@ -1,6 +1,4 @@
 # noqa: N999
-from pathlib import Path
-import secrets
 from typing import override
 
 from PIL import Image as PilImage
@@ -9,8 +7,6 @@ from comfy_api.latest import ComfyExtension, io
 from pydantic import ValidationError
 from torch import Tensor
 from torchvision.transforms.functional import to_pil_image
-
-import folder_paths
 
 from .constants import (
     DEFAULT_KRITA_LOAD_IMAGE_STATE,
@@ -49,14 +45,6 @@ def _to_pil_images(image: Tensor) -> list[PilImage.Image]:
         result.append(to_pil_image(image_tensor.detach().cpu()))
     return result
 
-
-def _write_preview_image(image_data: bytes) -> dict[str, str]:
-    filename = f"krita_{secrets.token_hex(12)}.png"
-    filepath = Path(folder_paths.get_temp_directory()) / filename
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-    with filepath.open("wb") as preview_file:
-        preview_file.write(image_data)
-    return {"filename": filename, "subfolder": "", "type": "temp"}
 
 
 class KritaSaveImage(io.ComfyNode):
@@ -243,8 +231,10 @@ class KritaLoadImage(io.ComfyNode):
             device=model_management.intermediate_device(),
             dtype=model_management.intermediate_dtype(),
         )
-        preview_info = _write_preview_image(image_data)
-        return io.NodeOutput(layers, mask, ui={"images": [preview_info]})
+        # The snapshot's canonical preview is pushed to ComfyUI immediately
+        # when Krita uploads it. Reuse that reactive preview rather than
+        # writing a second temporary PNG for every prompt execution.
+        return io.NodeOutput(layers, mask)
 
 
 class KritaExtension(ComfyExtension):
