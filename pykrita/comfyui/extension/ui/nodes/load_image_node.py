@@ -118,7 +118,7 @@ class _ProjectionExportTask(QRunnable):
             )
             self.signals.scratch_document_ready.emit(scratch_document)
             revision = _projection_revision(projection)
-            state = self.state.model_copy(update={"snapshot_revision": revision})
+            state = self.state.model_copy(update={"snapshot_revision": revision, "snapshot_pending": False})
 
             image_data = _encode_projection_png(projection)
             self.signals.completed.emit(self, self.capture_token, state, image_data)
@@ -166,6 +166,7 @@ class LoadImageNode(ComfyUiNode):
         self.layer_ids: list[str] = []
         self.layer_names: list[str] = []
         self.snapshot_revision = ""
+        self.snapshot_pending = False
         self.selection_generation = 0
         self._pending_state: LoadImageState | None = None
         self._composition_pool = QThreadPool.globalInstance()
@@ -243,6 +244,7 @@ class LoadImageNode(ComfyUiNode):
             layer_names=[],
             snapshot_revision="",
             selection_generation=self.selection_generation,
+            snapshot_pending=False,
         )
         self._apply_state(state)
         self.state_changed.emit(state)
@@ -284,6 +286,7 @@ class LoadImageNode(ComfyUiNode):
         self.layer_ids = list(state.layer_ids)
         self.layer_names = list(state.layer_names)
         self.snapshot_revision = state.snapshot_revision
+        self.snapshot_pending = state.snapshot_pending
         self.selection_generation = state.selection_generation
         self._update_layer_info()
 
@@ -447,9 +450,11 @@ class LoadImageNode(ComfyUiNode):
             document_id=self.document_id,
             layer_ids=list(layer_ids),
             layer_names=list(layer_names),
-            snapshot_revision="",
+            snapshot_revision=self.snapshot_revision,
             selection_generation=self.selection_generation,
+            snapshot_pending=True,
         )
+        self.snapshot_pending = True
         self.state_changed.emit(pending_state)
         self._latest_capture = (uuid.uuid4().hex, list(layer_ids), list(layer_names))
         self._refresh_requested = True
@@ -467,8 +472,9 @@ class LoadImageNode(ComfyUiNode):
             document_id=self.document_id,
             layer_ids=layer_ids,
             layer_names=layer_names,
-            snapshot_revision="",
+            snapshot_revision=self.snapshot_revision,
             selection_generation=self.selection_generation,
+            snapshot_pending=True,
         )
         task = _ProjectionExportTask(
             self.document,
