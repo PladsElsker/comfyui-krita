@@ -152,6 +152,7 @@ class LoadImageNode(ComfyUiNode):
         super().__init__(docker, node, STACKS_ICON, document_id)
         self.setObjectName("LoadImageNode")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, on=True)
+        self._configure_layer_edit_style()
         self.window = window
         self.document = document
         self.layer_ids: list[str] = []
@@ -197,7 +198,7 @@ class LoadImageNode(ComfyUiNode):
         self.layer_picker = LayerMultiSelectionPicker(window, document, self)
         self.layer_picker.cancelled.connect(self._reset_edit_controls)
         self.layer_picker.selection_accepted.connect(self._selection_accepted)
-        self.layer_picker.tree_changed.connect(self._schedule_live_refresh)
+        self.layer_picker.tree_changed.connect(self._on_layer_tree_changed)
 
         # Krita does not expose a public document-pixels-changed signal.
         # Observe input on its actual canvas widgets, then capture once the
@@ -286,6 +287,7 @@ class LoadImageNode(ComfyUiNode):
             LOGGER.warning("Could not start Krita layer selection: %s", error)
             return
 
+        self._set_layer_editing_feedback(editing=True)
         self.set_action_buttons([self.accept_button, self.cancel_button])
 
     def _accept_selection(self, *_args: object) -> None:
@@ -299,7 +301,24 @@ class LoadImageNode(ComfyUiNode):
         self._reset_edit_controls()
 
     def _reset_edit_controls(self) -> None:
+        self._set_layer_editing_feedback(editing=False)
         self.set_action_buttons([self.edit_button])
+
+    def _configure_layer_edit_style(self) -> None:
+        self.setStyleSheet(
+            'QWidget#LoadImageNode[layerEditing="true"] {'
+            "border: 1px solid #D6A000;"
+            "border-radius: 5px;"
+            "background-color: rgba(255, 205, 64, 58);"
+            "}"
+        )
+        self.setProperty("layerEditing", False)
+
+    def _set_layer_editing_feedback(self, *, editing: bool) -> None:
+        self.setProperty("layerEditing", editing)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if self._is_canvas_input_event(watched, event):
@@ -345,6 +364,28 @@ class LoadImageNode(ComfyUiNode):
                 current = current.parent()
         return False
 
+    def _on_layer_tree_changed(self) -> None:
+        if self._disposed or self.layer_picker.is_editing:
+            return
+
+        nodes_by_id = {
+            str(node.uniqueId()): node
+            for node in self.layer_picker._walk_nodes(self.document.rootNode())
+        }
+        remaining_ids = [layer_id for layer_id in self.layer_ids if layer_id in nodes_by_id]
+        remaining_names = [nodes_by_id[layer_id].name() for layer_id in remaining_ids]
+        selection_changed = remaining_ids != self.layer_ids or remaining_names != self.layer_names
+
+        if selection_changed:
+            # A selected layer may have been deleted. Prune the saved selection
+            # immediately, update its count, then capture the remaining layers.
+            self._queue_projection_capture(remaining_ids, remaining_names)
+            return
+
+        # Tree changes can also alter a selected group's projection without
+        # changing the selected group ID (for example, inserting a child).
+        self._schedule_live_refresh()
+
     def _schedule_live_refresh(self) -> None:
         if not self.layer_ids or self.layer_picker.is_editing:
             return
@@ -362,7 +403,7 @@ class LoadImageNode(ComfyUiNode):
         self._queue_projection_capture(layer_ids, layer_names)
 
     def _queue_projection_capture(self, layer_ids: list[str], layer_names: list[str]) -> None:
-        if not layer_ids or self._disposed:
+        if self._disposed:
             return
 
         # Keep only the latest requested layer set. A running render is never
@@ -466,8 +507,14 @@ class LoadImageNode(ComfyUiNode):
         if self._pending_state is None or self._pending_state.snapshot_revision != state.snapshot_revision:
             return
 
-        self._apply_state(state)
         self._pending_state = None
+        if self._latest_capture is not None:
+            # The tree changed while this older upload was in flight. Keep the
+            # newer selected IDs/count and publish only the newest projection.
+            self._start_latest_projection_capture()
+            return
+
+        self._apply_state(state)
         self.state_changed.emit(state)
         self._start_latest_projection_capture()
 
