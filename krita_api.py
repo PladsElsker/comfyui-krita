@@ -233,6 +233,10 @@ class KritaApi:
     ) -> dict[str, bool | str]:
         _validate_snapshot_owner(self, sid, state)
         _validate_snapshot_metadata(self, state)
+        current_state = self.node_states.get(sid, {}).get((state.document_id, state.id, state.type))
+        if isinstance(current_state, LoadImageState) and not current_state.layer_ids:
+            message = "The Load Image selection was cleared before this snapshot finished uploading"
+            raise ValueError(message)
         if len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_BYTES:
             message = f"The Krita image snapshot exceeds the {MAX_LOAD_IMAGE_SNAPSHOT_BYTES}-byte limit"
             raise ValueError(message)
@@ -463,10 +467,11 @@ class KritaApi:
 
         key = (state.document_id, state.id, state.type)
         sid_states[key] = state
-        await PromptServer.instance.send(
-            "krita::nodes::update",
-            {"deleted": False, "state": state.model_dump()},
-        )
+        event = {"deleted": False, "state": state.model_dump()}
+        if isinstance(state, LoadImageState) and (not state.layer_ids or not state.snapshot_revision):
+            self._remove_load_image_snapshot(key)
+            event["preview"] = None
+        await PromptServer.instance.send("krita::nodes::update", event)
 
     def get_node_states(self) -> list[KritaNodeState]:
         return [state for sid_states in self.node_states.values() for state in sid_states.values()]
