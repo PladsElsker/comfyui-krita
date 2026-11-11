@@ -166,6 +166,7 @@ class LoadImageNode(ComfyUiNode):
         self.layer_ids: list[str] = []
         self.layer_names: list[str] = []
         self.snapshot_revision = ""
+        self.selection_generation = 0
         self._pending_state: LoadImageState | None = None
         self._composition_pool = QThreadPool.globalInstance()
         self._composition_tasks: set[_ProjectionExportTask] = set()
@@ -241,6 +242,7 @@ class LoadImageNode(ComfyUiNode):
             layer_ids=[],
             layer_names=[],
             snapshot_revision="",
+            selection_generation=self.selection_generation,
         )
         self._apply_state(state)
         self.state_changed.emit(state)
@@ -282,6 +284,7 @@ class LoadImageNode(ComfyUiNode):
         self.layer_ids = list(state.layer_ids)
         self.layer_names = list(state.layer_names)
         self.snapshot_revision = state.snapshot_revision
+        self.selection_generation = state.selection_generation
         self._update_layer_info()
 
     def _toggle_editing(self, _checked: bool) -> None:
@@ -414,14 +417,15 @@ class LoadImageNode(ComfyUiNode):
 
         # Keep only the latest requested layer set. A running render is never
         # duplicated; a newer request is processed as soon as it completes.
+        self.selection_generation += 1
         self.layer_ids = list(layer_ids)
         self.layer_names = list(layer_names)
         self._update_layer_info()
+        self._pending_state = None
 
         if not layer_ids:
             self._latest_capture = None
             self._active_capture_token = None
-            self._pending_state = None
             self._refresh_requested = False
             self._live_refresh_timer.stop()
             empty_state = LoadImageState(
@@ -431,11 +435,22 @@ class LoadImageNode(ComfyUiNode):
                 layer_ids=[],
                 layer_names=[],
                 snapshot_revision="",
+                selection_generation=self.selection_generation,
             )
             self._apply_state(empty_state)
             self.state_changed.emit(empty_state)
             return
 
+        pending_state = LoadImageState(
+            id=self.id,
+            type=self.type,
+            document_id=self.document_id,
+            layer_ids=list(layer_ids),
+            layer_names=list(layer_names),
+            snapshot_revision="",
+            selection_generation=self.selection_generation,
+        )
+        self.state_changed.emit(pending_state)
         self._latest_capture = (uuid.uuid4().hex, list(layer_ids), list(layer_names))
         self._refresh_requested = True
         self._start_latest_projection_capture()
@@ -453,6 +468,7 @@ class LoadImageNode(ComfyUiNode):
             layer_ids=layer_ids,
             layer_names=layer_names,
             snapshot_revision="",
+            selection_generation=self.selection_generation,
         )
         task = _ProjectionExportTask(
             self.document,
