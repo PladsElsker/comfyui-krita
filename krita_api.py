@@ -118,7 +118,7 @@ def _should_ignore_load_image_state_update(
 
 def _apply_load_image_state_update(
     api: "KritaApi",
-    key: tuple[str, int, str],
+    key: tuple[str, str, str],
     state: LoadImageState,
 ) -> dict[str, object]:
     event: dict[str, object] = {"deleted": False, "state": state.model_dump()}
@@ -217,8 +217,8 @@ class KritaApi:
     def __init__(self) -> None:
         self.registered_documents: dict[str, set[str]] = {}
         self.document_mappings: dict[str, dict[str, str]] = {}
-        self.node_states: dict[str, dict[tuple[str, int, str], KritaNodeState]] = {}
-        self.load_image_snapshots: dict[tuple[str, int, str], LoadImageSnapshot] = {}
+        self.node_states: dict[str, dict[tuple[str, str, str], KritaNodeState]] = {}
+        self.load_image_snapshots: dict[tuple[str, str, str], LoadImageSnapshot] = {}
         self._staged_images: dict[str, StagedImage] = {}
         self._last_workflows_request: UpdateWorkflowsRequest = UpdateWorkflowsRequest.default()
 
@@ -341,7 +341,7 @@ class KritaApi:
         await PromptServer.instance.send("krita::nodes::update", event)
         return {"snapshot_revision": revision, "changed": changed}
 
-    def remove_load_image_snapshot(self, key: tuple[str, int, str]) -> None:
+    def remove_load_image_snapshot(self, key: tuple[str, str, str]) -> None:
         snapshot = self.load_image_snapshots.pop(key, None)
         if snapshot is not None:
             _delete_snapshot_preview(snapshot.preview)
@@ -557,7 +557,7 @@ class KritaApi:
     ) -> UpdateWorkflowsRequest | None:
         return self._split_update_workflows_request_per_sids(self._last_workflows_request).get(sid, None)
 
-    def has_workflow_node(self, document_id: str, node_id: int, node_type: str) -> bool:
+    def has_workflow_node(self, document_id: str, node_id: str, node_type: str) -> bool:
         """Return whether the active workflow contains the specified node."""
         workflow_nodes = self._last_workflows_request.workflows.get(document_id, [])
         return any(node.id == node_id and node.type == node_type for node in workflow_nodes)
