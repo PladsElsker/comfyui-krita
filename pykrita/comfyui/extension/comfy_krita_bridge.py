@@ -303,7 +303,11 @@ class ComfyKritaBridge(QObject):
                 elif isinstance(state, LoadImageState):
                     key = (state.document_id, state.id, state.type)
                     pending = self._pending_load_image_snapshots.get(key)
-                    if pending is not None and pending[1].snapshot_revision == state.snapshot_revision:
+                    if (
+                        pending is not None
+                        and pending[1].selection_generation == state.selection_generation
+                        and pending[1].snapshot_revision == state.snapshot_revision
+                    ):
                         continue
 
                     cached = self._load_image_snapshots.get(key)
