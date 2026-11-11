@@ -313,11 +313,6 @@ class LoadImageNode(ComfyUiNode):
             return
         self._queue_projection_capture(self.layer_ids, self.layer_names)
 
-    def _selection_accepted(self, selected_nodes: list[KritaNode]) -> None:
-        layer_ids = [str(layer.uniqueId()) for layer in selected_nodes]
-        layer_names = [layer.name() for layer in selected_nodes]
-        self._queue_projection_capture(layer_ids, layer_names)
-
     def _queue_projection_capture(self, layer_ids: list[str], layer_names: list[str]) -> None:
         if self._disposed:
             return
