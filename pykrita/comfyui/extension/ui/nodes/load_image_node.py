@@ -559,7 +559,12 @@ class LoadImageNode(ComfyUiNode):
         self._start_latest_projection_capture()
 
     def snapshot_uploaded(self, state: LoadImageState) -> None:
-        if self._pending_state is None or self._pending_state.snapshot_revision != state.snapshot_revision:
+        if (
+            self._pending_state is None
+            or self._pending_state.snapshot_revision != state.snapshot_revision
+            or self._pending_state.selection_generation != state.selection_generation
+            or self._pending_state.placeholder != state.placeholder
+        ):
             return
 
         self._pending_state = None
@@ -574,7 +579,12 @@ class LoadImageNode(ComfyUiNode):
         self._start_latest_projection_capture()
 
     def snapshot_upload_failed(self, state: LoadImageState, error: str) -> None:
-        if self._pending_state is None or self._pending_state.snapshot_revision != state.snapshot_revision:
+        if (
+            self._pending_state is None
+            or self._pending_state.snapshot_revision != state.snapshot_revision
+            or self._pending_state.selection_generation != state.selection_generation
+            or self._pending_state.placeholder != state.placeholder
+        ):
             return
 
         self._pending_state = None
