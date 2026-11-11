@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from krita import Document, Node
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtWidgets import (
@@ -14,7 +13,12 @@ from PyQt5.QtWidgets import (
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
+
+if TYPE_CHECKING:
+    from krita import Document, Node
+
 
 SelectionMode = Literal["single", "multiple"]
 
@@ -51,7 +55,7 @@ class LayerSelectionDialog(QDialog):
         mode: SelectionMode,
         selected_ids: list[str] | None = None,
         allow_empty: bool = False,
-        parent=None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("LayerSelectionDialog")
@@ -226,7 +230,7 @@ def select_layers(
     mode: SelectionMode,
     selected_ids: list[str] | None = None,
     allow_empty: bool = False,
-    parent=None,
+    parent: QWidget | None = None,
 ) -> list[Node] | None:
     dialog = LayerSelectionDialog(
         document,
