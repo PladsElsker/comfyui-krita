@@ -290,7 +290,6 @@ async function updateKritaLoadImagePreview(state, preview) {
 
     if(kritaLoadImagePreviewRevisions.get(node) === state.snapshot_revision) return;
 
-    // A later snapshot supersedes any preview fetch already in flight.
     const requestId = (kritaLoadImagePreviewRequests.get(node) ?? 0) + 1;
     kritaLoadImagePreviewRequests.set(node, requestId);
     const params = new URLSearchParams({
@@ -311,45 +310,43 @@ async function updateKritaLoadImagePreview(state, preview) {
         return;
     }
 
-    const image = new Image();
-    image.onload = () => {
-        if(
-            kritaLoadImagePreviewRequests.get(node) !== requestId ||
-            !getInternalKritaNodes().includes(node)
-        ) {
-            URL.revokeObjectURL(objectUrl);
-            return;
-        }
+    const vueApp = document.getElementById("vue-app")?.__vue_app__;
+    const pinia = vueApp?.config?.globalProperties?.$pinia;
 
-        const pinia = document.getElementById("vue-app")
-            ?.__vue_app__?.config?.globalProperties?.$pinia;
-        const nodeOutputStore = pinia?._s?.get?.("nodeOutput");
-        const workflowStore = pinia?._s?.get?.("workflow");
-        const locatorId = workflowStore?.nodeToNodeLocatorId?.(node) ?? String(node.id);
-        if(typeof nodeOutputStore?.setNodePreviewsByLocatorId === "function") {
-            // This is ComfyUI's reactive preview store used by its Vue nodes.
-            nodeOutputStore.setNodePreviewsByLocatorId(locatorId, [objectUrl]);
-        }
-        else {
-            // Legacy LiteGraph canvas preview fallback.
-            const previousUrl = node._kritaLoadImagePreviewUrl;
-            node.imgs = [image];
-            node.images = [{
-                filename: preview.filename,
-                subfolder: preview.subfolder ?? "",
-                type: preview.type ?? "temp",
-            }];
-            node.imageIndex = 0;
-            if(previousUrl && previousUrl !== objectUrl) URL.revokeObjectURL(previousUrl);
-        }
+    // ComfyUI initializes nodeOutput lazily from the LiteGraph draw hook.
+    // Calling it once ensures Pinia has a live reactive preview store before
+    // writing the URL; assigning node.imgs alone only reserves canvas space.
+    if(typeof node.onDrawBackground === "function") {
+        node.onDrawBackground();
+    }
 
-        node._kritaLoadImagePreviewUrl = objectUrl;
-        if(app.nodePreviewImages) app.nodePreviewImages[locatorId] = [objectUrl];
-        node.setDirtyCanvas?.(true, true);
-        kritaLoadImagePreviewRevisions.set(node, state.snapshot_revision);
-    };
-    image.onerror = () => URL.revokeObjectURL(objectUrl);
-    image.src = objectUrl;
+    const nodeOutputStore = pinia?._s?.get?.("nodeOutput");
+    const workflowStore = pinia?._s?.get?.("workflow");
+    const locatorId = workflowStore?.nodeToNodeLocatorId?.(node)
+        ?? (node.graph && node.graph !== app.graph && node.graph.id
+            ? `${node.graph.id}:${node.id}`
+            : String(node.id));
+
+    if(typeof nodeOutputStore?.setNodePreviewsByLocatorId === "function") {
+        nodeOutputStore.setNodePreviewsByLocatorId(locatorId, [objectUrl]);
+    }
+    else if(app.nodePreviewImages) {
+        // Older ComfyUI builds without a mounted Pinia store seed it from this
+        // legacy map when the draw hook initializes nodeOutput.
+        app.nodePreviewImages[locatorId] = [objectUrl];
+    }
+    else {
+        URL.revokeObjectURL(objectUrl);
+        throw new Error("ComfyUI's node preview store is not available");
+    }
+
+    node._kritaLoadImagePreviewUrl = objectUrl;
+    node.graph?.setDirtyCanvas?.(true, true);
+    node.setDirtyCanvas?.(true, true);
+
+    // Refresh the node's preview immediately after the reactive store changes.
+    node.onDrawBackground?.();
+    kritaLoadImagePreviewRevisions.set(node, state.snapshot_revision);
 }
 
 
