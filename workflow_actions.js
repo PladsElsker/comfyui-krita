@@ -328,6 +328,14 @@ function setNodeMetadataValue(node, widget, value) {
     widget.value = serialized;
     node.graph?.change?.();
     node.setDirtyCanvas?.(true, true);
+
+    // The workflow ChangeTracker compares execution-relevant serialized
+    // widgets, then emits ComfyUI's auto-queue event when Run on Change is
+    // enabled. Calling it here is necessary for websocket-originated updates,
+    // which do not originate from a canvas mouse/key event.
+    if(node.type === KRITA_LOAD_IMAGE_NODE_TYPE) {
+        getComfyWorkflowStore()?.activeWorkflow?.changeTracker?.captureCanvasState?.();
+    }
 }
 
 
