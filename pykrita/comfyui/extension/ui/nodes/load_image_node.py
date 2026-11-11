@@ -22,16 +22,12 @@ from comfyui.extension.layer_tree.selection_exporter import capture_selected_lay
 from comfyui.extension.layer_tree.document_change_tracker import document_change_tracker
 from comfyui.extension.layer_tree.selection_modal import iter_layer_nodes, select_layers
 from comfyui.extension.models import LoadImageState, Node, UiNodeState
-from comfyui.extension.ui.icons import (
-    STACKS_ICON,
-    render_svg_to_pixmap,
-)
+from comfyui.extension.ui.icons import STACKS_ICON
 from comfyui.extension.ui.micro.buttons import TargetEditButton
 
 from .comfyui_node import ComfyUiNode
 
 LOGGER = logging.getLogger(__name__)
-
 
 
 MAX_EXPORT_PLACEHOLDER_PIXELS = 16_000_000
