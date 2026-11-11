@@ -287,10 +287,7 @@ class LoadImageNode(ComfyUiNode):
         if self._disposed:
             return
 
-        nodes_by_id = {
-            str(node.uniqueId()): node
-            for node in iter_layer_nodes(self.document.rootNode())
-        }
+        nodes_by_id = {str(node.uniqueId()): node for node in iter_layer_nodes(self.document.rootNode())}
         remaining_ids = [layer_id for layer_id in self.layer_ids if layer_id in nodes_by_id]
         remaining_names = [nodes_by_id[layer_id].name() for layer_id in remaining_ids]
         selection_changed = remaining_ids != self.layer_ids or remaining_names != self.layer_names
