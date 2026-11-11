@@ -93,6 +93,26 @@ def _encode_projection_png(projection: QImage) -> bytes:
     return image_data
 
 
+def _create_transparent_black_projection(dimensions: tuple[int, int] | None) -> QImage:
+    if dimensions is None:
+        message = "The blank Load Image preview requires document dimensions"
+        raise ValueError(message)
+
+    width, height = dimensions
+    if width < 1 or height < 1 or width * height > MAX_EXPORT_PLACEHOLDER_PIXELS:
+        message = "The Krita document dimensions exceed the supported Load Image preview size"
+        raise ValueError(message)
+
+    projection = QImage(width, height, QImage.Format.Format_RGBA8888)
+    if projection.isNull():
+        message = "Krita could not allocate the blank Load Image preview"
+        raise RuntimeError(message)
+
+    # Zero RGBA bytes represent black RGB with fully transparent alpha.
+    projection.fill(0)
+    return projection
+
+
 class _ProjectionExportTask(QRunnable):
     def __init__(
         self,
@@ -124,19 +144,7 @@ class _ProjectionExportTask(QRunnable):
                 )
                 self.signals.scratch_document_ready.emit(scratch_document)
             else:
-                if self.blank_dimensions is None:
-                    message = "The blank Load Image preview requires document dimensions"
-                    raise ValueError(message)
-                width, height = self.blank_dimensions
-                if width < 1 or height < 1 or width * height > MAX_EXPORT_PLACEHOLDER_PIXELS:
-                    message = "The Krita document dimensions exceed the supported Load Image preview size"
-                    raise ValueError(message)
-                projection = QImage(width, height, QImage.Format.Format_RGBA8888)
-                if projection.isNull():
-                    message = "Krita could not allocate the blank Load Image preview"
-                    raise RuntimeError(message)
-                # Zero RGBA bytes represent black RGB with fully transparent alpha.
-                projection.fill(0)
+                projection = _create_transparent_black_projection(self.blank_dimensions)
 
             revision = _projection_revision(projection)
             state = self.state.model_copy(
