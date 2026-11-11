@@ -255,6 +255,10 @@ export function applyKritaNodeState(state) {
 function removeKritaNodeState(deleted) {
     if(!deleted?.document_id || deleted.id === undefined || !deleted.type) return;
 
+    if(deleted.type === KRITA_LOAD_IMAGE_NODE_TYPE) {
+        clearKritaLoadImagePreview(deleted);
+    }
+
     const key = kritaNodeStateKey(deleted.document_id, deleted.id, deleted.type);
     kritaNodeStateEventRevisions.set(key, (kritaNodeStateEventRevisions.get(key) ?? 0) + 1);
     kritaNodeStateCache.delete(key);
@@ -355,7 +359,11 @@ async function updateKritaLoadImagePreview(state, preview) {
     }
 
     const objectUrl = URL.createObjectURL(await response.blob());
-    if(kritaLoadImagePreviewRequests.get(node) !== requestId) {
+    if(
+        kritaLoadImagePreviewRequests.get(node) !== requestId ||
+        findKritaNodeByLocator(state.id, KRITA_LOAD_IMAGE_NODE_TYPE) !== node ||
+        findKritaWidget(node, DOCUMENT_WIDGET_LABEL)?.value !== state.document_id
+    ) {
         URL.revokeObjectURL(objectUrl);
         return;
     }
@@ -373,6 +381,8 @@ async function updateKritaLoadImagePreview(state, preview) {
     else if(app.nodePreviewImages) {
         // Older ComfyUI builds without a mounted Pinia store seed it from this
         // legacy map when the draw hook initializes nodeOutput.
+        const previousUrl = node._kritaLoadImagePreviewUrl;
+        if(previousUrl) URL.revokeObjectURL(previousUrl);
         app.nodePreviewImages[locatorId] = [objectUrl];
     }
     else {
