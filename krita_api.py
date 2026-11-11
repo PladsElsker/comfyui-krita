@@ -277,64 +277,53 @@ class KritaApi:
         )
         return transfer_id
 
-    @prune_sids
-    async def store_load_image_snapshot(
+    def _validate_snapshot_commit_state(self, sid: str, state: LoadImageState) -> None:
+        _validate_snapshot_owner(self, sid, state)
+        _validate_snapshot_metadata(self, state)
+        _validate_load_image_snapshot_generation(self, sid, state)
+
+    async def _prepare_load_image_snapshot_preview(
         self,
         sid: str,
         state: LoadImageState,
         image_data: bytes,
-    ) -> dict[str, bool | str]:
-        _validate_snapshot_owner(self, sid, state)
-        _validate_snapshot_metadata(self, state)
-        _validate_load_image_snapshot_generation(self, sid, state)
-        if len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_BYTES:
-            message = f"The Krita image snapshot exceeds the {MAX_LOAD_IMAGE_SNAPSHOT_BYTES}-byte limit"
-            raise ValueError(message)
+        revision: str,
+    ) -> tuple[LoadImageSnapshot | None, dict[str, str] | None]:
+        existing = self.load_image_snapshots.get((state.document_id, state.id, state.type))
+        if existing is not None and existing.state.snapshot_revision == revision:
+            return existing, None
 
-        revision = await asyncio.to_thread(
-            _snapshot_revision,
-            image_data,
-            require_transparent_black=state.placeholder,
-        )
-        canonical_state = state.model_copy(update={"snapshot_revision": revision})
-        _validate_snapshot_owner(self, sid, canonical_state)
-        _validate_snapshot_metadata(self, canonical_state)
-        _validate_load_image_snapshot_generation(self, sid, canonical_state)
+        preview_candidate = await asyncio.to_thread(_write_snapshot_preview, image_data)
+        try:
+            self._validate_snapshot_commit_state(sid, state)
+        except Exception:
+            _delete_snapshot_preview(preview_candidate)
+            raise
 
-        key = (state.document_id, state.id, state.type)
-        existing = self.load_image_snapshots.get(key)
-        changed = existing is None or existing.state.snapshot_revision != revision
-        preview_candidate: dict[str, str] | None = None
+        # Re-check after the asynchronous write in case a matching upload
+        # committed while the preview file was being created.
+        existing = self.load_image_snapshots.get((state.document_id, state.id, state.type))
+        if existing is not None and existing.state.snapshot_revision == revision:
+            _delete_snapshot_preview(preview_candidate)
+            return existing, None
 
-        if changed:
-            preview_candidate = await asyncio.to_thread(_write_snapshot_preview, image_data)
-            try:
-                _validate_snapshot_owner(self, sid, canonical_state)
-                _validate_snapshot_metadata(self, canonical_state)
-                _validate_load_image_snapshot_generation(self, sid, canonical_state)
-            except Exception:
-                _delete_snapshot_preview(preview_candidate)
-                raise
+        return existing, preview_candidate
 
-            # Another upload can finish while the preview file is being
-            # written. Reuse the committed preview if its pixels now match.
-            existing = self.load_image_snapshots.get(key)
-            changed = existing is None or existing.state.snapshot_revision != revision
-            if not changed:
-                _delete_snapshot_preview(preview_candidate)
-                preview_candidate = None
-
-        # Plan LRU evictions without mutating the cache. A rejected upload
-        # must not evict otherwise valid snapshots.
+    def _plan_load_image_snapshot_evictions(
+        self,
+        key: tuple[str, str, str],
+        existing: LoadImageSnapshot | None,
+        incoming_size: int,
+    ) -> list[tuple[str, str, str]]:
         total_bytes = sum(len(snapshot.data) for snapshot in self.load_image_snapshots.values())
         if existing is not None:
             total_bytes -= len(existing.data)
-        planned_evictions: list[tuple[str, str, str]] = []
         planned_count = len(self.load_image_snapshots) - (1 if existing is not None else 0)
+        planned_evictions: list[tuple[str, str, str]] = []
 
         while (
             (planned_count >= MAX_LOAD_IMAGE_SNAPSHOTS and existing is None)
-            or total_bytes + len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES
+            or total_bytes + incoming_size > MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES
         ):
             candidates = [
                 candidate_key
@@ -342,8 +331,6 @@ class KritaApi:
                 if candidate_key != key and candidate_key not in planned_evictions
             ]
             if not candidates:
-                if preview_candidate is not None:
-                    _delete_snapshot_preview(preview_candidate)
                 message = "The ComfyUI Krita snapshot cache is full"
                 raise ValueError(message)
 
@@ -355,45 +342,26 @@ class KritaApi:
             total_bytes -= len(self.load_image_snapshots[oldest_key].data)
             planned_count -= 1
 
-        # There is no await from the final generation check through the cache
-        # commit. A newer state update therefore cannot interleave here.
-        try:
-            _validate_snapshot_owner(self, sid, canonical_state)
-            _validate_snapshot_metadata(self, canonical_state)
-            _validate_load_image_snapshot_generation(self, sid, canonical_state)
-        except Exception:
-            if preview_candidate is not None:
-                _delete_snapshot_preview(preview_candidate)
-            raise
+        return planned_evictions
 
-        existing = self.load_image_snapshots.get(key)
-        if existing is not None and existing.state.snapshot_revision == revision:
-            changed = False
-            preview = existing.preview
-            if preview_candidate is not None:
-                _delete_snapshot_preview(preview_candidate)
-                preview_candidate = None
-        else:
-            changed = True
-            preview = preview_candidate
-            if preview is None:
-                message = "A preview image could not be prepared for the new Krita snapshot"
-                raise RuntimeError(message)
-
-        evicted_events: list[tuple[str, dict[str, object]]] = []
-        for evicted_key in planned_evictions:
-            evicted = self.load_image_snapshots.pop(evicted_key)
-            _delete_snapshot_preview(evicted.preview)
+    def _evict_load_image_snapshots(
+        self,
+        keys: list[tuple[str, str, str]],
+    ) -> list[tuple[str, dict[str, object]]]:
+        events: list[tuple[str, dict[str, object]]] = []
+        for key in keys:
+            snapshot = self.load_image_snapshots.pop(key)
+            _delete_snapshot_preview(snapshot.preview)
 
             for owner_sid, owner_states in self.node_states.items():
-                evicted_state = owner_states.get(evicted_key)
+                evicted_state = owner_states.get(key)
                 if not isinstance(evicted_state, LoadImageState):
                     continue
                 invalidated_state = evicted_state.model_copy(
                     update={"snapshot_revision": "", "snapshot_pending": True},
                 )
-                owner_states[evicted_key] = invalidated_state
-                evicted_events.append(
+                owner_states[key] = invalidated_state
+                events.append(
                     (
                         owner_sid,
                         {
@@ -404,6 +372,58 @@ class KritaApi:
                     ),
                 )
 
+        return events
+
+    @prune_sids
+    async def store_load_image_snapshot(
+        self,
+        sid: str,
+        state: LoadImageState,
+        image_data: bytes,
+    ) -> dict[str, bool | str]:
+        self._validate_snapshot_commit_state(sid, state)
+        if len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_BYTES:
+            message = f"The Krita image snapshot exceeds the {MAX_LOAD_IMAGE_SNAPSHOT_BYTES}-byte limit"
+            raise ValueError(message)
+
+        revision = await asyncio.to_thread(
+            _snapshot_revision,
+            image_data,
+            require_transparent_black=state.placeholder,
+        )
+        canonical_state = state.model_copy(update={"snapshot_revision": revision})
+        self._validate_snapshot_commit_state(sid, canonical_state)
+
+        key = (state.document_id, state.id, state.type)
+        existing, preview_candidate = await self._prepare_load_image_snapshot_preview(
+            sid,
+            canonical_state,
+            image_data,
+            revision,
+        )
+        try:
+            evicted_keys = self._plan_load_image_snapshot_evictions(key, existing, len(image_data))
+            self._validate_snapshot_commit_state(sid, canonical_state)
+        except Exception:
+            if preview_candidate is not None:
+                _delete_snapshot_preview(preview_candidate)
+            raise
+
+        # No await occurs between this final validation and the cache commit.
+        existing = self.load_image_snapshots.get(key)
+        if existing is not None and existing.state.snapshot_revision == revision:
+            preview = existing.preview
+            changed = False
+            if preview_candidate is not None:
+                _delete_snapshot_preview(preview_candidate)
+        else:
+            if preview_candidate is None:
+                message = "A preview image could not be prepared for the new Krita snapshot"
+                raise RuntimeError(message)
+            preview = preview_candidate
+            changed = True
+
+        evicted_events = self._evict_load_image_snapshots(evicted_keys)
         self.load_image_snapshots[key] = LoadImageSnapshot(
             state=canonical_state,
             data=image_data,
