@@ -7,7 +7,6 @@ from krita import DockWidget, Document, Node as KritaNode, Window
 from PyQt5.QtCore import (
     QTimer,
     QByteArray,
-    QSize,
     QBuffer,
     QIODevice,
     Qt,
@@ -17,9 +16,7 @@ from PyQt5.QtCore import (
     pyqtSignal,
     pyqtSlot,
 )
-from PyQt5.QtGui import QIcon, QImage, QPalette
-from PyQt5.QtSvg import QSvgRenderer
-from PyQt5.QtWidgets import QToolButton
+from PyQt5.QtGui import QImage
 
 from comfyui.extension.layer_tree.selection_exporter import capture_selected_layers_projection
 from comfyui.extension.layer_tree.document_change_tracker import document_change_tracker
@@ -35,13 +32,6 @@ from .comfyui_node import ComfyUiNode
 
 LOGGER = logging.getLogger(__name__)
 
-
-def _walk_layer_tree(parent: KritaNode) -> list[KritaNode]:
-    nodes: list[KritaNode] = []
-    for child in parent.childNodes():
-        nodes.append(child)
-        nodes.extend(_walk_layer_tree(child))
-    return nodes
 
 
 MAX_EXPORT_PLACEHOLDER_PIXELS = 16_000_000
@@ -221,20 +211,6 @@ class LoadImageNode(ComfyUiNode):
         # this document. The modal itself never changes Krita's native selection.
         self._change_tracker.watch(document, window, self, self._on_document_changed)
 
-    def _create_action_button(self, icon_renderer: QSvgRenderer, tooltip: str) -> QToolButton:
-        button = QToolButton(self)
-        button.setAutoRaise(True)
-        button.setContentsMargins(0, 0, 0, 0)
-        button.setToolTip(tooltip)
-
-        color = button.palette().color(QPalette.ColorRole.ButtonText)
-        pixmap = render_svg_to_pixmap(icon_renderer, size=QSize(20, 20), color=color)
-        if pixmap:
-            button.setIconSize(pixmap.size())
-            button.setIcon(QIcon(pixmap))
-
-        return button
-
     def initialize_state(self) -> None:
         if self.layer_ids or self.snapshot_revision or self.snapshot_pending:
             return
@@ -328,17 +304,16 @@ class LoadImageNode(ComfyUiNode):
             self._schedule_live_refresh()
 
     def _schedule_live_refresh(self) -> None:
-        if not self.layer_ids or self.layer_picker.is_editing:
+        if not self.layer_ids or self._modal_active:
             return
         self._live_refresh_timer.start()
 
     def _refresh_selected_projection(self) -> None:
-        if not self.layer_ids or self.layer_picker.is_editing or self._disposed:
+        if not self.layer_ids or self._modal_active or self._disposed:
             return
         self._queue_projection_capture(self.layer_ids, self.layer_names)
 
     def _selection_accepted(self, selected_nodes: list[KritaNode]) -> None:
-        self._reset_edit_controls()
         layer_ids = [str(layer.uniqueId()) for layer in selected_nodes]
         layer_names = [layer.name() for layer in selected_nodes]
         self._queue_projection_capture(layer_ids, layer_names)
