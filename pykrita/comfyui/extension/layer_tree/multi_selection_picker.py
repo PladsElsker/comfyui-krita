@@ -3,7 +3,7 @@ from contextlib import suppress
 import logging
 
 from krita import Document, Node, View, Window
-from PyQt5.QtCore import QEvent, QItemSelectionModel, QModelIndex, QObject, Qt, pyqtSignal
+from PyQt5.QtCore import QAbstractItemModel, QEvent, QItemSelectionModel, QModelIndex, QObject, Qt, QTimer, pyqtSignal
 from PyQt5.QtWidgets import QApplication, QAbstractItemView, QTreeView
 
 from .selection_session import (
@@ -31,6 +31,7 @@ class LayerMultiSelectionPicker(QObject):
 
     selection_accepted = pyqtSignal(object)
     cancelled = pyqtSignal()
+    tree_changed = pyqtSignal()
 
     def __init__(self, window: Window, document: Document, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -44,6 +45,9 @@ class LayerMultiSelectionPicker(QObject):
         self._previous_active_node_id: str | None = None
         self._previous_selection_mode: QAbstractItemView.SelectionMode | None = None
         self._event_filter_installed = False
+        self._watched_model: QAbstractItemModel | None = None
+        self.window.activeViewChanged.connect(self._on_window_active_view_changed)
+        self._ensure_tree_model_watch()
 
     @property
     def is_editing(self) -> bool:
@@ -83,6 +87,12 @@ class LayerMultiSelectionPicker(QObject):
             self._editing = True
 
             layer_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+
+            # Krita's LayerBox reselects the active node whenever its selection
+            # becomes empty. Move the active node to the invisible root first,
+            # otherwise clearSelection() re-adds the user's previous active
+            # layer before the Load Image selection is applied.
+            self.document.setActiveNode(self.document.rootNode())
             selection_model.clearSelection()
             selection_model.setCurrentIndex(QModelIndex(), QItemSelectionModel.SelectionFlag.NoUpdate)
 
@@ -107,8 +117,8 @@ class LayerMultiSelectionPicker(QObject):
             # Krita tracks the active node independently from the Qt selection
             # model. Clear the old single-layer active highlight as well as its
             # selection-model row before entering multi-selection mode.
-            active_selection_node = selected_nodes[0] if selected_nodes else self.document.rootNode()
-            self.document.setActiveNode(active_selection_node)
+            if selected_nodes:
+                self.document.setActiveNode(selected_nodes[0])
 
             self.window.activeViewChanged.connect(self._on_active_view_changed)
             app = QApplication.instance()
@@ -121,6 +131,59 @@ class LayerMultiSelectionPicker(QObject):
             else:
                 self._clear_session()
             raise
+
+    def cleanup(self) -> None:
+        if self._editing:
+            self.cancel()
+        with suppress(TypeError, RuntimeError):
+            self.window.activeViewChanged.disconnect(self._on_window_active_view_changed)
+        self._disconnect_tree_model_watch()
+
+    def _on_window_active_view_changed(self, *_args: object) -> None:
+        self._ensure_tree_model_watch()
+
+    def _ensure_tree_model_watch(self) -> None:
+        layer_view = self._find_layer_view()
+        model = layer_view.model() if layer_view is not None else None
+        if model is self._watched_model:
+            return
+
+        self._disconnect_tree_model_watch()
+        if model is None:
+            return
+
+        self._watched_model = model
+        for signal in (
+            model.rowsInserted,
+            model.rowsRemoved,
+            model.rowsMoved,
+            model.layoutChanged,
+            model.modelReset,
+            model.dataChanged,
+        ):
+            signal.connect(self._on_tree_model_changed)
+
+    def _disconnect_tree_model_watch(self) -> None:
+        model = self._watched_model
+        if model is None:
+            return
+
+        with suppress(TypeError, RuntimeError):
+            for signal in (
+                model.rowsInserted,
+                model.rowsRemoved,
+                model.rowsMoved,
+                model.layoutChanged,
+                model.modelReset,
+                model.dataChanged,
+            ):
+                signal.disconnect(self._on_tree_model_changed)
+        self._watched_model = None
+
+    def _on_tree_model_changed(self, *_args: object) -> None:
+        # Run after Krita has completed its layer-tree mutation. A selected
+        # group can therefore be re-rendered when child layers are inserted.
+        QTimer.singleShot(0, self.tree_changed.emit)
 
     def accept(self) -> list[Node]:
         if not self._editing:
