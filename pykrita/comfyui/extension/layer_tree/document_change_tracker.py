@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, ClassVar
 
-from PyQt5.QtCore import QEvent, QObject, QTimer
+from PyQt5.QtCore import QEvent, QObject, QTimer, Qt
 from PyQt5.QtWidgets import QApplication, QWidget
 
 if TYPE_CHECKING:
@@ -18,6 +18,7 @@ _INPUT_EVENTS = {
     QEvent.Type.TouchEnd,
     QEvent.Type.KeyRelease,
     QEvent.Type.Shortcut,
+    QEvent.Type.Drop,
 }
 
 
@@ -84,7 +85,7 @@ class DocumentChangeTracker(QObject):
             return super().eventFilter(watched, event)
         if self._is_integration_dialog(watched):
             return super().eventFilter(watched, event)
-        is_content_input = True if event.type() == QEvent.Type.Shortcut else self._is_content_input_widget(watched)
+        is_content_input = True if event.type() == QEvent.Type.Shortcut else self._is_content_input_widget(watched, event)
         if not is_content_input:
             return super().eventFilter(watched, event)
 
@@ -115,7 +116,7 @@ class DocumentChangeTracker(QObject):
         return False
 
     @staticmethod
-    def _is_content_input_widget(watched: QObject) -> bool:
+    def _is_content_input_widget(watched: QObject, event: QEvent) -> bool:
         current = watched
         is_layer_name_editor = False
         while current is not None:
@@ -128,7 +129,11 @@ class DocumentChangeTracker(QObject):
                 if class_name in _CANVAS_WIDGET_TYPES or class_name in _CONTENT_TOOL_WIDGET_TYPES:
                     return True
                 if current.objectName() == "listLayers":
-                    return is_layer_name_editor
+                    if is_layer_name_editor or event.type() == QEvent.Type.Drop:
+                        return True
+                    if event.type() == QEvent.Type.KeyRelease:
+                        return event.key() in {Qt.Key.Key_Delete, Qt.Key.Key_Backspace, Qt.Key.Key_F2}
+                    return False
                 current = current.parentWidget()
             else:
                 current = current.parent()
