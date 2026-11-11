@@ -54,6 +54,7 @@ class LoadImageState(BaseModel):
     layer_ids: list[str] = Field(default_factory=list)
     layer_names: list[str] = Field(default_factory=list)
     snapshot_revision: str = ""
+    selection_generation: int = 0
 
 
 class LoadImageExecutionState(BaseModel):
