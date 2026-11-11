@@ -321,14 +321,9 @@ class KritaApi:
         planned_count = len(self.load_image_snapshots) - (1 if existing is not None else 0)
         planned_evictions: list[tuple[str, str, str]] = []
 
-        while (
-            (planned_count >= MAX_LOAD_IMAGE_SNAPSHOTS and existing is None)
-            or total_bytes + incoming_size > MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES
-        ):
+        while (planned_count >= MAX_LOAD_IMAGE_SNAPSHOTS and existing is None) or total_bytes + incoming_size > MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES:
             candidates = [
-                candidate_key
-                for candidate_key in self.load_image_snapshots
-                if candidate_key != key and candidate_key not in planned_evictions
+                candidate_key for candidate_key in self.load_image_snapshots if candidate_key != key and candidate_key not in planned_evictions
             ]
             if not candidates:
                 message = "The ComfyUI Krita snapshot cache is full"
