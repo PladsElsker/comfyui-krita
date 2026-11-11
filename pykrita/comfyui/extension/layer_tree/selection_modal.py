@@ -16,8 +16,6 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
 )
 
-from ..models import KritaLayerType
-
 SelectionMode = Literal["single", "multiple"]
 
 SELECTABLE_LAYER_TYPES = {
