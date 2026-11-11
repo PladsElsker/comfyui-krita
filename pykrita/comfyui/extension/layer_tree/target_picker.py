@@ -26,6 +26,7 @@ class LayerTargetPicker(QObject):
     target_selected = pyqtSignal(object)
     target_removed = pyqtSignal(str)
     target_renamed = pyqtSignal(str)
+    target_position_changed = pyqtSignal(object)
     cancelled = pyqtSignal()
 
     def __init__(self, window: Window, document: Document, parent: QObject | None = None) -> None:
@@ -70,10 +71,23 @@ class LayerTargetPicker(QObject):
 
         self._disconnect_model_watch()
         self._watched_model = model
-        model.rowsAboutToBeRemoved.connect(self._on_model_structure_about_to_change)
-        model.rowsRemoved.connect(self._on_model_structure_changed)
-        model.modelAboutToBeReset.connect(self._on_model_structure_about_to_change)
-        model.modelReset.connect(self._on_model_structure_changed)
+        for signal in (
+            model.rowsAboutToBeInserted,
+            model.rowsAboutToBeRemoved,
+            model.rowsAboutToBeMoved,
+            model.modelAboutToBeReset,
+            model.layoutAboutToBeChanged,
+        ):
+            signal.connect(self._on_model_structure_about_to_change)
+
+        for signal in (
+            model.rowsInserted,
+            model.rowsRemoved,
+            model.rowsMoved,
+            model.modelReset,
+            model.layoutChanged,
+        ):
+            signal.connect(self._on_model_structure_changed)
         model.dataChanged.connect(self._on_model_data_changed)
 
     def _disconnect_model_watch(self) -> None:
@@ -82,10 +96,16 @@ class LayerTargetPicker(QObject):
 
         model = self._watched_model
         for signal, callback in (
+            (model.rowsAboutToBeInserted, self._on_model_structure_about_to_change),
             (model.rowsAboutToBeRemoved, self._on_model_structure_about_to_change),
-            (model.rowsRemoved, self._on_model_structure_changed),
+            (model.rowsAboutToBeMoved, self._on_model_structure_about_to_change),
             (model.modelAboutToBeReset, self._on_model_structure_about_to_change),
+            (model.layoutAboutToBeChanged, self._on_model_structure_about_to_change),
+            (model.rowsInserted, self._on_model_structure_changed),
+            (model.rowsRemoved, self._on_model_structure_changed),
+            (model.rowsMoved, self._on_model_structure_changed),
             (model.modelReset, self._on_model_structure_changed),
+            (model.layoutChanged, self._on_model_structure_changed),
             (model.dataChanged, self._on_model_data_changed),
         ):
             with suppress(TypeError, RuntimeError):
@@ -133,6 +153,8 @@ class LayerTargetPicker(QObject):
         elif target_name != self._watched_target_name:
             self._watched_target_name = target_name
             self.target_renamed.emit(target_name)
+
+        self.target_position_changed.emit(target)
 
     def _release_selection_commit_suppression(self) -> None:
         self._suppress_selection_commit = False
