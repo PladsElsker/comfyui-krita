@@ -54,12 +54,14 @@ class LayerSelectionDialog(QDialog):
         *,
         mode: SelectionMode,
         selected_ids: list[str] | None = None,
+        allow_empty: bool = False,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.document = document
         self.mode = mode
         self._selected_ids = set(selected_ids or [])
+        self.allow_empty = allow_empty
         self._nodes_by_id = index_layer_nodes(document)
         self._items_by_id: dict[str, QTreeWidgetItem] = {}
 
@@ -118,8 +120,8 @@ class LayerSelectionDialog(QDialog):
 
     def accept(self) -> None:
         selected_nodes = self.selected_nodes()
-        if not selected_nodes:
-            self.search_input.setPlaceholderText("Select at least one layer to continue")
+        if not selected_nodes and not self.allow_empty:
+            self.search_input.setPlaceholderText("Select a layer to continue")
             self.tree.setFocus()
             return
         super().accept()
@@ -197,12 +199,14 @@ def select_layers(
     *,
     mode: SelectionMode,
     selected_ids: list[str] | None = None,
+    allow_empty: bool = False,
     parent=None,
 ) -> list[Node] | None:
     dialog = LayerSelectionDialog(
         document,
         mode=mode,
         selected_ids=selected_ids,
+        allow_empty=allow_empty,
         parent=parent,
     )
     if dialog.exec_() != QDialog.DialogCode.Accepted:
