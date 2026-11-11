@@ -42,10 +42,6 @@ def iter_layer_nodes(parent: Node) -> list[Node]:
     return nodes
 
 
-def index_layer_nodes(document: Document) -> dict[str, Node]:
-    return {str(node.uniqueId()): node for node in iter_layer_nodes(document.rootNode())}
-
-
 class LayerSelectionDialog(QDialog):
     """Shared hierarchy browser used by the Save Image and Load Image edit modes."""
 
@@ -64,7 +60,6 @@ class LayerSelectionDialog(QDialog):
         self.mode = mode
         self._selected_ids = set(selected_ids or [])
         self.allow_empty = allow_empty
-        self._nodes_by_id = index_layer_nodes(document)
         self._items_by_id: dict[str, QTreeWidgetItem] = {}
 
         self.setWindowTitle("Select Krita layer" if mode == "single" else "Select Krita layers")
@@ -141,8 +136,11 @@ class LayerSelectionDialog(QDialog):
         # monopolize Krita's GUI thread while thumbnails are generated.
         for _ in range(min(32, len(self._pending_nodes))):
             node = self._pending_nodes.pop()
-            parent_id = str(node.parentNode().uniqueId()) if node.parentNode() is not None else None
-            parent_item = self.tree.invisibleRootItem() if parent_id is None else self._items_by_id.get(parent_id)
+            parent_node = node.parentNode()
+            if parent_node is None or parent_node.uniqueId() == self.document.rootNode().uniqueId():
+                parent_item = self.tree.invisibleRootItem()
+            else:
+                parent_item = self._items_by_id.get(str(parent_node.uniqueId()))
             if parent_item is None:
                 continue
             self._add_node(node, parent_item)
