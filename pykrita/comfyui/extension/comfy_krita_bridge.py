@@ -138,15 +138,15 @@ class ComfyKritaBridge(QObject):
         self._connected_node_lists: set[int] = set()
         self._image_downloads: dict[str, _ImageDownloadTask] = {}
         self._load_image_snapshots: dict[
-            tuple[str, int, str],
+            tuple[str, str, str],
             tuple[LoadImageState, bytes],
         ] = {}
         self._pending_load_image_snapshots: dict[
-            tuple[str, int, str],
+            tuple[str, str, str],
             tuple[object, LoadImageState, bytes],
         ] = {}
         self._active_load_image_snapshot_uploads: dict[
-            tuple[str, int, str],
+            tuple[str, str, str],
             _LoadImageUploadTask,
         ] = {}
         self._load_image_upload_attempts: dict[tuple[str, int, str, str], int] = {}
@@ -160,10 +160,10 @@ class ComfyKritaBridge(QObject):
         # document/node/type means only the newest pending value is sent.
         self._state_upload_pool = QThreadPool(self)
         self._state_upload_pool.setMaxThreadCount(1)
-        self._pending_node_state_updates: dict[tuple[str, int, str], dict] = {}
+        self._pending_node_state_updates: dict[tuple[str, str, str], dict] = {}
         self._node_state_upload_running = False
         self._node_state_upload_lock = threading.Lock()
-        self._node_state_upload_attempts: dict[tuple[str, int, str], int] = {}
+        self._node_state_upload_attempts: dict[tuple[str, str, str], int] = {}
         self._state_upload_retry_requested.connect(
             self._schedule_node_state_upload_retry,
             Qt.ConnectionType.QueuedConnection,
@@ -499,7 +499,7 @@ class ComfyKritaBridge(QObject):
                 with self._node_state_upload_lock:
                     self._node_state_upload_attempts.pop(key, None)
 
-    def _take_pending_node_state_batch(self) -> list[tuple[tuple[str, int, str], dict]]:
+    def _take_pending_node_state_batch(self) -> list[tuple[tuple[str, str, str], dict]]:
         with self._node_state_upload_lock:
             if not self._pending_node_state_updates:
                 self._node_state_upload_running = False
@@ -510,7 +510,7 @@ class ComfyKritaBridge(QObject):
 
     def _requeue_unsent_node_state_updates(
         self,
-        updates: list[tuple[tuple[str, int, str], dict]],
+        updates: list[tuple[tuple[str, str, str], dict]],
     ) -> None:
         with self._node_state_upload_lock:
             for key, payload in updates:
@@ -527,7 +527,7 @@ class ComfyKritaBridge(QObject):
 
     def _retry_unsent_node_state_updates(
         self,
-        updates: list[tuple[tuple[str, int, str], dict]],
+        updates: list[tuple[tuple[str, str, str], dict]],
     ) -> None:
         with self._node_state_upload_lock:
             for key, payload in updates:
