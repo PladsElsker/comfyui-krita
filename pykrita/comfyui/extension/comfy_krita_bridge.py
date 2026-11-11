@@ -348,6 +348,10 @@ class ComfyKritaBridge(QObject):
                 if not state.layer_ids:
                     self._load_image_snapshots.pop(key, None)
                     self._pending_load_image_snapshots.pop(key, None)
+                else:
+                    cached = self._load_image_snapshots.get(key)
+                    if cached is not None and cached[0].snapshot_revision == state.snapshot_revision:
+                        self._load_image_snapshots[key] = (state, cached[1])
             else:
                 return
             payload = {"deleted": False, "state": serialized_state}
