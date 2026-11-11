@@ -275,9 +275,10 @@ class LayerMultiSelectionPicker(QObject):
         selection_model = self._layer_view.selectionModel()
         nodes_by_id = {str(node.uniqueId()): node for node in self._walk_nodes(self.document.rootNode())}
         previous_active_node = nodes_by_id.get(self._previous_active_node_id)
-        if previous_active_node is not None:
-            self.document.setActiveNode(previous_active_node)
 
+        # Keep Krita from auto-selecting the active node when the selection is
+        # cleared. Restore the saved selection first, then restore activeNode.
+        self.document.setActiveNode(self.document.rootNode())
         selection_model.clearSelection()
         for node_id in self._previous_selection_ids:
             node = nodes_by_id.get(node_id)
@@ -291,6 +292,7 @@ class LayerMultiSelectionPicker(QObject):
         if previous_active_node is None:
             selection_model.setCurrentIndex(QModelIndex(), QItemSelectionModel.SelectionFlag.NoUpdate)
         else:
+            self.document.setActiveNode(previous_active_node)
             selection_model.setCurrentIndex(
                 self._index_for_node(previous_active_node),
                 QItemSelectionModel.SelectionFlag.NoUpdate,
