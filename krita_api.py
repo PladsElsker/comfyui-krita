@@ -291,8 +291,6 @@ class KritaApi:
             message = f"The Krita image snapshot exceeds the {MAX_LOAD_IMAGE_SNAPSHOT_BYTES}-byte limit"
             raise ValueError(message)
 
-        # Hashing and filesystem writes yield to the ComfyUI loop. Validate the
-        # generation again after those awaits, immediately before committing.
         revision = await asyncio.to_thread(
             _snapshot_revision,
             image_data,
@@ -306,7 +304,7 @@ class KritaApi:
         key = (state.document_id, state.id, state.type)
         existing = self.load_image_snapshots.get(key)
         changed = existing is None or existing.state.snapshot_revision != revision
-        preview = existing.preview if existing is not None else None
+        preview_candidate: dict[str, str] | None = None
 
         if changed:
             preview_candidate = await asyncio.to_thread(_write_snapshot_preview, image_data)
@@ -318,75 +316,93 @@ class KritaApi:
                 _delete_snapshot_preview(preview_candidate)
                 raise
 
-            # Another upload may have committed the same pixels while this
-            # worker wrote the preview file. Reuse that descriptor and remove
-            # the redundant candidate.
+            # Another upload can finish while the preview file is being
+            # written. Reuse the committed preview if its pixels now match.
             existing = self.load_image_snapshots.get(key)
             changed = existing is None or existing.state.snapshot_revision != revision
-            if changed:
-                preview = preview_candidate
-            else:
+            if not changed:
                 _delete_snapshot_preview(preview_candidate)
-                preview = existing.preview
+                preview_candidate = None
 
+        # Plan LRU evictions without mutating the cache. A rejected upload
+        # must not evict otherwise valid snapshots.
         total_bytes = sum(len(snapshot.data) for snapshot in self.load_image_snapshots.values())
         if existing is not None:
             total_bytes -= len(existing.data)
+        planned_evictions: list[tuple[str, str, str]] = []
+        planned_count = len(self.load_image_snapshots) - (1 if existing is not None else 0)
 
-        evicted_events: list[dict[str, object]] = []
         while (
-            len(self.load_image_snapshots) >= MAX_LOAD_IMAGE_SNAPSHOTS and existing is None
-        ) or total_bytes + len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES:
-            candidates = [candidate_key for candidate_key in self.load_image_snapshots if candidate_key != key]
+            (planned_count >= MAX_LOAD_IMAGE_SNAPSHOTS and existing is None)
+            or total_bytes + len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES
+        ):
+            candidates = [
+                candidate_key
+                for candidate_key in self.load_image_snapshots
+                if candidate_key != key and candidate_key not in planned_evictions
+            ]
             if not candidates:
-                break
+                if preview_candidate is not None:
+                    _delete_snapshot_preview(preview_candidate)
+                message = "The ComfyUI Krita snapshot cache is full"
+                raise ValueError(message)
 
             oldest_key = min(
                 candidates,
                 key=lambda candidate_key: self.load_image_snapshots[candidate_key].updated_at,
             )
-            oldest = self.load_image_snapshots.pop(oldest_key)
-            _delete_snapshot_preview(oldest.preview)
-            total_bytes -= len(oldest.data)
+            planned_evictions.append(oldest_key)
+            total_bytes -= len(self.load_image_snapshots[oldest_key].data)
+            planned_count -= 1
 
-            # Eviction must invalidate the workflow metadata too. Otherwise
-            # the node retains a digest for bytes that are no longer cached.
-            for registered_sid, sid_states in self.node_states.items():
-                evicted_state = sid_states.get(oldest_key)
+        # There is no await from the final generation check through the cache
+        # commit. A newer state update therefore cannot interleave here.
+        try:
+            _validate_snapshot_owner(self, sid, canonical_state)
+            _validate_snapshot_metadata(self, canonical_state)
+            _validate_load_image_snapshot_generation(self, sid, canonical_state)
+        except Exception:
+            if preview_candidate is not None:
+                _delete_snapshot_preview(preview_candidate)
+            raise
+
+        existing = self.load_image_snapshots.get(key)
+        if existing is not None and existing.state.snapshot_revision == revision:
+            changed = False
+            preview = existing.preview
+            if preview_candidate is not None:
+                _delete_snapshot_preview(preview_candidate)
+                preview_candidate = None
+        else:
+            changed = True
+            preview = preview_candidate
+            if preview is None:
+                message = "A preview image could not be prepared for the new Krita snapshot"
+                raise RuntimeError(message)
+
+        evicted_events: list[tuple[str, dict[str, object]]] = []
+        for evicted_key in planned_evictions:
+            evicted = self.load_image_snapshots.pop(evicted_key)
+            _delete_snapshot_preview(evicted.preview)
+
+            for owner_sid, owner_states in self.node_states.items():
+                evicted_state = owner_states.get(evicted_key)
                 if not isinstance(evicted_state, LoadImageState):
                     continue
                 invalidated_state = evicted_state.model_copy(
                     update={"snapshot_revision": "", "snapshot_pending": True},
                 )
-                sid_states[oldest_key] = invalidated_state
+                owner_states[evicted_key] = invalidated_state
                 evicted_events.append(
-                    {
-                        "deleted": False,
-                        "state": invalidated_state.model_dump(),
-                        "preview": None,
-                    },
+                    (
+                        owner_sid,
+                        {
+                            "deleted": False,
+                            "state": invalidated_state.model_dump(),
+                            "preview": None,
+                        },
+                    ),
                 )
-                break
-
-        if total_bytes + len(image_data) > MAX_LOAD_IMAGE_SNAPSHOT_TOTAL_BYTES or preview is None:
-            message = "The ComfyUI Krita snapshot cache is full"
-            raise ValueError(message)
-
-        # No await is allowed between this final generation check and the
-        # dictionary commit: a newer state update cannot interleave here.
-        _validate_snapshot_owner(self, sid, canonical_state)
-        _validate_snapshot_metadata(self, canonical_state)
-        _validate_load_image_snapshot_generation(self, sid, canonical_state)
-
-        existing = self.load_image_snapshots.get(key)
-        if existing is not None and existing.state.snapshot_revision == revision:
-            changed = False
-            if preview != existing.preview:
-                _delete_snapshot_preview(preview)
-            preview = existing.preview
-        elif existing is not None:
-            _delete_snapshot_preview(existing.preview)
-            changed = True
 
         self.load_image_snapshots[key] = LoadImageSnapshot(
             state=canonical_state,
@@ -396,14 +412,16 @@ class KritaApi:
         )
         self.node_states.setdefault(sid, {})[key] = canonical_state
 
-        event = {
-            "deleted": False,
-            "state": canonical_state.model_dump(),
-            "preview": preview,
-        }
-        await PromptServer.instance.send("krita::nodes::update", event)
-        for evicted_event in evicted_events:
-            await PromptServer.instance.send("krita::nodes::update", evicted_event)
+        await PromptServer.instance.send(
+            "krita::nodes::update",
+            {
+                "deleted": False,
+                "state": canonical_state.model_dump(),
+                "preview": preview,
+            },
+        )
+        for owner_sid, event in evicted_events:
+            await PromptServer.instance.send("krita::nodes::update", event, owner_sid)
 
         return {"snapshot_revision": revision, "changed": changed}
 
@@ -565,7 +583,7 @@ class KritaApi:
 
             deleted_key = (update.document_id, update.id, update.type)
             sid_states.pop(deleted_key, None)
-            self._remove_load_image_snapshot(deleted_key)
+            self.remove_load_image_snapshot(deleted_key)
             await PromptServer.instance.send(
                 "krita::nodes::update",
                 {
@@ -646,7 +664,7 @@ class KritaApi:
                 del self.registered_documents[sid]
                 self.document_mappings.pop(sid, None)
                 for state in self.node_states.pop(sid, {}).values():
-                    self._remove_load_image_snapshot((state.document_id, state.id, state.type))
+                    self.remove_load_image_snapshot((state.document_id, state.id, state.type))
                     await self._broadcast_deleted_node_state(state)
                 has_changed = True
 
@@ -706,7 +724,7 @@ class KritaApi:
             del self.registered_documents[sid]
             self.document_mappings.pop(sid, None)
             for state in self.node_states.pop(sid, {}).values():
-                self._remove_load_image_snapshot((state.document_id, state.id, state.type))
+                self.remove_load_image_snapshot((state.document_id, state.id, state.type))
                 await self._broadcast_deleted_node_state(state)
 
     def _document_id_to_sid(self, document_id: str) -> str | None:
