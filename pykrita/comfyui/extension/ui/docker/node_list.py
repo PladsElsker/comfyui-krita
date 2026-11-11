@@ -9,7 +9,7 @@ from comfyui.extension.models import Node, NodeDirection, UiNodeState
 from comfyui.extension.ui.nodes.comfyui_node import ComfyUiNode
 from comfyui.extension.ui.nodes.node_factory import NodeFactory
 
-NodeKey = tuple[int, str, str | None]
+NodeKey = tuple[str, str, str | None]
 
 
 class NodeListWidget(QScrollArea):
