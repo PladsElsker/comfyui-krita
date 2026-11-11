@@ -5,14 +5,11 @@ from typing import ClassVar, cast
 
 from krita import DockWidget, Document, Node as KritaNode, Window
 from PyQt5.QtCore import (
-    QEvent,
     QTimer,
-    qWarning,
     QByteArray,
     QSize,
     QBuffer,
     QIODevice,
-    QObject,
     Qt,
     QRunnable,
     QThreadPool,
@@ -22,15 +19,13 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtGui import QIcon, QImage, QPalette
 from PyQt5.QtSvg import QSvgRenderer
-from PyQt5.QtWidgets import QApplication, QToolButton, QWidget
+from PyQt5.QtWidgets import QToolButton
 
-from comfyui.extension.layer_tree.multi_selection_picker import LayerMultiSelectionPicker
 from comfyui.extension.layer_tree.selection_exporter import capture_selected_layers_projection
-from comfyui.extension.layer_tree.target_picker import TargetSelectionUnavailableError
+from comfyui.extension.layer_tree.document_change_tracker import document_change_tracker
+from comfyui.extension.layer_tree.selection_modal import iter_layer_nodes, select_layers
 from comfyui.extension.models import LoadImageState, Node, UiNodeState
 from comfyui.extension.ui.icons import (
-    CANCEL_ICON,
-    CHECK_ICON,
     STACKS_ICON,
     render_svg_to_pixmap,
 )
@@ -177,7 +172,6 @@ def _projection_revision(projection: QImage) -> str:
 class LoadImageNode(ComfyUiNode):
     type: ClassVar[str] = "KritaLoadImage-15347"
     snapshot_ready = cast("pyqtBoundSignal", pyqtSignal(object, bytes))
-    CANVAS_WIDGET_TYPES: ClassVar[set[str]] = {"KisOpenGLCanvas2", "KisQPainterCanvas"}
     LIVE_REFRESH_DEBOUNCE_MS: ClassVar[int] = 450
 
     def __init__(
@@ -212,43 +206,20 @@ class LoadImageNode(ComfyUiNode):
         self._live_refresh_timer.setSingleShot(True)
         self._live_refresh_timer.setInterval(self.LIVE_REFRESH_DEBOUNCE_MS)
         self._live_refresh_timer.timeout.connect(self._refresh_selected_projection)
-        self._event_filter_installed = False
+        self._modal_active = False
+        self._change_tracker = document_change_tracker()
 
         self.set_title_text(node.name)
         self._update_layer_info()
 
-        # The node's primary icon is STACKS_ICON; the action on the right stays
-        # the standard pen/edit button and is swapped out only while selecting.
         self.edit_button = TargetEditButton()
         self.edit_button.setToolTip("Select layers")
         self.edit_button.clicked.connect(self._toggle_editing)
-
-        self.accept_button = self._create_action_button(CHECK_ICON, "Accept selected layers")
-        self.accept_button.clicked.connect(self._accept_selection)
-
-        self.cancel_button = self._create_action_button(CANCEL_ICON, "Cancel layer selection")
-        self.cancel_button.clicked.connect(self._cancel_editing)
-
-        # These child widgets are not in the layout until selection mode starts.
-        # Explicitly hide them so Qt cannot show them at their default geometry
-        # when the parent node widget becomes visible.
-        self.accept_button.hide()
-        self.cancel_button.hide()
-
         self.set_action_buttons([self.edit_button])
 
-        self.layer_picker = LayerMultiSelectionPicker(window, document, self)
-        self.layer_picker.cancelled.connect(self._reset_edit_controls)
-        self.layer_picker.selection_accepted.connect(self._selection_accepted)
-        self.layer_picker.tree_changed.connect(self._on_layer_tree_changed)
-
-        # Krita does not expose a public document-pixels-changed signal.
-        # Observe input on its actual canvas widgets, then capture once the
-        # stroke or canvas command has settled.
-        app = QApplication.instance()
-        if app is not None:
-            app.installEventFilter(self)
-            self._event_filter_installed = True
+        # One application-wide tracker coalesces input for all nodes targeting
+        # this document. The modal itself never changes Krita's native selection.
+        self._change_tracker.watch(document, window, self, self._on_document_changed)
 
     def _create_action_button(self, icon_renderer: QSvgRenderer, tooltip: str) -> QToolButton:
         button = QToolButton(self)
@@ -273,30 +244,12 @@ class LoadImageNode(ComfyUiNode):
         self._disposed = True
         self._latest_capture = None
         self._live_refresh_timer.stop()
-        app = QApplication.instance()
-        if self._event_filter_installed and app is not None:
-            app.removeEventFilter(self)
-        self._event_filter_installed = False
-
-        self.layer_picker.cleanup()
-
-        # The node may remain alive until Qt processes deleteLater(). Remove
-        # its action controls synchronously so none can outlive the node row.
+        self._change_tracker.unwatch(self.document, self)
         self.set_action_buttons([])
-        action_buttons = self.findChildren(QToolButton)
-        for button in action_buttons:
-            qWarning(
-                f"[Krita Docker] disposing Load Image action button "
-                f"name={button.objectName()!r} text={button.text()!r} "
-                f"visible={button.isVisible()} geometry={button.geometry().getRect()}"
-            )
-            button.hide()
-            button.setEnabled(False)
-            button.setParent(None)
-            button.deleteLater()
-
-        # Workers own only a detached QImage. Ignore their results after this
-        # node is removed; the scratch document has already been closed.
+        self.edit_button.hide()
+        self.edit_button.setEnabled(False)
+        self.edit_button.setParent(None)
+        self.edit_button.deleteLater()
         self._pending_state = None
 
     def apply(self, node_state: UiNodeState) -> None:
@@ -312,32 +265,34 @@ class LoadImageNode(ComfyUiNode):
         self._update_layer_info()
 
     def _toggle_editing(self, _checked: bool) -> None:
-        if self.layer_picker.is_editing:
-            self._cancel_editing()
+        if self._modal_active or self._disposed:
             return
 
-        try:
-            self.layer_picker.begin(self.layer_ids)
-        except TargetSelectionUnavailableError as error:
-            LOGGER.warning("Could not start Krita layer selection: %s", error)
-            return
-
+        self._modal_active = True
         self._set_layer_editing_feedback(editing=True)
-        self.set_action_buttons([self.accept_button, self.cancel_button])
-
-    def _accept_selection(self, *_args: object) -> None:
         try:
-            self.layer_picker.accept()
-        except (TargetSelectionUnavailableError, ValueError) as error:
-            LOGGER.warning("Could not accept Krita layer selection: %s", error)
+            selected_nodes = select_layers(
+                self.document,
+                mode="multiple",
+                selected_ids=self.layer_ids,
+                allow_empty=True,
+                parent=self,
+            )
+            if selected_nodes is not None:
+                self._selection_accepted(selected_nodes)
+        finally:
+            self._modal_active = False
+            self._set_layer_editing_feedback(editing=False)
 
-    def _cancel_editing(self, *_args: object) -> None:
-        self.layer_picker.cancel()
-        self._reset_edit_controls()
+    def _selection_accepted(self, selected_nodes: list[KritaNode]) -> None:
+        layer_ids = [str(layer.uniqueId()) for layer in selected_nodes]
+        layer_names = [layer.name() for layer in selected_nodes]
+        self._queue_projection_capture(layer_ids, layer_names)
 
-    def _reset_edit_controls(self) -> None:
-        self._set_layer_editing_feedback(editing=False)
-        self.set_action_buttons([self.edit_button])
+    def _update_layer_info(self) -> None:
+        layer_count = len(self.layer_ids)
+        label = "layer" if layer_count == 1 else "layers"
+        self.set_info_text(f"{layer_count} {label} selected")
 
     def _configure_layer_edit_style(self) -> None:
         self.setStyleSheet(
@@ -355,68 +310,21 @@ class LoadImageNode(ComfyUiNode):
         self.style().polish(self)
         self.update()
 
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
-        if self._is_canvas_input_event(watched, event):
-            self._schedule_live_refresh()
-        return super().eventFilter(watched, event)
-
-    def _is_canvas_input_event(self, watched: QObject, event: QEvent) -> bool:
-        if self.layer_picker.is_editing:
-            return False
-        active_view = self.window.activeView()
-        if active_view is None or active_view.document() != self.document:
-            return False
-        shortcut_event = getattr(QEvent.Type, "Shortcut", None)
-        event_type = event.type()
-        if event_type == shortcut_event:
-            # QAction/QShortcut events can be delivered to the main window
-            # rather than the canvas widget that owns the active document.
-            return True
-
-        if event_type not in {
-            QEvent.Type.MouseButtonRelease,
-            QEvent.Type.TabletRelease,
-            QEvent.Type.TouchEnd,
-            QEvent.Type.KeyRelease,
-        }:
-            return False
-
-        current = watched
-        while current is not None:
-            if isinstance(current, QWidget):
-                try:
-                    class_name = current.metaObject().className()
-                except RuntimeError:
-                    break
-                if class_name in self.CANVAS_WIDGET_TYPES or class_name in {
-                    "QMenu",
-                    "QMenuBar",
-                    "QToolBar",
-                }:
-                    return True
-                current = current.parentWidget()
-            else:
-                current = current.parent()
-        return False
-
-    def _on_layer_tree_changed(self) -> None:
+    def _on_document_changed(self) -> None:
         if self._disposed:
             return
 
-        nodes_by_id = {str(node.uniqueId()): node for node in _walk_layer_tree(self.document.rootNode())}
+        nodes_by_id = {
+            str(node.uniqueId()): node
+            for node in iter_layer_nodes(self.document.rootNode())
+        }
         remaining_ids = [layer_id for layer_id in self.layer_ids if layer_id in nodes_by_id]
         remaining_names = [nodes_by_id[layer_id].name() for layer_id in remaining_ids]
         selection_changed = remaining_ids != self.layer_ids or remaining_names != self.layer_names
 
         if selection_changed:
-            # A selected layer may have been deleted. Prune the saved selection
-            # immediately, update its count, then capture the remaining layers.
             self._queue_projection_capture(remaining_ids, remaining_names)
-            return
-
-        # Tree changes can also alter a selected group's projection without
-        # changing the selected group ID (for example, inserting a child).
-        if not self.layer_picker.is_editing:
+        elif self.layer_ids:
             self._schedule_live_refresh()
 
     def _schedule_live_refresh(self) -> None:
